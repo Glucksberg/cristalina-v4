@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/memory-object.schema.json",
+  "title": "Cristalina v4 Memory Object",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "governance_state",
+    "epistemic_state",
+    "visibility_state",
+    "provenance"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "statement": {
+      "type": "string"
+    },
+    "governance_state": {
+      "type": "string"
+    },
+    "epistemic_state": {
+      "type": "string"
+    },
+    "visibility_state": {
+      "type": "object",
+      "required": [
+        "privacy_scope"
+      ],
+      "properties": {
+        "privacy_scope": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "source_type",
+        "source_ref"
+      ],
+      "properties": {
+        "source_type": {
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "temporal_state": {
+      "type": "object",
+      "properties": {
+        "valid_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

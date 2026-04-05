@@ -1,0 +1,7 @@
+{
+  "name": "@cristalina-v4/hermes-adapter",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Hermes Agent integration for Cristalina v4"
+}

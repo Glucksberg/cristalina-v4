@@ -1,0 +1,72 @@
+import type { Layer } from "./types.js";
+
+export const STORAGE_LAYOUT = {
+  manifest: "manifest.yaml",
+  raw: {
+    root: "raw",
+    sources: "raw/sources",
+    attachments: "raw/attachments",
+    imports: "raw/imports",
+  },
+  runtime: {
+    root: "runtime",
+    observations: "runtime/observations",
+    sessions: "runtime/sessions",
+    workingMemory: "runtime/working-memory",
+  },
+  world: {
+    root: "world",
+    entities: "world/entities",
+    relations: "world/relations",
+    episodes: "world/episodes",
+    claims: "world/claims",
+    contradictions: "world/contradictions",
+  },
+  canon: {
+    root: "canon",
+    facts: "canon/facts",
+    beliefs: "canon/beliefs",
+    preferences: "canon/preferences",
+    constraints: "canon/constraints",
+    values: "canon/values",
+    identity: "canon/identity",
+  },
+  wiki: {
+    root: "wiki",
+    pages: "wiki/pages",
+    index: "wiki/index.md",
+    log: "wiki/log.md",
+  },
+  governance: {
+    root: "governance",
+    proposals: "governance/proposals",
+    ratifications: "governance/ratifications",
+    policy: "governance/policy",
+  },
+  derived: {
+    root: "derived",
+    openclaw: "derived/openclaw",
+    hermes: "derived/hermes",
+  },
+  audits: {
+    root: "audits",
+    changes: "audits/changes.log",
+    validation: "audits/validation.log",
+    snapshots: "audits/snapshots",
+  },
+} as const;
+
+export const LAYER_ROOTS: Record<Layer, string> = {
+  raw: STORAGE_LAYOUT.raw.root,
+  runtime: STORAGE_LAYOUT.runtime.root,
+  world: STORAGE_LAYOUT.world.root,
+  canon: STORAGE_LAYOUT.canon.root,
+  wiki: STORAGE_LAYOUT.wiki.root,
+  governance: STORAGE_LAYOUT.governance.root,
+  derived: STORAGE_LAYOUT.derived.root,
+  audits: STORAGE_LAYOUT.audits.root,
+};
+
+export function layerRoot(layer: Layer): string {
+  return LAYER_ROOTS[layer];
+}

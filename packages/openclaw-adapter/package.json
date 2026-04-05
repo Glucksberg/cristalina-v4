@@ -1,0 +1,7 @@
+{
+  "name": "@cristalina-v4/openclaw-adapter",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "OpenClaw integration for Cristalina v4"
+}

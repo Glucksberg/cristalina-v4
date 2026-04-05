@@ -1,0 +1,16 @@
+{
+  "name": "cristalina-v4",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Next-generation governed memory architecture with OpenClaw and Hermes Agent integrations",
+  "packageManager": "pnpm@10.17.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "echo \"Scaffold lint not configured yet\"",
+    "test": "echo \"Scaffold tests not configured yet\""
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
