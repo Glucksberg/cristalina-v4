@@ -23,6 +23,14 @@ The repository will therefore be organized around three implementation domains:
 - `packages/openclaw-adapter`
 - `packages/hermes-adapter`
 
+The older systems are not only thematic inspiration.
+
+They imply concrete architectural obligations:
+
+- the **Cristalina** lineage requires proposal-first governed memory, policy separation, audit, and runtime-projection discipline
+- the **Letta** lineage requires a real runtime-self layer with pinned memory and portable runtime state
+- the **Zep/Graphiti** lineage requires a temporal world model with episodes, validity windows, and structural retrieval beyond flat recall
+
 ---
 
 ## 2. Core Thesis
@@ -50,11 +58,16 @@ Owns:
 
 - canonical object model
 - memory laws
+- runtime-self object model
+- world-model object model
 - proposal generation
+- curation packet generation
 - ratification and supersession
 - temporal validity model
+- ontology model
 - projection compiler inputs
 - stable IDs and provenance contracts
+- rollback and audit primitives
 
 Does not own:
 
@@ -70,6 +83,7 @@ Owns:
 - OpenClaw ingest contract
 - bootstrap surfaces for OpenClaw runtimes
 - diagnostic feedback back into the runtime
+- OpenClaw-facing runtime package assembly
 
 Does not own:
 
@@ -85,6 +99,7 @@ Owns:
 - Hermes Agent ingest contract
 - runtime-specific projection surfaces for Hermes
 - compatibility layer between Hermes runtime expectations and Cristalina core memory law
+- Hermes-facing runtime package assembly
 
 Does not own:
 
@@ -112,6 +127,57 @@ The package split is implementation-oriented.
 
 The layer split is cognition-oriented.
 
+### 4.1 Runtime Self requirements
+
+The runtime-self layer must be strong enough to preserve the key Letta lesson:
+
+- some memory is pinned and always visible
+- some memory is recalled on demand
+- the active agent state is itself a durable object of concern
+
+At minimum this layer should model:
+
+- runtime memory blocks
+- running threads or session state
+- active task focus
+- attached and detached operational context
+
+### 4.2 Temporal World Model requirements
+
+The world-model layer must be strong enough to preserve the key Graphiti lesson:
+
+- episodes are provenance roots
+- entities and relations evolve over time
+- changed facts are invalidated historically, not silently overwritten
+- ontology is explicit enough to support structure and retrieval
+
+At minimum this layer should model:
+
+- entities
+- relations
+- episodes
+- temporal claims
+- contradictions
+- ontology definitions
+
+### 4.3 Canonical and governance requirements
+
+The canonical and governance layers together must be strong enough to preserve the key Cristalina lesson:
+
+- durable memory requires governance
+- policy is not the same thing as memory
+- human curation remains part of the write path
+- projections are derived and machine-constrained
+
+At minimum this combined area should model:
+
+- proposal queues
+- curation packets
+- ratification records
+- policy snapshots
+- canonical objects
+- audit and rollback artifacts
+
 ---
 
 ## 5. Knowledge Wiki Layer
@@ -134,6 +200,7 @@ The wiki layer should own:
 - synthesis pages
 - an `index`
 - a chronological `log`
+- revision lineage and page-level diagnostics when useful
 
 The wiki layer should not own:
 
@@ -165,6 +232,8 @@ The knowledge wiki may describe canonical memory and world-model state.
 
 It must not silently replace them.
 
+It should also preserve upstream references aggressively enough that wiki pages can emit high-quality proposal candidates without pretending to be authoritative themselves.
+
 ---
 
 ## 7. Compatibility Rule
@@ -183,6 +252,7 @@ Adapters may differ in:
 - runtime feedback surfaces
 - ingest affordances
 - context budget strategy
+- how they package runtime state for their own execution model
 
 Adapters must not differ in:
 
@@ -200,10 +270,12 @@ Recommended order:
 1. define core object contracts
 2. define governance contracts
 3. define raw source ingestion contracts
-4. define knowledge-wiki contracts
-5. define read and write paths
-6. define projection compiler contract
-7. implement OpenClaw adapter
-8. implement Hermes adapter
+4. define runtime-self contracts, including blocks and thread state
+5. define temporal world-model contracts, including ontology and validity
+6. define knowledge-wiki contracts
+7. define read and write paths
+8. define projection compiler contract
+9. implement OpenClaw adapter
+10. implement Hermes adapter
 
 The adapters should be built after the core contracts are stable enough to prevent adapter-first drift.

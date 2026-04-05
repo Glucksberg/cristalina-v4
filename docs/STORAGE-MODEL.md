@@ -99,6 +99,8 @@ Expected contents:
 
 - observations
 - runtime sessions
+- runtime threads
+- runtime memory blocks
 - attention state snapshots
 - working-memory checkpoints
 - runtime-local diagnostics
@@ -121,6 +123,7 @@ Expected contents:
 - episodic records
 - temporal claims
 - contradiction clusters
+- ontology definitions
 - world-model indexes
 
 This layer is machine-optimized structure.
@@ -178,6 +181,7 @@ Purpose:
 Expected contents:
 
 - proposal queues
+- curation packets
 - ratification packets
 - policy snapshots
 - authority rules
@@ -230,6 +234,8 @@ Expected contents:
   runtime/
     observations/
     sessions/
+    threads/
+    blocks/
     working-memory/
   world/
     entities/
@@ -237,6 +243,7 @@ Expected contents:
     episodes/
     claims/
     contradictions/
+    ontology/
   canon/
     facts/
     beliefs/
@@ -250,11 +257,14 @@ Expected contents:
     log.md
   governance/
     proposals/
+    curation/
     ratifications/
     policy/
+    policy-snapshots/
   derived/
     openclaw/
     hermes/
+    manifests/
   audits/
     changes.log
     validation.log

@@ -12,6 +12,8 @@ export const STORAGE_LAYOUT = {
     root: "runtime",
     observations: "runtime/observations",
     sessions: "runtime/sessions",
+    threads: "runtime/threads",
+    blocks: "runtime/blocks",
     workingMemory: "runtime/working-memory",
   },
   world: {
@@ -21,6 +23,7 @@ export const STORAGE_LAYOUT = {
     episodes: "world/episodes",
     claims: "world/claims",
     contradictions: "world/contradictions",
+    ontology: "world/ontology",
   },
   canon: {
     root: "canon",
@@ -40,13 +43,16 @@ export const STORAGE_LAYOUT = {
   governance: {
     root: "governance",
     proposals: "governance/proposals",
+    curation: "governance/curation",
     ratifications: "governance/ratifications",
     policy: "governance/policy",
+    policySnapshots: "governance/policy-snapshots",
   },
   derived: {
     root: "derived",
     openclaw: "derived/openclaw",
     hermes: "derived/hermes",
+    manifests: "derived/manifests",
   },
   audits: {
     root: "audits",

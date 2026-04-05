@@ -29,14 +29,15 @@ This repository line is intended to produce:
 9. [docs/MVP-SPEC.md](/home/dev/projects/cristalina-v4/docs/MVP-SPEC.md)
 10. [docs/INFORMATION-FLOW.md](/home/dev/projects/cristalina-v4/docs/INFORMATION-FLOW.md)
 11. [docs/INSPIRATION-AND-COMPATIBILITY.md](/home/dev/projects/cristalina-v4/docs/INSPIRATION-AND-COMPATIBILITY.md)
-12. [docs/KNOWLEDGE-WIKI-LAYER.md](/home/dev/projects/cristalina-v4/docs/KNOWLEDGE-WIKI-LAYER.md)
-13. [docs/GLOSSARY.md](/home/dev/projects/cristalina-v4/docs/GLOSSARY.md)
-14. [docs/NON-GOALS.md](/home/dev/projects/cristalina-v4/docs/NON-GOALS.md)
-15. [docs/USE-CASES.md](/home/dev/projects/cristalina-v4/docs/USE-CASES.md)
-16. [docs/EVALS.md](/home/dev/projects/cristalina-v4/docs/EVALS.md)
-17. [docs/FAILURE-MODES.md](/home/dev/projects/cristalina-v4/docs/FAILURE-MODES.md)
-18. [docs/ADAPTER-CONTRACTS.md](/home/dev/projects/cristalina-v4/docs/ADAPTER-CONTRACTS.md)
-19. [docs/DECISIONS.md](/home/dev/projects/cristalina-v4/docs/DECISIONS.md)
+12. [docs/ANCESTOR-CROSSWALK.md](/home/dev/projects/cristalina-v4/docs/ANCESTOR-CROSSWALK.md)
+13. [docs/KNOWLEDGE-WIKI-LAYER.md](/home/dev/projects/cristalina-v4/docs/KNOWLEDGE-WIKI-LAYER.md)
+14. [docs/GLOSSARY.md](/home/dev/projects/cristalina-v4/docs/GLOSSARY.md)
+15. [docs/NON-GOALS.md](/home/dev/projects/cristalina-v4/docs/NON-GOALS.md)
+16. [docs/USE-CASES.md](/home/dev/projects/cristalina-v4/docs/USE-CASES.md)
+17. [docs/EVALS.md](/home/dev/projects/cristalina-v4/docs/EVALS.md)
+18. [docs/FAILURE-MODES.md](/home/dev/projects/cristalina-v4/docs/FAILURE-MODES.md)
+19. [docs/ADAPTER-CONTRACTS.md](/home/dev/projects/cristalina-v4/docs/ADAPTER-CONTRACTS.md)
+20. [docs/DECISIONS.md](/home/dev/projects/cristalina-v4/docs/DECISIONS.md)
 
 ## Repository Layout
 

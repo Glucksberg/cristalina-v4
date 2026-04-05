@@ -712,6 +712,9 @@ flowchart TD
 - strong distinction between always-visible and retrieved context
 - practical handling of active self-context
 - agent-centric continuity
+- portable packaging of runtime state
+- memory blocks as first-class runtime objects
+- checkpoint and eval friendliness of stateful agents
 
 ### 6.2 Inherit from Zep/Graphiti
 
@@ -719,6 +722,10 @@ flowchart TD
 - entity and relation centrality
 - world-state evolution
 - structural retrieval beyond plain semantic search
+- episodes as provenance roots
+- validity windows and historical queries
+- invalidation instead of silent deletion
+- explicit ontology design, whether prescribed or learned
 
 ### 6.3 Inherit from Cristalina
 
@@ -727,6 +734,9 @@ flowchart TD
 - canonical versus projected memory
 - provenance and audit trail
 - reversibility and supersession semantics
+- curation packets and answer normalization
+- policy objects separated from ordinary memory
+- projection/writeback discipline as part of the protocol
 
 ### 6.4 Inherit from the LLM Wiki pattern
 

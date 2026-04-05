@@ -26,17 +26,23 @@ The MVP should begin with these type families:
 
 - `SourceRecord`
 - `Observation`
+- `RuntimeMemoryBlock`
+- `ConversationThread`
 - `Episode`
 - `Entity`
 - `Relation`
 - `WorldClaim`
 - `CanonicalMemoryObject`
 - `Proposal`
+- `CurationPacket`
 - `RatificationRecord`
 - `Contradiction`
+- `OntologyDefinition`
+- `PolicySnapshot`
 - `WikiPage`
 - `WikiClaim`
 - `ProjectionArtifact`
+- `ProjectionManifest`
 - `Diagnostic`
 
 These are not all equally mature.
@@ -147,6 +153,8 @@ Minimum fields:
 - `valid_from`
 - `valid_to`
 
+Episodes should be treated as provenance anchors for the world layer, not merely as summaries.
+
 ### 4.4 `Entity`
 
 Represents a durable referent in the world model.
@@ -199,7 +207,35 @@ Minimum fields:
 - `source_ref`
 - `visibility`
 
-### 4.8 `Proposal`
+### 4.8 `RuntimeMemoryBlock`
+
+Represents pinned or attachable runtime memory that remains available to the running agent.
+
+Minimum fields:
+
+- `id`
+- `name`
+- `description`
+- `content`
+- `read_only`
+- `visibility`
+- `created_at`
+- `updated_at`
+
+### 4.9 `ConversationThread`
+
+Represents a persistent runtime conversation or interaction thread.
+
+Minimum fields:
+
+- `id`
+- `runtime`
+- `created_at`
+- `updated_at`
+- `message_refs`
+- `summary`
+
+### 4.10 `Proposal`
 
 Represents a candidate transition toward canonical memory or another managed layer.
 
@@ -215,7 +251,19 @@ Minimum fields:
 - `evidence_refs`
 - `governance_state`
 
-### 4.9 `RatificationRecord`
+### 4.11 `CurationPacket`
+
+Represents a governance packet presented for human or approved higher-order review.
+
+Minimum fields:
+
+- `id`
+- `created_at`
+- `proposal_refs`
+- `question_count`
+- `status`
+
+### 4.12 `RatificationRecord`
 
 Represents an applied governance decision.
 
@@ -227,7 +275,7 @@ Minimum fields:
 - `actor`
 - `created_at`
 
-### 4.10 `Contradiction`
+### 4.13 `Contradiction`
 
 Represents an unresolved tension between claims, structures, or memory objects.
 
@@ -239,7 +287,38 @@ Minimum fields:
 - `status`
 - `created_at`
 
-### 4.11 `WikiPage`
+### 4.14 `OntologyDefinition`
+
+Represents the active ontology contract for the world layer.
+
+Minimum fields:
+
+- `id`
+- `mode`
+- `entity_types`
+- `relation_types`
+- `created_at`
+- `updated_at`
+
+The initial mode may be:
+
+- `prescribed`
+- `learned`
+- `hybrid`
+
+### 4.15 `PolicySnapshot`
+
+Represents a versioned governance or authority configuration.
+
+Minimum fields:
+
+- `id`
+- `policy_family`
+- `version`
+- `created_at`
+- `active`
+
+### 4.16 `WikiPage`
 
 Represents an editorial knowledge page.
 
@@ -255,7 +334,7 @@ Minimum fields:
 - `canonical_refs`
 - `world_refs`
 
-### 4.12 `WikiClaim`
+### 4.17 `WikiClaim`
 
 Represents an explicit claim stated inside a wiki page.
 
@@ -267,7 +346,7 @@ Minimum fields:
 - `claim_status`
 - `source_refs`
 
-### 4.13 `ProjectionArtifact`
+### 4.18 `ProjectionArtifact`
 
 Represents a runtime-facing derived artifact.
 
@@ -280,7 +359,21 @@ Minimum fields:
 - `upstream_refs`
 - `created_at`
 
-### 4.14 `Diagnostic`
+### 4.19 `ProjectionManifest`
+
+Represents the common metadata contract for a compiled runtime package.
+
+Minimum fields:
+
+- `id`
+- `adapter`
+- `projection_profile`
+- `audience`
+- `created_at`
+- `upstream_refs`
+- `artifact_refs`
+
+### 4.20 `Diagnostic`
 
 Represents bounded machine-readable feedback about failures, ignored edits, or unresolved tensions.
 

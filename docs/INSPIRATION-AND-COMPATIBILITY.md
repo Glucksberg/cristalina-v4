@@ -17,6 +17,9 @@ Why it matters:
 - proposal and ratification discipline
 - provenance and auditability
 - canonical truth versus runtime projection
+- policy objects separate from ordinary memory
+- human curation as part of the memory protocol
+- rollback, supersession, and audit surfaces
 
 Primary lesson:
 
@@ -30,6 +33,9 @@ Why it matters:
 - pinned always-visible memory
 - practical continuity of agent identity
 - strong operational notion of the running mind
+- portable packaged agent state
+- editable runtime memory blocks distinct from external recall
+- checkpoint and evaluation friendliness
 
 Primary lesson:
 
@@ -43,6 +49,9 @@ Why it matters:
 - entities and relations as first-class structures
 - world-state evolution over time
 - structured retrieval beyond keyword or embeddings alone
+- episodes as provenance roots
+- validity windows and historical queries
+- ontology as an explicit part of the design
 
 Primary lesson:
 
@@ -73,6 +82,12 @@ It is a new architecture that selectively inherits:
 - temporal world-model ideas from Zep/Graphiti
 - governed canonical memory ideas from Cristalina
 - persistent knowledge-wiki ideas from the LLM Wiki pattern
+
+It must also preserve the mechanisms, not only the labels:
+
+- from **Cristalina**: curation packets, policy surfaces, projection discipline
+- from **Letta**: always-visible runtime memory and portable agent-state packaging
+- from **Zep/Graphiti**: episodes, validity windows, invalidation instead of silent overwrite
 
 ---
 
@@ -105,5 +120,11 @@ The core must be written so that:
 - both adapters can project from the same governed memory substrate
 - both adapters can ingest runtime edits into the same proposal and governance path
 - runtime-specific surfaces do not fork the object semantics
+
+The core must also remain faithful to the ancestor lessons:
+
+- runtime state is real and must not be reduced to a scratchpad
+- world state is temporal and must not be flattened into canonical memory
+- canonical memory is governed and must not be replaced by wiki or runtime convenience
 
 That is the main compatibility requirement for v4.

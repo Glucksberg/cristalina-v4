@@ -94,6 +94,28 @@ export interface Observation {
   visibility: VisibilityScope;
 }
 
+export interface RuntimeMemoryBlock {
+  id: string;
+  kind: "runtime_memory_block";
+  name: string;
+  description: string;
+  content: string;
+  readOnly: boolean;
+  visibility: VisibilityScope;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationThread {
+  id: string;
+  kind: "conversation_thread";
+  runtime: "openclaw" | "hermes" | "generic";
+  createdAt: string;
+  updatedAt: string;
+  messageRefs: string[];
+  summary: string | null;
+}
+
 export interface Episode {
   id: string;
   kind: "episode";
@@ -166,6 +188,15 @@ export interface Proposal {
   governanceState: Exclude<GovernanceState, "ratified" | "superseded">;
 }
 
+export interface CurationPacket {
+  id: string;
+  kind: "curation_packet";
+  createdAt: string;
+  proposalRefs: string[];
+  questionCount: number;
+  status: "pending" | "answered" | "expired" | "applied";
+}
+
 export interface RatificationRecord {
   id: string;
   kind: "ratification";
@@ -182,6 +213,25 @@ export interface Contradiction {
   rightRef: Reference;
   status: "open" | "resolved" | "dismissed";
   createdAt: string;
+}
+
+export interface OntologyDefinition {
+  id: string;
+  kind: "ontology_definition";
+  mode: "prescribed" | "learned" | "hybrid";
+  entityTypes: string[];
+  relationTypes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolicySnapshot {
+  id: string;
+  kind: "policy_snapshot";
+  policyFamily: string;
+  version: string;
+  createdAt: string;
+  active: boolean;
 }
 
 export interface WikiPage {
@@ -216,6 +266,17 @@ export interface ProjectionArtifact {
   createdAt: string;
 }
 
+export interface ProjectionManifest {
+  id: string;
+  kind: "projection_manifest";
+  adapter: "openclaw" | "hermes";
+  projectionProfile: string;
+  audience: string;
+  createdAt: string;
+  upstreamRefs: string[];
+  artifactRefs: string[];
+}
+
 export interface Diagnostic {
   id: string;
   kind: "diagnostic";
@@ -228,15 +289,21 @@ export interface Diagnostic {
 export type CoreRecord =
   | SourceRecord
   | Observation
+  | RuntimeMemoryBlock
+  | ConversationThread
   | Episode
   | Entity
   | Relation
   | WorldClaim
   | CanonicalMemoryObject
   | Proposal
+  | CurationPacket
   | RatificationRecord
   | Contradiction
+  | OntologyDefinition
+  | PolicySnapshot
   | WikiPage
   | WikiClaim
   | ProjectionArtifact
+  | ProjectionManifest
   | Diagnostic;
