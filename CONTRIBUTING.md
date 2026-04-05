@@ -23,4 +23,6 @@ Rule of thumb:
 - docs should be precise
 - code should only be added when the relevant contracts are clear enough
 
-License decision is still pending.
+License:
+
+- Apache-2.0
