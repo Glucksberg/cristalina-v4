@@ -25,8 +25,10 @@ The MVP therefore needs:
 ### Core
 
 - stable object envelope
+- durable identity distinct from runtime occurrence
 - raw source registration
 - runtime observations
+- explicit input disposition path
 - proposal generation
 - ratification path
 - supersession path
@@ -68,9 +70,12 @@ The MVP therefore needs:
 3. world-model state is not automatically canonical
 4. every promoted memory object preserves provenance
 5. every adapter projection must preserve upstream references
-6. failed promotion must produce bounded diagnostics
-7. wiki pages are derived and never authoritative by themselves
-8. wiki claims that imply durable truth must flow through proposal/governance
+6. every input must end in an explicit disposition
+7. projection fragments must declare source layer and authority context
+8. actor identity, runtime instance, session, and thread must remain distinct
+9. failed promotion must produce bounded diagnostics
+10. wiki pages are derived and never authoritative by themselves
+11. wiki claims that imply durable truth must flow through proposal/governance
 
 ---
 

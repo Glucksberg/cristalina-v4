@@ -11,6 +11,7 @@ export const STORAGE_LAYOUT = {
   runtime: {
     root: "runtime",
     observations: "runtime/observations",
+    instances: "runtime/instances",
     sessions: "runtime/sessions",
     threads: "runtime/threads",
     blocks: "runtime/blocks",
@@ -43,6 +44,7 @@ export const STORAGE_LAYOUT = {
   governance: {
     root: "governance",
     proposals: "governance/proposals",
+    dispositions: "governance/dispositions",
     curation: "governance/curation",
     ratifications: "governance/ratifications",
     policy: "governance/policy",

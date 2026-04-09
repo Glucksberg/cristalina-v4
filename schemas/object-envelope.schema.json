@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/object-envelope.schema.json",
+  "title": "Cristalina v4 Object Envelope",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "layer",
+    "authoritative_home",
+    "created_at",
+    "visibility_state",
+    "provenance"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "layer": {
+      "type": "string",
+      "enum": [
+        "raw",
+        "runtime",
+        "world",
+        "canon",
+        "wiki",
+        "governance",
+        "derived",
+        "audits"
+      ]
+    },
+    "authoritative_home": {
+      "type": "string",
+      "enum": [
+        "raw",
+        "runtime",
+        "world",
+        "canon",
+        "wiki",
+        "governance"
+      ]
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "epistemic_state": {
+      "type": "string"
+    },
+    "governance_state": {
+      "type": "string"
+    },
+    "visibility_state": {
+      "type": "object",
+      "required": [
+        "privacy_scope"
+      ],
+      "properties": {
+        "privacy_scope": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "source_type",
+        "source_ref"
+      ],
+      "properties": {
+        "source_type": {
+          "type": "string"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "actor_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thread_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "temporal_state": {
+      "type": "object",
+      "properties": {
+        "temporal_status": {
+          "type": "string"
+        },
+        "valid_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valid_to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "temporal_confidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "upstream_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

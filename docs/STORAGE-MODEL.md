@@ -98,6 +98,7 @@ Purpose:
 Expected contents:
 
 - observations
+- runtime instances
 - runtime sessions
 - runtime threads
 - runtime memory blocks
@@ -233,6 +234,7 @@ Expected contents:
     imports/
   runtime/
     observations/
+    instances/
     sessions/
     threads/
     blocks/
@@ -257,6 +259,7 @@ Expected contents:
     log.md
   governance/
     proposals/
+    dispositions/
     curation/
     ratifications/
     policy/
@@ -305,6 +308,12 @@ Writes originating from runtimes must flow through:
 - `governance/`
 - then `canon/`
 
+Runtime continuity should therefore remain inspectable in:
+
+- `runtime/instances`
+- `runtime/sessions`
+- `runtime/threads`
+
 ### 6.4 World state and canon may disagree temporarily
 
 That is not necessarily a bug.
@@ -334,6 +343,8 @@ The first implementation should optimize for:
 - stable IDs
 - explicit references
 - human-inspectable artifacts
+- durable identity separate from runtime occurrence
+- explicit disposition records before canonical promotion
 
 Do not optimize the first version around:
 

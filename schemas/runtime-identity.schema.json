@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/runtime-identity.schema.json",
+  "title": "Cristalina v4 Runtime Identity Record",
+  "type": "object",
+  "required": [
+    "id",
+    "kind"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "actor_identity",
+        "runtime_instance",
+        "runtime_session",
+        "conversation_thread"
+      ]
+    },
+    "actor_kind": {
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    },
+    "runtime": {
+      "type": "string"
+    },
+    "agent_identity_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "owner_identity_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime_instance_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime_session_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

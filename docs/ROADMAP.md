@@ -48,6 +48,21 @@ Status:
 
 - in progress, substantially established
 
+#### Phase 0H. Contract Hardening
+
+Goal:
+
+- converge the architecture into executable contracts before broad implementation starts
+
+Includes:
+
+- hardening plan
+- normalized object envelope
+- runtime identity model
+- disposition model
+- docs/schema/scaffold convergence
+- projection fragment labeling rules
+
 ### Phase 1. Solid Core
 
 Goal:
@@ -67,6 +82,10 @@ Includes:
 - stable IDs
 - storage layout implementation
 - serialization and validation of core objects
+- runtime-executable schema layer, not TypeScript-only scaffolding
+- shared object envelope implementation
+- runtime identity object serialization
+- disposition record serialization
 
 #### Phase 1B. World and Wiki Foundation
 
@@ -74,17 +93,21 @@ Includes:
 
 - raw source intake
 - observation capture
+- disposition assignment baseline
 - world-claim storage
 - entity/relation primitives
 - wiki page model
 - wiki claim model
 - wiki maintenance triggers
+- wiki claim extraction
+- wiki staleness and unsupported-claim diagnostics
 
 #### Phase 1C. Governance Foundation
 
 Includes:
 
 - proposal engine
+- disposition record execution path
 - governance gates
 - ratification records
 - canonical apply path
@@ -99,6 +122,8 @@ Includes:
 - projection compiler contract
 - bounded diagnostics model
 - provenance-preserving projection references
+- layer-labeled projection fragments
+- identity-aware projection packaging
 
 Phase 1 is complete only when the core can execute an end-to-end flow without any adapter-specific hacks.
 
@@ -167,11 +192,15 @@ The immediate focus should remain inside Phase 1.
 
 Specifically:
 
-1. store manifest and reader/writer
-2. canonical object serializer
-3. proposal engine baseline
-4. canonical apply path
-5. common projection manifest
+1. shared object envelope across docs, schemas, and scaffold types
+2. runtime identity and storage convergence
+3. runtime-executable schema depth comparable to the current Cristalina line
+4. disposition record and intake fate baseline
+5. store manifest and reader/writer
+6. canonical object serializer
+7. proposal engine baseline
+8. canonical apply path
+9. common projection manifest
 
 Only after these are solid should OpenClaw and Hermes adapters become the main implementation surface.
 
@@ -188,3 +217,7 @@ The roadmap explicitly avoids:
 - trying to solve all multi-agent problems in v1
 
 This roadmap is designed to maximize architectural integrity first.
+
+It is also designed to avoid a specific local failure mode:
+
+- documentation racing ahead of executable substrate for too long

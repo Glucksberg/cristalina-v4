@@ -1,5 +1,6 @@
 import type {
   CanonicalMemoryObject,
+  DispositionRecord,
   Observation,
   Proposal,
   WikiClaim,
@@ -9,96 +10,182 @@ import type {
 
 export interface ConversationPreferenceInput {
   now: string;
-  sourceRef: string;
+  source_ref: string;
   statement: string;
 }
 
 export interface MvpFlow001Artifacts {
   observation: Observation;
-  worldClaim: WorldClaim;
-  wikiPage: WikiPage;
-  wikiClaim: WikiClaim;
+  world_claim: WorldClaim;
+  wiki_page: WikiPage;
+  wiki_claim: WikiClaim;
   proposal: Proposal;
-  canonicalCandidate: CanonicalMemoryObject;
+  disposition_record: DispositionRecord;
+  canonical_candidate: CanonicalMemoryObject;
 }
 
 export function buildConversationPreferenceFlow(input: ConversationPreferenceInput): MvpFlow001Artifacts {
+  const provenance = {
+    source_type: "conversation",
+    source_ref: input.source_ref,
+  } as const;
+
   const observation: Observation = {
     id: "obs-mvp-001",
     kind: "observation",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance,
     summary: input.statement,
-    createdAt: input.now,
-    epistemicState: "observed",
-    sourceRef: input.sourceRef,
-    visibility: "owner_private",
+    epistemic_state: "observed",
   };
 
-  const worldClaim: WorldClaim = {
+  const world_claim: WorldClaim = {
     id: "wcl-mvp-001",
     kind: "preference",
+    layer: "world",
+    authoritative_home: "world",
+    created_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [observation.id],
+    },
     statement: input.statement,
-    epistemicState: "inferred",
-    temporalStatus: "active",
-    supportRefs: [observation.id],
+    epistemic_state: "inferred",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: input.now,
+      valid_to: null,
+    },
+    support_refs: [observation.id],
   };
 
-  const wikiPage: WikiPage = {
+  const wiki_page: WikiPage = {
     id: "wpg-mvp-001",
     kind: "wiki_page",
-    pageKind: "entity",
+    layer: "wiki",
+    authoritative_home: "wiki",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [observation.id, world_claim.id],
+    },
+    page_kind: "entity",
     title: "User Interaction Preferences",
     path: "wiki/pages/user-interaction-preferences.md",
-    createdAt: input.now,
-    updatedAt: input.now,
-    sourceRefs: [input.sourceRef],
-    canonicalRefs: [],
-    worldRefs: [worldClaim.id],
+    source_refs: [input.source_ref],
+    canonical_refs: [],
+    world_refs: [world_claim.id],
   };
 
-  const wikiClaim: WikiClaim = {
+  const wiki_claim: WikiClaim = {
     id: "wclm-mvp-001",
     kind: "wiki_claim",
-    pageRef: wikiPage.id,
+    layer: "wiki",
+    authoritative_home: "wiki",
+    created_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [observation.id, world_claim.id],
+    },
     statement: input.statement,
-    claimStatus: "candidate_for_promotion",
-    sourceRefs: [input.sourceRef],
+    page_ref: wiki_page.id,
+    claim_status: "candidate_for_promotion",
+    source_refs: [input.source_ref],
   };
 
   const proposal: Proposal = {
     id: "prop-mvp-001",
     kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [observation.id, world_claim.id, wiki_claim.id],
+    },
     operation: "create",
-    candidateKind: "preference",
-    targetLayer: "canon",
-    targetRef: null,
-    candidatePayload: {
+    candidate_kind: "preference",
+    target_layer: "canon",
+    target_ref: null,
+    candidate_payload: {
       kind: "preference",
       statement: input.statement,
-      sourceRef: input.sourceRef,
-      supportRefs: [observation.id, worldClaim.id, wikiClaim.id],
+      source_ref: input.source_ref,
+      support_refs: [observation.id, world_claim.id, wiki_claim.id],
     },
     reason: "Conversation indicates a user interaction preference that should become governed memory.",
-    evidenceRefs: [observation.id],
-    governanceState: "proposed",
+    evidence_refs: [observation.id],
+    governance_state: "proposed",
   };
 
-  const canonicalCandidate: CanonicalMemoryObject = {
+  const disposition_record: DispositionRecord = {
+    id: "disp-mvp-001",
+    kind: "disposition_record",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [observation.id],
+    },
+    input_refs: [observation.id],
+    outcomes: ["world_update", "wiki_update", "proposal_for_canon"],
+    target_layers: ["world", "wiki", "canon"],
+    proposal_refs: [proposal.id],
+    reason_codes: ["preference_signal", "editorial_update", "durable_candidate"],
+  };
+
+  const canonical_candidate: CanonicalMemoryObject = {
     id: "mem-mvp-001",
     kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [observation.id, world_claim.id, wiki_claim.id],
+    },
     statement: input.statement,
-    epistemicState: "confirmed",
-    governanceState: "ratified",
-    createdAt: input.now,
-    sourceRef: input.sourceRef,
-    visibility: "owner_private",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: input.now,
+      valid_to: null,
+    },
   };
 
   return {
     observation,
-    worldClaim,
-    wikiPage,
-    wikiClaim,
+    world_claim,
+    wiki_page,
+    wiki_claim,
     proposal,
-    canonicalCandidate,
+    disposition_record,
+    canonical_candidate,
   };
 }

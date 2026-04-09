@@ -26,6 +26,9 @@ The MVP should begin with these type families:
 
 - `SourceRecord`
 - `Observation`
+- `ActorIdentity`
+- `RuntimeInstance`
+- `RuntimeSession`
 - `RuntimeMemoryBlock`
 - `ConversationThread`
 - `Episode`
@@ -44,6 +47,7 @@ The MVP should begin with these type families:
 - `ProjectionArtifact`
 - `ProjectionManifest`
 - `Diagnostic`
+- `DispositionRecord`
 
 These are not all equally mature.
 
@@ -109,9 +113,84 @@ The core should begin with:
 - `shareable`
 - `public_safe`
 
+### 3.6 Disposition outcomes
+
+The core should begin with:
+
+- `evidence_only`
+- `runtime_only`
+- `world_update`
+- `wiki_update`
+- `proposal_for_canon`
+- `queued_review`
+- `diagnostic_only`
+
 ---
 
-## 4. Type Contracts
+## 4. Shared Cross-Cutting Contracts
+
+### 4.1 Shared object envelope
+
+The core should now assume one normalized envelope with at least:
+
+- `id`
+- `kind`
+- `layer`
+- `authoritative_home`
+- `created_at`
+- `updated_at`
+- `visibility_state`
+- `provenance`
+
+Optional but strongly expected by many families:
+
+- `epistemic_state`
+- `governance_state`
+- `temporal_state`
+- `upstream_refs`
+
+### 4.2 Reference
+
+Reference records should preserve at least:
+
+- `id`
+- `kind`
+- `layer`
+
+### 4.3 Provenance
+
+Provenance records should preserve at least:
+
+- `source_type`
+- `source_ref`
+- `evidence_refs`
+- `actor_ref`
+- `runtime_ref`
+- `session_ref`
+- `thread_ref`
+
+### 4.4 Visibility state
+
+Visibility state should preserve at least:
+
+- `privacy_scope`
+
+### 4.5 Temporal state
+
+Temporal state should preserve at least:
+
+- `temporal_status`
+- `valid_from`
+- `valid_to`
+- `temporal_confidence`
+
+---
+
+## 5. Type Contracts
+
+All type families below inherit the shared envelope.
+
+The lists below emphasize family-specific fields and the most important required specializations.
 
 ### 4.1 `SourceRecord`
 
@@ -121,11 +200,12 @@ Minimum fields:
 
 - `id`
 - `kind`
+- `layer`
+- `authoritative_home`
 - `created_at`
-- `source_type`
-- `source_ref`
 - `content_ref`
-- `visibility`
+- `visibility_state`
+- `provenance`
 
 ### 4.2 `Observation`
 
@@ -135,113 +215,182 @@ Minimum fields:
 
 - `id`
 - `kind`
+- `layer`
+- `authoritative_home`
 - `summary`
 - `created_at`
 - `epistemic_state`
-- `source_ref`
-- `visibility`
+- `visibility_state`
+- `provenance`
 
-### 4.3 `Episode`
+Observations should also be able to preserve:
+
+- `runtime_instance_ref`
+- `session_ref`
+- `thread_ref`
+
+### 4.3 `ActorIdentity`
+
+Represents a durable actor identity such as:
+
+- owner
+- agent
+- external person
+- external organization
+
+Minimum fields:
+
+- `id`
+- `kind`
+- `actor_kind`
+- `label`
+- `status`
+- `created_at`
+
+### 4.4 `RuntimeInstance`
+
+Represents one active embodiment of the agent in one runtime.
+
+Minimum fields:
+
+- `id`
+- `kind`
+- `runtime`
+- `agent_identity_ref`
+- `owner_identity_ref`
+- `created_at`
+- `status`
+
+### 4.5 `RuntimeSession`
+
+Represents one bounded continuity interval inside a runtime instance.
+
+Minimum fields:
+
+- `id`
+- `kind`
+- `runtime_instance_ref`
+- `created_at`
+- `updated_at`
+- `status`
+
+### 4.6 `Episode`
 
 Represents grouped observations that form a bounded event arc or meaningful temporal chunk.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `summary`
 - `observation_refs`
-- `valid_from`
-- `valid_to`
+- `temporal_state`
 
 Episodes should be treated as provenance anchors for the world layer, not merely as summaries.
 
-### 4.4 `Entity`
+### 4.7 `Entity`
 
 Represents a durable referent in the world model.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `entity_kind`
 - `label`
 - `status`
 
-### 4.5 `Relation`
+### 4.8 `Relation`
 
 Represents a structured relationship between entities.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `subject_ref`
 - `object_ref`
 - `relation_type`
-- `valid_from`
-- `valid_to`
+- `temporal_state`
 
-### 4.6 `WorldClaim`
+### 4.9 `WorldClaim`
 
 Represents a world-model claim that is useful structurally but not necessarily canonical yet.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `kind`
 - `statement`
 - `epistemic_state`
-- `temporal_status`
+- `temporal_state`
 - `support_refs`
 
-### 4.7 `CanonicalMemoryObject`
+### 4.10 `CanonicalMemoryObject`
 
 Represents durable memory that passed through governance.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `kind`
 - `statement`
 - `epistemic_state`
 - `governance_state`
 - `created_at`
-- `source_ref`
-- `visibility`
+- `visibility_state`
+- `provenance`
 
-### 4.8 `RuntimeMemoryBlock`
+### 4.11 `RuntimeMemoryBlock`
 
 Represents pinned or attachable runtime memory that remains available to the running agent.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `name`
 - `description`
 - `content`
 - `read_only`
-- `visibility`
+- `visibility_state`
 - `created_at`
 - `updated_at`
 
-### 4.9 `ConversationThread`
+### 4.12 `ConversationThread`
 
 Represents a persistent runtime conversation or interaction thread.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `runtime`
+- `runtime_instance_ref`
+- `runtime_session_ref`
 - `created_at`
 - `updated_at`
 - `message_refs`
 - `summary`
 
-### 4.10 `Proposal`
+### 4.13 `Proposal`
 
 Represents a candidate transition toward canonical memory or another managed layer.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `operation`
 - `candidate_kind`
 - `target_layer`
@@ -251,49 +400,57 @@ Minimum fields:
 - `evidence_refs`
 - `governance_state`
 
-### 4.11 `CurationPacket`
+### 4.14 `CurationPacket`
 
 Represents a governance packet presented for human or approved higher-order review.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `created_at`
 - `proposal_refs`
 - `question_count`
 - `status`
 
-### 4.12 `RatificationRecord`
+### 4.15 `RatificationRecord`
 
 Represents an applied governance decision.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `proposal_ref`
 - `decision`
 - `actor`
 - `created_at`
 
-### 4.13 `Contradiction`
+### 4.16 `Contradiction`
 
 Represents an unresolved tension between claims, structures, or memory objects.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `left_ref`
 - `right_ref`
 - `status`
 - `created_at`
 
-### 4.14 `OntologyDefinition`
+### 4.17 `OntologyDefinition`
 
 Represents the active ontology contract for the world layer.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `mode`
 - `entity_types`
 - `relation_types`
@@ -306,25 +463,29 @@ The initial mode may be:
 - `learned`
 - `hybrid`
 
-### 4.15 `PolicySnapshot`
+### 4.18 `PolicySnapshot`
 
 Represents a versioned governance or authority configuration.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `policy_family`
 - `version`
 - `created_at`
 - `active`
 
-### 4.16 `WikiPage`
+### 4.19 `WikiPage`
 
 Represents an editorial knowledge page.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `page_kind`
 - `title`
 - `path`
@@ -334,38 +495,44 @@ Minimum fields:
 - `canonical_refs`
 - `world_refs`
 
-### 4.17 `WikiClaim`
+### 4.20 `WikiClaim`
 
 Represents an explicit claim stated inside a wiki page.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `page_ref`
 - `statement`
 - `claim_status`
 - `source_refs`
 
-### 4.18 `ProjectionArtifact`
+### 4.21 `ProjectionArtifact`
 
 Represents a runtime-facing derived artifact.
 
 Minimum fields:
 
 - `id`
+- `layer`
 - `adapter`
 - `artifact_kind`
 - `path`
+- `source_layer`
+- `authoritative_home`
 - `upstream_refs`
 - `created_at`
 
-### 4.19 `ProjectionManifest`
+### 4.22 `ProjectionManifest`
 
 Represents the common metadata contract for a compiled runtime package.
 
 Minimum fields:
 
 - `id`
+- `layer`
 - `adapter`
 - `projection_profile`
 - `audience`
@@ -373,20 +540,40 @@ Minimum fields:
 - `upstream_refs`
 - `artifact_refs`
 
-### 4.20 `Diagnostic`
+### 4.23 `Diagnostic`
 
 Represents bounded machine-readable feedback about failures, ignored edits, or unresolved tensions.
 
 Minimum fields:
 
 - `id`
+- `layer`
+- `authoritative_home`
 - `code`
 - `severity`
 - `message`
 - `related_refs`
 
+### 4.24 `DispositionRecord`
+
+Represents the explicit fate assigned to an intake or candidate set.
+
+Minimum fields:
+
+- `id`
+- `layer`
+- `authoritative_home`
+- `kind`
+- `created_at`
+- `input_refs`
+- `outcomes`
+- `target_layers`
+- `proposal_refs`
+- `diagnostic_refs`
+- `reason_codes`
+
 ---
 
-## 5. The Minimum Rule
+## 6. The Minimum Rule
 
 If a new subsystem cannot explain which of these type families it creates, reads, updates, or emits, then the subsystem is still architecturally underspecified.

@@ -21,6 +21,8 @@ From the core:
 - projection-ready world-model fragments
 - projection-ready wiki fragments
 - runtime diagnostics
+- layer labels for projected fragments
+- authority labels for projected fragments
 - stable upstream references
 - projection manifest metadata
 
@@ -34,6 +36,7 @@ To the core, through legal paths:
 - machine-safe structured edits
 - runtime-local diagnostics
 - evidence-only edits
+- runtime session and thread metadata when relevant
 
 Adapters may not write canonical truth directly.
 
@@ -56,6 +59,7 @@ Adapters may not write canonical truth directly.
 - governance semantics
 - legality of transitions
 - authority boundaries between world, canon, wiki, and projections
+- distinction between actor identity, runtime instance, session, and thread
 
 ---
 

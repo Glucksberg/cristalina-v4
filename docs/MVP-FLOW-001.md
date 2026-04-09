@@ -37,6 +37,7 @@ This should produce:
 - an `observation`
 - a world-model update
 - a wiki update
+- a `disposition_record`
 - a canonical `preference` proposal
 - a ratified canonical memory object
 - an OpenClaw projection that now reflects the new preference
@@ -117,7 +118,20 @@ Candidate kind:
 
 - `preference`
 
-### Step 6. Governance evaluates the candidate
+### Step 6. Disposition is recorded
+
+Created object:
+
+- `DispositionRecord`
+
+Meaning:
+
+- the system can explain that this intake produced:
+  - `world_update`
+  - `wiki_update`
+  - `proposal_for_canon`
+
+### Step 7. Governance evaluates the candidate
 
 Gates crossed:
 
@@ -134,7 +148,7 @@ If not:
 
 - remain as evidence, world state, or queued proposal
 
-### Step 7. Canonical memory is updated
+### Step 8. Canonical memory is updated
 
 Created object:
 
@@ -148,7 +162,7 @@ Meaning:
 
 - durable governed truth about the user's interaction preference
 
-### Step 8. Projection compiler runs
+### Step 9. Projection compiler runs
 
 Inputs:
 
@@ -162,7 +176,7 @@ Outputs:
 
 - OpenClaw projection artifact
 
-### Step 9. OpenClaw reads updated projection
+### Step 10. OpenClaw reads updated projection
 
 Effect:
 
@@ -177,6 +191,7 @@ This single flow proves that the architecture can:
 - distinguish observation from truth
 - distinguish world state from canon
 - let the wiki accumulate useful synthesis
+- explain the explicit fate of the input before canon
 - keep governance between candidate and canon
 - feed the resulting memory back into a runtime
 

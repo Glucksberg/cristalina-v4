@@ -102,6 +102,96 @@ Reason:
 
 - this project lives or dies on its memory law and transition logic
 
+### D-009. The current Cristalina line is a kernel ancestor, not the v4 substrate
+
+Decision:
+
+- the current Cristalina should be reused primarily for governance, canon, audit, and projection-law modules
+- it should not define the total shape of v4
+
+Reason:
+
+- the current line is strongest at memory law
+- v4 is trying to solve a larger layered memory problem than governed canon alone
+
+### D-010. A normalized object envelope comes before module expansion
+
+Decision:
+
+- docs, schemas, and scaffold types must converge on one shared object envelope before deeper implementation expands
+
+Reason:
+
+- semantic drift at the envelope level would infect every later module
+
+### D-011. Durable identity and runtime occurrence remain separate
+
+Decision:
+
+- the architecture must distinguish:
+  - durable actor identity
+  - runtime instance
+  - runtime session
+  - conversation thread
+
+Reason:
+
+- cross-runtime continuity will become vague and adapter-fragile if these are flattened too early
+
+### D-012. Every intake ends in an explicit disposition
+
+Decision:
+
+- new information must terminate in an explicit disposition outcome before or instead of canonical promotion
+
+Reason:
+
+- v4 needs to model the full fate of information, not only the subset that reaches canon
+
+### D-013. Projection fragments must declare source layer and authority context
+
+Decision:
+
+- runtime-facing projections must preserve `source_layer`, `authoritative_home`, and stable upstream references for projected fragments
+
+Reason:
+
+- this reduces the risk of projections becoming hidden truth surfaces
+
+### D-014. The wiki is a compounding cache of understanding, not parallel truth storage
+
+Decision:
+
+- the wiki should be treated as a persistent editorial layer with claim extraction, linting, and staleness detection
+- it must not become a shadow canon
+
+Reason:
+
+- the wiki is one of v4's strongest advantages and one of its clearest risks
+
+### D-015. Runtime schema enforcement must return before broad implementation
+
+Decision:
+
+- v4 may begin with TypeScript scaffold interfaces
+- it must not remain TypeScript-only once phase-1 substrate work begins
+
+Reason:
+
+- the current Cristalina lineage already proved the value of executable runtime validation
+- v4 needs that depth back at a larger architectural breadth
+
+### D-016. DispositionRecord is an early bridge primitive, not a late refinement
+
+Decision:
+
+- `DispositionRecord` should be treated as one of the earliest genuinely new v4 primitives to implement
+
+Reason:
+
+- it clarifies how information can terminate in runtime, world, wiki, canon, or diagnostics
+- it is the cleanest bridge between the current Cristalina governance lineage and the larger v4 cosmology
+
 ---
 
 ## 3. When To Update This Document
