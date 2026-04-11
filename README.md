@@ -39,12 +39,13 @@ This repository line is intended to produce:
 19. [docs/REUSE-MATRIX.md](/home/dev/projects/cristalina-v4/docs/REUSE-MATRIX.md)
 20. [docs/KNOWLEDGE-WIKI-LAYER.md](/home/dev/projects/cristalina-v4/docs/KNOWLEDGE-WIKI-LAYER.md)
 21. [docs/ADAPTER-CONTRACTS.md](/home/dev/projects/cristalina-v4/docs/ADAPTER-CONTRACTS.md)
-22. [docs/DECISIONS.md](/home/dev/projects/cristalina-v4/docs/DECISIONS.md)
-23. [docs/GLOSSARY.md](/home/dev/projects/cristalina-v4/docs/GLOSSARY.md)
-24. [docs/NON-GOALS.md](/home/dev/projects/cristalina-v4/docs/NON-GOALS.md)
-25. [docs/USE-CASES.md](/home/dev/projects/cristalina-v4/docs/USE-CASES.md)
-26. [docs/EVALS.md](/home/dev/projects/cristalina-v4/docs/EVALS.md)
-27. [docs/FAILURE-MODES.md](/home/dev/projects/cristalina-v4/docs/FAILURE-MODES.md)
+22. [docs/MODEL-DEPENDENCY-MAP.md](/home/dev/projects/cristalina-v4/docs/MODEL-DEPENDENCY-MAP.md)
+23. [docs/DECISIONS.md](/home/dev/projects/cristalina-v4/docs/DECISIONS.md)
+24. [docs/GLOSSARY.md](/home/dev/projects/cristalina-v4/docs/GLOSSARY.md)
+25. [docs/NON-GOALS.md](/home/dev/projects/cristalina-v4/docs/NON-GOALS.md)
+26. [docs/USE-CASES.md](/home/dev/projects/cristalina-v4/docs/USE-CASES.md)
+27. [docs/EVALS.md](/home/dev/projects/cristalina-v4/docs/EVALS.md)
+28. [docs/FAILURE-MODES.md](/home/dev/projects/cristalina-v4/docs/FAILURE-MODES.md)
 
 ## Repository Layout
 

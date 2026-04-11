@@ -60,6 +60,7 @@ Includes:
 - normalized object envelope
 - runtime identity model
 - disposition model
+- model dependency map
 - docs/schema/scaffold convergence
 - projection fragment labeling rules
 
