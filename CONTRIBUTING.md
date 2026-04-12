@@ -23,6 +23,19 @@ Rule of thumb:
 - docs should be precise
 - code should only be added when the relevant contracts are clear enough
 
+Preferred development route:
+
+1. docs and invariants
+2. types and schemas
+3. executable fixtures and MVP flows
+4. reusable kernel workflows
+5. adapters and broader product surfaces
+
+Guardrail:
+
+- avoid moving semantics first into fixtures, adapters, or UI surfaces and only documenting them later
+- prefer making the core more lawful before making the system more broad
+
 License:
 
 - Apache-2.0

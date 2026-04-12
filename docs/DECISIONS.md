@@ -192,6 +192,23 @@ Reason:
 - it clarifies how information can terminate in runtime, world, wiki, canon, or diagnostics
 - it is the cleanest bridge between the current Cristalina governance lineage and the larger v4 cosmology
 
+### D-017. Development follows contracts-first kernel execution, not adapter-first expansion
+
+Decision:
+
+- the repository should generally move from:
+  - docs
+  - to types and schemas
+  - to executable fixtures and flows
+  - to reusable kernel workflows
+  - and only then to broader adapters and runtime surfaces
+
+Reason:
+
+- this preserves semantic integrity while the system is still young
+- it reduces the chance of hidden semantics forming first inside fixtures, adapters, or UI surfaces
+- it keeps implementation pressure pointed at the core instead of at presentational completeness
+
 ---
 
 ## 3. When To Update This Document
