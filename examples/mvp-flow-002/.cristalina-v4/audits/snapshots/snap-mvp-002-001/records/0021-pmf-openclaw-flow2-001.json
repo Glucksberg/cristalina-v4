@@ -1,0 +1,33 @@
+{
+  "id": "pmf-openclaw-flow2-001",
+  "kind": "projection_manifest",
+  "layer": "derived",
+  "authoritative_home": "governance",
+  "created_at": "2026-04-12T13:34:13.800Z",
+  "updated_at": "2026-04-12T13:34:13.800Z",
+  "visibility_state": {
+    "privacy_scope": "owner_private"
+  },
+  "provenance": {
+    "source_type": "projection_manifest",
+    "source_ref": "derived/manifests/pmf-openclaw-flow2-001.json",
+    "evidence_refs": [
+      "wcl-mvp-002-001",
+      "wpg-mvp-002-001",
+      "wclm-mvp-002-001"
+    ]
+  },
+  "adapter": "openclaw",
+  "projection_profile": "bootstrap",
+  "audience": "runtime",
+  "upstream_refs": [
+    "wcl-mvp-002-001",
+    "wpg-mvp-002-001",
+    "wclm-mvp-002-001"
+  ],
+  "artifact_refs": [
+    "part-openclaw-flow2-canon-001",
+    "part-openclaw-flow2-world-001",
+    "part-openclaw-flow2-wiki-001"
+  ]
+}

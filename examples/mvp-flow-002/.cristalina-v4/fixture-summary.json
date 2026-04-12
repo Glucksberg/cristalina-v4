@@ -1,0 +1,15 @@
+{
+  "root": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4",
+  "initial_canon": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0010-mem-mvp-002-001.json",
+  "revised_canon": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0013-mem-mvp-002-002.json",
+  "superseded_original": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0014-mem-mvp-002-001.json",
+  "superseded_revised": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0017-mem-mvp-002-002.json",
+  "live_initial_canon": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/canon/preferences/mem-mvp-002-001.json",
+  "live_revised_canon": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/canon/preferences/mem-mvp-002-002.json",
+  "create_proposal": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/governance/proposals/prop-mvp-002-001.json",
+  "revise_proposal": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/governance/proposals/prop-mvp-002-002.json",
+  "supersede_proposal": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/governance/proposals/prop-mvp-002-003.json",
+  "projection_manifest": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/derived/manifests/pmf-openclaw-flow2-001.json",
+  "openclaw_projection": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/derived/openclaw/bootstrap-memory.md",
+  "snapshot_manifest": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001.json"
+}

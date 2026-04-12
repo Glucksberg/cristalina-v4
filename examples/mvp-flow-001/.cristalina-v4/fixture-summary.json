@@ -1,0 +1,18 @@
+{
+  "root": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4",
+  "source_record": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/raw/sources/src-mvp-001.json",
+  "observation": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/runtime/observations/obs-mvp-001.json",
+  "world_claim": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/world/claims/wcl-mvp-001.json",
+  "wiki_page_record": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/wiki/pages/wpg-mvp-001.json",
+  "wiki_page_markdown": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/wiki/pages/user-interaction-preferences.md",
+  "proposal": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/governance/proposals/prop-mvp-001.json",
+  "duplicate_proposal": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/governance/proposals/prop-mvp-002.json",
+  "disposition_record": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/governance/dispositions/disp-mvp-001.json",
+  "ratification_record": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/governance/ratifications/rat-mvp-001.json",
+  "duplicate_ratification_record": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/governance/ratifications/rat-mvp-002.json",
+  "duplicate_diagnostic": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/audits/diagnostics/diag-mvp-002.json",
+  "canonical_candidate": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/canon/preferences/mem-mvp-001.json",
+  "openclaw_projection": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/derived/openclaw/bootstrap-memory.md",
+  "projection_manifest": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/derived/manifests/pmf-openclaw-mvp-001.json",
+  "snapshot_manifest": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-001/.cristalina-v4/audits/snapshots/snap-mvp-001.json"
+}

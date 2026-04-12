@@ -2,78 +2,193 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cristalina-v4.local/schemas/runtime-identity.schema.json",
   "title": "Cristalina v4 Runtime Identity Record",
-  "type": "object",
-  "required": [
-    "id",
-    "kind"
-  ],
-  "properties": {
-    "id": {
-      "type": "string"
+  "allOf": [
+    {
+      "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
     },
-    "kind": {
-      "type": "string",
-      "enum": [
-        "actor_identity",
-        "runtime_instance",
-        "runtime_session",
-        "conversation_thread"
-      ]
-    },
-    "actor_kind": {
-      "type": "string"
-    },
-    "label": {
-      "type": "string"
-    },
-    "runtime": {
-      "type": "string"
-    },
-    "agent_identity_ref": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "owner_identity_ref": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "runtime_instance_ref": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "runtime_session_ref": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "message_refs": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "status": {
-      "type": "string"
-    },
-    "created_at": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "updated_at": {
-      "type": [
-        "string",
-        "null"
+    {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor_kind",
+            "label",
+            "status"
+          ],
+          "properties": {
+            "kind": {
+              "const": "actor_identity"
+            },
+            "layer": {
+              "const": "canon"
+            },
+            "authoritative_home": {
+              "const": "canon"
+            },
+            "actor_kind": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "agent",
+                "external_person",
+                "external_organization",
+                "system"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "inactive",
+                "archived"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "runtime",
+            "agent_identity_ref",
+            "status"
+          ],
+          "properties": {
+            "kind": {
+              "const": "runtime_instance"
+            },
+            "layer": {
+              "const": "runtime"
+            },
+            "authoritative_home": {
+              "const": "runtime"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "openclaw",
+                "hermes",
+                "generic"
+              ]
+            },
+            "agent_identity_ref": {
+              "type": "string"
+            },
+            "owner_identity_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "runtime_instance_ref",
+            "status"
+          ],
+          "properties": {
+            "kind": {
+              "const": "runtime_session"
+            },
+            "layer": {
+              "const": "runtime"
+            },
+            "authoritative_home": {
+              "const": "runtime"
+            },
+            "runtime_instance_ref": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused",
+                "closed"
+              ]
+            },
+            "objective": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "summary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "runtime",
+            "runtime_instance_ref",
+            "runtime_session_ref",
+            "message_refs",
+            "summary"
+          ],
+          "properties": {
+            "kind": {
+              "const": "conversation_thread"
+            },
+            "layer": {
+              "const": "runtime"
+            },
+            "authoritative_home": {
+              "const": "runtime"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "openclaw",
+                "hermes",
+                "generic"
+              ]
+            },
+            "runtime_instance_ref": {
+              "type": "string"
+            },
+            "runtime_session_ref": {
+              "type": "string"
+            },
+            "message_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "summary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
       ]
     }
-  },
-  "additionalProperties": true
+  ]
 }

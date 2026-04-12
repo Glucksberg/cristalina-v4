@@ -32,12 +32,15 @@ export const STORAGE_LAYOUT = {
     beliefs: "canon/beliefs",
     preferences: "canon/preferences",
     constraints: "canon/constraints",
+    goals: "canon/goals",
     values: "canon/values",
+    identityTraits: "canon/identity-traits",
     identity: "canon/identity",
   },
   wiki: {
     root: "wiki",
     pages: "wiki/pages",
+    claims: "wiki/claims",
     index: "wiki/index.md",
     log: "wiki/log.md",
   },
@@ -60,6 +63,7 @@ export const STORAGE_LAYOUT = {
     root: "audits",
     changes: "audits/changes.log",
     validation: "audits/validation.log",
+    diagnostics: "audits/diagnostics",
     snapshots: "audits/snapshots",
   },
 } as const;

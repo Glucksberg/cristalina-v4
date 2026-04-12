@@ -2,70 +2,88 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cristalina-v4.local/schemas/disposition-record.schema.json",
   "title": "Cristalina v4 Disposition Record",
-  "type": "object",
-  "required": [
-    "id",
-    "kind",
-    "created_at",
-    "input_refs",
-    "outcomes"
-  ],
-  "properties": {
-    "id": {
-      "type": "string"
+  "allOf": [
+    {
+      "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
     },
-    "kind": {
-      "const": "disposition_record"
-    },
-    "created_at": {
-      "type": "string"
-    },
-    "input_refs": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "outcomes": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "enum": [
-          "evidence_only",
-          "runtime_only",
-          "world_update",
-          "wiki_update",
-          "proposal_for_canon",
-          "queued_review",
-          "diagnostic_only"
-        ]
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "input_refs",
+        "outcomes",
+        "target_layers",
+        "reason_codes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "disposition_record"
+        },
+        "layer": {
+          "const": "governance"
+        },
+        "authoritative_home": {
+          "const": "governance"
+        },
+        "input_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "evidence_only",
+              "runtime_only",
+              "world_update",
+              "wiki_update",
+              "proposal_for_canon",
+              "queued_review",
+              "diagnostic_only"
+            ]
+          },
+          "minItems": 1
+        },
+        "target_layers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "world",
+              "wiki",
+              "governance",
+              "canon",
+              "audits"
+            ]
+          },
+          "minItems": 1
+        },
+        "proposal_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "diagnostic_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
       },
-      "minItems": 1
-    },
-    "target_layers": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "proposal_refs": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "diagnostic_refs": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "reason_codes": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "additionalProperties": true
     }
-  },
-  "additionalProperties": true
+  ]
 }

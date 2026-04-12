@@ -55,6 +55,15 @@ export const LAYERS = [
   "audits",
 ] as const;
 
+export const AUTHORITATIVE_HOMES = [
+  "raw",
+  "runtime",
+  "world",
+  "canon",
+  "wiki",
+  "governance",
+] as const;
+
 export const ACTOR_KINDS = [
   "owner",
   "agent",
@@ -95,6 +104,7 @@ export type GovernanceState = typeof GOVERNANCE_STATES[number];
 export type TemporalStatus = typeof TEMPORAL_STATUSES[number];
 export type VisibilityScope = typeof VISIBILITY_SCOPES[number];
 export type Layer = typeof LAYERS[number];
+export type AuthoritativeHome = typeof AUTHORITATIVE_HOMES[number];
 export type ActorKind = typeof ACTOR_KINDS[number];
 export type RuntimeKind = typeof RUNTIMES[number];
 export type ProposalOperation = typeof PROPOSAL_OPERATIONS[number];
@@ -133,7 +143,7 @@ export interface RecordEnvelope {
   id: string;
   kind: string;
   layer: Layer;
-  authoritative_home: Layer;
+  authoritative_home: AuthoritativeHome;
   created_at: string;
   updated_at?: string | null;
   visibility_state: VisibilityState;
@@ -258,6 +268,8 @@ export interface CanonicalMemoryObject extends ClaimEnvelope {
   layer: "canon";
   authoritative_home: "canon";
   governance_state: GovernanceState;
+  supersedes_ref?: string | null;
+  superseded_by_ref?: string | null;
 }
 
 export interface Proposal extends RecordEnvelope {
@@ -348,7 +360,8 @@ export interface ProjectionArtifact extends RecordEnvelope {
   artifact_kind: string;
   path: string;
   source_layer: Layer;
-  authoritative_home: Layer;
+  authoritative_home: AuthoritativeHome;
+  upstream_refs: string[];
 }
 
 export interface ProjectionManifest extends RecordEnvelope {
@@ -357,6 +370,7 @@ export interface ProjectionManifest extends RecordEnvelope {
   adapter: Exclude<RuntimeKind, "generic">;
   projection_profile: string;
   audience: string;
+  upstream_refs: string[];
   artifact_refs: string[];
 }
 

@@ -19,6 +19,13 @@ export const LEGAL_LAYER_TRANSITIONS = [
   ["canon", "world"],
 ] as const satisfies ReadonlyArray<readonly [Layer, Layer]>;
 
+export const CONDITIONAL_LAYER_TRANSITIONS = [
+  ["runtime", "wiki"],
+  ["world", "canon"],
+  ["wiki", "world"],
+  ["canon", "world"],
+] as const satisfies ReadonlyArray<readonly [Layer, Layer]>;
+
 export const ILLEGAL_LAYER_TRANSITIONS = [
   ["runtime", "canon"],
   ["raw", "canon"],
@@ -28,9 +35,14 @@ export const ILLEGAL_LAYER_TRANSITIONS = [
 ] as const satisfies ReadonlyArray<readonly [Layer, Layer]>;
 
 export function isLegalLayerTransition(from: Layer, to: Layer): boolean {
+  if (CONDITIONAL_LAYER_TRANSITIONS.some(([left, right]) => left === from && right === to)) return false;
   if (LEGAL_LAYER_TRANSITIONS.some(([left, right]) => left === from && right === to)) return true;
   if (ILLEGAL_LAYER_TRANSITIONS.some(([left, right]) => left === from && right === to)) return false;
   return false;
+}
+
+export function isConditionalLayerTransition(from: Layer, to: Layer): boolean {
+  return CONDITIONAL_LAYER_TRANSITIONS.some(([left, right]) => left === from && right === to);
 }
 
 export const LEGAL_GOVERNANCE_TRANSITIONS = [

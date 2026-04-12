@@ -1,0 +1,175 @@
+{
+  "snapshot_id": "snap-mvp-002-001",
+  "created_at": "2026-04-12T13:34:13.800Z",
+  "reason": "Create, revise, supersede flow snapshot",
+  "record_refs": [
+    "src-mvp-002-001",
+    "src-mvp-002-002",
+    "src-mvp-002-003",
+    "obs-mvp-002-001",
+    "wcl-mvp-002-001",
+    "wpg-mvp-002-001",
+    "wclm-mvp-002-001",
+    "prop-mvp-002-001",
+    "rat-mvp-002-001",
+    "mem-mvp-002-001",
+    "prop-mvp-002-002",
+    "rat-mvp-002-002",
+    "mem-mvp-002-002",
+    "prop-mvp-002-003",
+    "rat-mvp-002-003",
+    "part-openclaw-flow2-canon-001",
+    "part-openclaw-flow2-world-001",
+    "part-openclaw-flow2-wiki-001",
+    "pmf-openclaw-flow2-001"
+  ],
+  "record_entries": [
+    {
+      "sequence": 1,
+      "record_id": "src-mvp-002-001",
+      "record_kind": "source_record",
+      "record_layer": "raw",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0001-src-mvp-002-001.json"
+    },
+    {
+      "sequence": 2,
+      "record_id": "src-mvp-002-002",
+      "record_kind": "source_record",
+      "record_layer": "raw",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0002-src-mvp-002-002.json"
+    },
+    {
+      "sequence": 3,
+      "record_id": "src-mvp-002-003",
+      "record_kind": "source_record",
+      "record_layer": "raw",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0003-src-mvp-002-003.json"
+    },
+    {
+      "sequence": 4,
+      "record_id": "obs-mvp-002-001",
+      "record_kind": "observation",
+      "record_layer": "runtime",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0004-obs-mvp-002-001.json"
+    },
+    {
+      "sequence": 5,
+      "record_id": "wcl-mvp-002-001",
+      "record_kind": "preference",
+      "record_layer": "world",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0005-wcl-mvp-002-001.json"
+    },
+    {
+      "sequence": 6,
+      "record_id": "wpg-mvp-002-001",
+      "record_kind": "wiki_page",
+      "record_layer": "wiki",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0006-wpg-mvp-002-001.json"
+    },
+    {
+      "sequence": 7,
+      "record_id": "wclm-mvp-002-001",
+      "record_kind": "wiki_claim",
+      "record_layer": "wiki",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0007-wclm-mvp-002-001.json"
+    },
+    {
+      "sequence": 8,
+      "record_id": "prop-mvp-002-001",
+      "record_kind": "proposal",
+      "record_layer": "governance",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0008-prop-mvp-002-001.json"
+    },
+    {
+      "sequence": 9,
+      "record_id": "rat-mvp-002-001",
+      "record_kind": "ratification",
+      "record_layer": "governance",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0009-rat-mvp-002-001.json"
+    },
+    {
+      "sequence": 10,
+      "record_id": "mem-mvp-002-001",
+      "record_kind": "preference",
+      "record_layer": "canon",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0010-mem-mvp-002-001.json"
+    },
+    {
+      "sequence": 11,
+      "record_id": "prop-mvp-002-002",
+      "record_kind": "proposal",
+      "record_layer": "governance",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0011-prop-mvp-002-002.json"
+    },
+    {
+      "sequence": 12,
+      "record_id": "rat-mvp-002-002",
+      "record_kind": "ratification",
+      "record_layer": "governance",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0012-rat-mvp-002-002.json"
+    },
+    {
+      "sequence": 13,
+      "record_id": "mem-mvp-002-002",
+      "record_kind": "preference",
+      "record_layer": "canon",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0013-mem-mvp-002-002.json"
+    },
+    {
+      "sequence": 14,
+      "record_id": "mem-mvp-002-001",
+      "record_kind": "preference",
+      "record_layer": "canon",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0014-mem-mvp-002-001.json"
+    },
+    {
+      "sequence": 15,
+      "record_id": "prop-mvp-002-003",
+      "record_kind": "proposal",
+      "record_layer": "governance",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0015-prop-mvp-002-003.json"
+    },
+    {
+      "sequence": 16,
+      "record_id": "rat-mvp-002-003",
+      "record_kind": "ratification",
+      "record_layer": "governance",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0016-rat-mvp-002-003.json"
+    },
+    {
+      "sequence": 17,
+      "record_id": "mem-mvp-002-002",
+      "record_kind": "preference",
+      "record_layer": "canon",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0017-mem-mvp-002-002.json"
+    },
+    {
+      "sequence": 18,
+      "record_id": "part-openclaw-flow2-canon-001",
+      "record_kind": "projection_artifact",
+      "record_layer": "derived",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0018-part-openclaw-flow2-canon-001.json"
+    },
+    {
+      "sequence": 19,
+      "record_id": "part-openclaw-flow2-world-001",
+      "record_kind": "projection_artifact",
+      "record_layer": "derived",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0019-part-openclaw-flow2-world-001.json"
+    },
+    {
+      "sequence": 20,
+      "record_id": "part-openclaw-flow2-wiki-001",
+      "record_kind": "projection_artifact",
+      "record_layer": "derived",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0020-part-openclaw-flow2-wiki-001.json"
+    },
+    {
+      "sequence": 21,
+      "record_id": "pmf-openclaw-flow2-001",
+      "record_kind": "projection_manifest",
+      "record_layer": "derived",
+      "path": "/mnt/c/Users/Markus/desktop/projetos/cristalina-v4/examples/mvp-flow-002/.cristalina-v4/audits/snapshots/snap-mvp-002-001/records/0021-pmf-openclaw-flow2-001.json"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/store-manifest.schema.json",
+  "title": "Cristalina v4 Store Manifest",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "layout_version",
+    "store_id",
+    "created_at",
+    "updated_at",
+    "roots"
+  ],
+  "properties": {
+    "format": {
+      "const": "cristalina-v4-store"
+    },
+    "version": {
+      "const": 1
+    },
+    "layout_version": {
+      "const": 1
+    },
+    "store_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "roots": {
+      "type": "object",
+      "required": [
+        "raw",
+        "runtime",
+        "world",
+        "canon",
+        "wiki",
+        "governance",
+        "derived",
+        "audits"
+      ],
+      "properties": {
+        "raw": {
+          "const": "raw"
+        },
+        "runtime": {
+          "const": "runtime"
+        },
+        "world": {
+          "const": "world"
+        },
+        "canon": {
+          "const": "canon"
+        },
+        "wiki": {
+          "const": "wiki"
+        },
+        "governance": {
+          "const": "governance"
+        },
+        "derived": {
+          "const": "derived"
+        },
+        "audits": {
+          "const": "audits"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

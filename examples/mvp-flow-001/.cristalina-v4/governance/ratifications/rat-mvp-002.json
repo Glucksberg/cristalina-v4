@@ -1,0 +1,24 @@
+{
+  "id": "rat-mvp-002",
+  "kind": "ratification",
+  "layer": "governance",
+  "authoritative_home": "governance",
+  "created_at": "2026-04-12T13:34:13.800Z",
+  "visibility_state": {
+    "privacy_scope": "owner_private"
+  },
+  "provenance": {
+    "source_type": "conversation",
+    "source_ref": "src-mvp-001",
+    "evidence_refs": [
+      "obs-mvp-001",
+      "wcl-mvp-001",
+      "wclm-mvp-001",
+      "mem-mvp-001",
+      "prop-mvp-002"
+    ]
+  },
+  "proposal_ref": "prop-mvp-002",
+  "decision": "rejected",
+  "actor": "system:auto-ratify-mvp"
+}

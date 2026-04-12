@@ -1,0 +1,5 @@
+{
+  "runtime": "openclaw",
+  "source_ref": "runtime/session-002#turn-002",
+  "message": "The user clarifies that concise is the default, but implementation details should be more explicit when requested."
+}

@@ -1,12 +1,15 @@
 import type {
   CanonicalMemoryObject,
+  Diagnostic,
   DispositionRecord,
   Observation,
   Proposal,
+  RatificationRecord,
   WikiClaim,
   WikiPage,
   WorldClaim,
 } from "./types.js";
+import { buildConversationPreferenceIntake, executeCanonicalProposalWorkflow } from "./workflow-engine/pipeline.js";
 
 export interface ConversationPreferenceInput {
   now: string;
@@ -21,171 +24,69 @@ export interface MvpFlow001Artifacts {
   wiki_claim: WikiClaim;
   proposal: Proposal;
   disposition_record: DispositionRecord;
+  ratification_record: RatificationRecord;
   canonical_candidate: CanonicalMemoryObject;
+  diagnostic?: Diagnostic;
 }
 
 export function buildConversationPreferenceFlow(input: ConversationPreferenceInput): MvpFlow001Artifacts {
-  const provenance = {
-    source_type: "conversation",
-    source_ref: input.source_ref,
-  } as const;
-
-  const observation: Observation = {
-    id: "obs-mvp-001",
-    kind: "observation",
-    layer: "runtime",
-    authoritative_home: "runtime",
-    created_at: input.now,
-    visibility_state: {
-      privacy_scope: "owner_private",
-    },
-    provenance,
-    summary: input.statement,
-    epistemic_state: "observed",
-  };
-
-  const world_claim: WorldClaim = {
-    id: "wcl-mvp-001",
-    kind: "preference",
-    layer: "world",
-    authoritative_home: "world",
-    created_at: input.now,
-    visibility_state: {
-      privacy_scope: "owner_private",
-    },
-    provenance: {
-      ...provenance,
-      evidence_refs: [observation.id],
-    },
-    statement: input.statement,
-    epistemic_state: "inferred",
-    temporal_state: {
-      temporal_status: "active",
-      valid_from: input.now,
-      valid_to: null,
-    },
-    support_refs: [observation.id],
-  };
-
-  const wiki_page: WikiPage = {
-    id: "wpg-mvp-001",
-    kind: "wiki_page",
-    layer: "wiki",
-    authoritative_home: "wiki",
+  const source_record = {
+    id: input.source_ref,
+    kind: "source_record",
+    layer: "raw",
+    authoritative_home: "raw",
     created_at: input.now,
     updated_at: input.now,
     visibility_state: {
       privacy_scope: "owner_private",
     },
     provenance: {
-      ...provenance,
-      evidence_refs: [observation.id, world_claim.id],
-    },
-    page_kind: "entity",
-    title: "User Interaction Preferences",
-    path: "wiki/pages/user-interaction-preferences.md",
-    source_refs: [input.source_ref],
-    canonical_refs: [],
-    world_refs: [world_claim.id],
-  };
-
-  const wiki_claim: WikiClaim = {
-    id: "wclm-mvp-001",
-    kind: "wiki_claim",
-    layer: "wiki",
-    authoritative_home: "wiki",
-    created_at: input.now,
-    visibility_state: {
-      privacy_scope: "owner_private",
-    },
-    provenance: {
-      ...provenance,
-      evidence_refs: [observation.id, world_claim.id],
-    },
-    statement: input.statement,
-    page_ref: wiki_page.id,
-    claim_status: "candidate_for_promotion",
-    source_refs: [input.source_ref],
-  };
-
-  const proposal: Proposal = {
-    id: "prop-mvp-001",
-    kind: "proposal",
-    layer: "governance",
-    authoritative_home: "governance",
-    created_at: input.now,
-    visibility_state: {
-      privacy_scope: "owner_private",
-    },
-    provenance: {
-      ...provenance,
-      evidence_refs: [observation.id, world_claim.id, wiki_claim.id],
-    },
-    operation: "create",
-    candidate_kind: "preference",
-    target_layer: "canon",
-    target_ref: null,
-    candidate_payload: {
-      kind: "preference",
-      statement: input.statement,
+      source_type: "conversation",
       source_ref: input.source_ref,
-      support_refs: [observation.id, world_claim.id, wiki_claim.id],
     },
-    reason: "Conversation indicates a user interaction preference that should become governed memory.",
-    evidence_refs: [observation.id],
-    governance_state: "proposed",
-  };
+    content_ref: `raw/sources/${input.source_ref}.json`,
+  } as const;
 
-  const disposition_record: DispositionRecord = {
-    id: "disp-mvp-001",
-    kind: "disposition_record",
-    layer: "governance",
-    authoritative_home: "governance",
-    created_at: input.now,
-    visibility_state: {
-      privacy_scope: "owner_private",
-    },
-    provenance: {
-      ...provenance,
-      evidence_refs: [observation.id],
-    },
-    input_refs: [observation.id],
-    outcomes: ["world_update", "wiki_update", "proposal_for_canon"],
-    target_layers: ["world", "wiki", "canon"],
-    proposal_refs: [proposal.id],
-    reason_codes: ["preference_signal", "editorial_update", "durable_candidate"],
-  };
-
-  const canonical_candidate: CanonicalMemoryObject = {
-    id: "mem-mvp-001",
-    kind: "preference",
-    layer: "canon",
-    authoritative_home: "canon",
-    created_at: input.now,
-    visibility_state: {
-      privacy_scope: "owner_private",
-    },
-    provenance: {
-      ...provenance,
-      evidence_refs: [observation.id, world_claim.id, wiki_claim.id],
-    },
+  const intake = buildConversationPreferenceIntake({
+    now: input.now,
+    source_record,
     statement: input.statement,
-    epistemic_state: "confirmed",
-    governance_state: "ratified",
-    temporal_state: {
-      temporal_status: "active",
-      valid_from: input.now,
-      valid_to: null,
+    ids: {
+      observation: "obs-mvp-001",
+      world_claim: "wcl-mvp-001",
+      wiki_page: "wpg-mvp-001",
+      wiki_claim: "wclm-mvp-001",
+      proposal: "prop-mvp-001",
+      disposition: "disp-mvp-001",
     },
-  };
+  });
+
+  const governance_result = executeCanonicalProposalWorkflow({
+    proposal: intake.proposal,
+    existing_canon_records: [],
+    now: input.now,
+    actor: "system:auto-ratify-mvp",
+    ratification_id: "rat-mvp-001",
+    diagnostic_id: "diag-mvp-001",
+    canonical_id: "mem-mvp-001",
+  });
+
+  if (!governance_result.accepted) {
+    throw new Error("MVP flow proposal should be accepted by baseline governance");
+  }
+
+  const ratification_record: RatificationRecord = governance_result.ratification_record;
+  const canonical_candidate = governance_result.created_record as CanonicalMemoryObject;
 
   return {
-    observation,
-    world_claim,
-    wiki_page,
-    wiki_claim,
-    proposal,
-    disposition_record,
+    observation: intake.observation,
+    world_claim: intake.world_claim,
+    wiki_page: intake.wiki_page,
+    wiki_claim: intake.wiki_claim,
+    proposal: intake.proposal,
+    disposition_record: intake.disposition_record,
+    ratification_record,
     canonical_candidate,
+    diagnostic: governance_result.diagnostic,
   };
 }

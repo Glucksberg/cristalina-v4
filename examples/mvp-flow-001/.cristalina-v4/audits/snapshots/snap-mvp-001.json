@@ -1,0 +1,23 @@
+{
+  "snapshot_id": "snap-mvp-001",
+  "created_at": "2026-04-12T13:34:13.800Z",
+  "reason": "Post-canon MVP Flow 001 baseline snapshot",
+  "record_refs": [
+    "src-mvp-001",
+    "obs-mvp-001",
+    "wcl-mvp-001",
+    "wpg-mvp-001",
+    "wclm-mvp-001",
+    "prop-mvp-001",
+    "disp-mvp-001",
+    "rat-mvp-001",
+    "mem-mvp-001",
+    "prop-mvp-002",
+    "rat-mvp-002",
+    "diag-mvp-002",
+    "part-openclaw-canon-mvp-001",
+    "part-openclaw-world-mvp-001",
+    "part-openclaw-wiki-mvp-001",
+    "pmf-openclaw-mvp-001"
+  ]
+}

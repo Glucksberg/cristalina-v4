@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cristalina-v4.local/schemas/memory-object.schema.json",
-  "title": "Cristalina v4 Memory Object",
+  "title": "Cristalina v4 Canonical Memory Object",
   "allOf": [
     {
       "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
@@ -9,16 +9,55 @@
     {
       "type": "object",
       "required": [
+        "layer",
+        "authoritative_home",
         "statement",
         "epistemic_state",
-        "governance_state"
+        "governance_state",
+        "temporal_state"
       ],
       "properties": {
+        "layer": {
+          "const": "canon"
+        },
+        "authoritative_home": {
+          "const": "canon"
+        },
         "kind": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "fact",
+            "belief",
+            "preference",
+            "constraint",
+            "goal",
+            "value",
+            "identity_trait"
+          ]
         },
         "statement": {
           "type": "string"
+        },
+        "epistemic_state": {
+          "type": "string",
+          "enum": [
+            "observed",
+            "inferred",
+            "hypothesized",
+            "confirmed",
+            "disputed"
+          ]
+        },
+        "governance_state": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "proposed",
+            "ratified",
+            "superseded",
+            "archived",
+            "rejected"
+          ]
         }
       },
       "additionalProperties": true
