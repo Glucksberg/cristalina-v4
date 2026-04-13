@@ -11,3 +11,4 @@ export * from "./canon/engine.js";
 export * from "./adapter-sdk/projection.js";
 export * from "./projection-engine/openclaw.js";
 export * from "./workflow-engine/pipeline.js";
+export * from "./workflow-engine/conversation-preference-store.js";
