@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/temporal-world-record.schema.json",
+  "title": "Cristalina v4 Temporal World Record",
+  "allOf": [
+    {
+      "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+    },
+    {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "authoritative_home",
+            "summary",
+            "observation_refs",
+            "temporal_state"
+          ],
+          "properties": {
+            "kind": {
+              "const": "episode"
+            },
+            "layer": {
+              "const": "world"
+            },
+            "authoritative_home": {
+              "const": "world"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "observation_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "temporal_state": {
+              "type": "object",
+              "required": [
+                "temporal_status"
+              ],
+              "properties": {
+                "temporal_status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "bounded",
+                    "historical",
+                    "unresolved"
+                  ]
+                },
+                "valid_from": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "valid_to": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "temporal_confidence": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "authoritative_home",
+            "entity_kind",
+            "label",
+            "status"
+          ],
+          "properties": {
+            "kind": {
+              "const": "entity"
+            },
+            "layer": {
+              "const": "world"
+            },
+            "authoritative_home": {
+              "const": "world"
+            },
+            "entity_kind": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "inactive",
+                "archived"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "authoritative_home",
+            "subject_ref",
+            "object_ref",
+            "relation_type"
+          ],
+          "properties": {
+            "kind": {
+              "const": "relation"
+            },
+            "layer": {
+              "const": "world"
+            },
+            "authoritative_home": {
+              "const": "world"
+            },
+            "subject_ref": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "layer": {
+                  "type": "string",
+                  "enum": [
+                    "raw",
+                    "runtime",
+                    "world",
+                    "canon",
+                    "wiki",
+                    "governance",
+                    "derived",
+                    "audits"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            },
+            "object_ref": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "layer": {
+                  "type": "string",
+                  "enum": [
+                    "raw",
+                    "runtime",
+                    "world",
+                    "canon",
+                    "wiki",
+                    "governance",
+                    "derived",
+                    "audits"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            },
+            "relation_type": {
+              "type": "string"
+            },
+            "temporal_state": {
+              "type": "object",
+              "required": [
+                "temporal_status"
+              ],
+              "properties": {
+                "temporal_status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "bounded",
+                    "historical",
+                    "unresolved"
+                  ]
+                },
+                "valid_from": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "valid_to": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "temporal_confidence": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "authoritative_home",
+            "statement",
+            "epistemic_state",
+            "temporal_state",
+            "support_refs"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "fact",
+                "belief",
+                "preference",
+                "constraint",
+                "goal",
+                "value",
+                "identity_trait"
+              ]
+            },
+            "layer": {
+              "const": "world"
+            },
+            "authoritative_home": {
+              "const": "world"
+            },
+            "statement": {
+              "type": "string"
+            },
+            "epistemic_state": {
+              "type": "string",
+              "enum": [
+                "observed",
+                "inferred",
+                "hypothesized",
+                "confirmed",
+                "disputed"
+              ]
+            },
+            "temporal_state": {
+              "type": "object",
+              "required": [
+                "temporal_status"
+              ],
+              "properties": {
+                "temporal_status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "bounded",
+                    "historical",
+                    "unresolved"
+                  ]
+                },
+                "valid_from": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "valid_to": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "temporal_confidence": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            },
+            "support_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "authoritative_home",
+            "left_ref",
+            "right_ref",
+            "status"
+          ],
+          "properties": {
+            "kind": {
+              "const": "contradiction"
+            },
+            "layer": {
+              "const": "world"
+            },
+            "authoritative_home": {
+              "const": "world"
+            },
+            "left_ref": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "layer": {
+                  "type": "string",
+                  "enum": [
+                    "raw",
+                    "runtime",
+                    "world",
+                    "canon",
+                    "wiki",
+                    "governance",
+                    "derived",
+                    "audits"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            },
+            "right_ref": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "layer": {
+                  "type": "string",
+                  "enum": [
+                    "raw",
+                    "runtime",
+                    "world",
+                    "canon",
+                    "wiki",
+                    "governance",
+                    "derived",
+                    "audits"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "resolved",
+                "dismissed"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    }
+  ]
+}

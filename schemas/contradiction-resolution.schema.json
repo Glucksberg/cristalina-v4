@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/contradiction-resolution.schema.json",
+  "title": "Cristalina v4 Contradiction Resolution",
+  "allOf": [
+    {
+      "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "layer",
+        "authoritative_home",
+        "contradiction_ref",
+        "strategy",
+        "status",
+        "rationale"
+      ],
+      "properties": {
+        "kind": {
+          "const": "contradiction_resolution"
+        },
+        "layer": {
+          "const": "governance"
+        },
+        "authoritative_home": {
+          "const": "governance"
+        },
+        "contradiction_ref": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "manual_review",
+            "coexist_temporally",
+            "supersede_existing",
+            "supersede_candidate",
+            "dismiss_contradiction"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "accepted",
+            "rejected",
+            "applied"
+          ]
+        },
+        "winning_ref": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "layer": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "runtime",
+                "world",
+                "canon",
+                "wiki",
+                "governance",
+                "derived",
+                "audits"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "losing_ref": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "layer": {
+              "type": "string",
+              "enum": [
+                "raw",
+                "runtime",
+                "world",
+                "canon",
+                "wiki",
+                "governance",
+                "derived",
+                "audits"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "diagnostic_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

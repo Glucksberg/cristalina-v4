@@ -4,14 +4,19 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import {
+  CONTRADICTION_RESOLUTION_STATUSES,
+  CONTRADICTION_RESOLUTION_STRATEGIES,
   ACTOR_KINDS,
   DISPOSITION_OUTCOMES,
   EPISTEMIC_STATES,
   GOVERNANCE_STATES,
+  MEMORY_OBJECT_KINDS,
   RUNTIMES,
+  SOURCE_INTAKE_KINDS,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
 } from "./types.js";
+import { resolvePreferenceSignalSemanticProfile } from "./workflow-engine/source-intake.js";
 
 interface JsonSchema {
   properties?: Record<string, unknown>;
@@ -80,4 +85,43 @@ test("runtime identity schema stays aligned with runtime and actor enums", async
 
   assert.deepEqual(expectEnum(actorVariant?.properties?.actor_kind), [...ACTOR_KINDS]);
   assert.deepEqual(expectEnum(runtimeInstanceVariant?.properties?.runtime), [...RUNTIMES]);
+});
+
+test("temporal world schema stays aligned with executable world-model enums", async () => {
+  const schema = await readSchema("../../schemas/temporal-world-record.schema.json");
+  const variants = schema.allOf?.[1] as { oneOf?: Array<{ properties?: Record<string, unknown> }> } | undefined;
+  const worldClaimVariant = variants?.oneOf?.[3];
+  const contradictionVariant = variants?.oneOf?.[4];
+  const worldClaimTemporal = worldClaimVariant?.properties?.temporal_state as { properties?: Record<string, unknown> } | undefined;
+
+  assert.deepEqual(
+    expectEnum(worldClaimVariant?.properties?.kind),
+    MEMORY_OBJECT_KINDS.filter((kind) => !["entity", "relation", "episode"].includes(kind)),
+  );
+  assert.deepEqual(expectEnum(worldClaimVariant?.properties?.epistemic_state), [...EPISTEMIC_STATES]);
+  assert.deepEqual(expectEnum(worldClaimTemporal?.properties?.temporal_status), [...TEMPORAL_STATUSES]);
+  assert.deepEqual(expectEnum(contradictionVariant?.properties?.status), ["open", "resolved", "dismissed"]);
+});
+
+test("contradiction resolution schema stays aligned with executable resolution enums", async () => {
+  const schema = await readSchema("../../schemas/contradiction-resolution.schema.json");
+  const variant = schema.allOf?.[1];
+  const properties = variant?.properties ?? {};
+
+  assert.deepEqual(expectEnum(properties.strategy), [...CONTRADICTION_RESOLUTION_STRATEGIES]);
+  assert.deepEqual(expectEnum(properties.status), [...CONTRADICTION_RESOLUTION_STATUSES]);
+});
+
+test("source intake profile schema stays aligned with executable intake kinds", async () => {
+  const schema = await readSchema("../../schemas/source-intake-profile.schema.json");
+  const properties = schema.properties ?? {};
+  const profile = resolvePreferenceSignalSemanticProfile({
+    kind: "structured_preference_signal",
+    owner_label: "Customer 001",
+  });
+
+  assert.deepEqual(expectEnum(properties.intake_kind), [...SOURCE_INTAKE_KINDS]);
+  assert.equal(typeof profile.episode_summary, "string");
+  assert.equal(typeof profile.wiki_path, "string");
+  assert.equal(typeof profile.relation_type, "string");
 });

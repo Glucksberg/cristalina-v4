@@ -77,11 +77,16 @@ This is not yet:
 
 Created or updated object:
 
+- `Episode`
+- `Entity`
+- `Relation`
 - `WorldClaim`
 
 Meaning:
 
 - the system currently believes the user likely has a communication preference
+- the episode becomes the bounded provenance anchor for that world update
+- the entity and relation structure remain distinct from the free-text claim
 
 This is structurally useful before it is canonically confirmed.
 
@@ -204,6 +209,7 @@ That is enough to justify implementing the core around this flow first.
 This flow does not yet prove:
 
 - contradiction handling depth
+- contradiction resolution application
 - supersession chains
 - Hermes integration
 - graph-heavy relation reasoning

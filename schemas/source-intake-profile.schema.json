@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/source-intake-profile.schema.json",
+  "title": "Cristalina v4 Source Intake Profile",
+  "type": "object",
+  "required": [
+    "intake_kind",
+    "episode_summary",
+    "wiki_title",
+    "wiki_path",
+    "proposal_reason",
+    "subject_entity_kind",
+    "subject_label",
+    "preference_topic_label",
+    "relation_type"
+  ],
+  "properties": {
+    "intake_kind": {
+      "type": "string",
+      "enum": [
+        "conversation_preference",
+        "openclaw_projection_feedback",
+        "structured_preference_signal"
+      ]
+    },
+    "observation_prefix": {
+      "type": "string"
+    },
+    "episode_summary": {
+      "type": "string"
+    },
+    "wiki_title": {
+      "type": "string"
+    },
+    "wiki_path": {
+      "type": "string"
+    },
+    "proposal_reason": {
+      "type": "string"
+    },
+    "subject_entity_kind": {
+      "type": "string"
+    },
+    "subject_label": {
+      "type": "string"
+    },
+    "preference_topic_label": {
+      "type": "string"
+    },
+    "relation_type": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

@@ -28,10 +28,12 @@ import {
   VISIBILITY_SCOPES,
 } from "./types.js";
 import {
+  CONTRADICTION_RESOLUTION_SCHEMA_ID,
   DISPOSITION_RECORD_SCHEMA_ID,
   MEMORY_OBJECT_SCHEMA_ID,
   RUNTIME_IDENTITY_SCHEMA_ID,
   STORE_MANIFEST_SCHEMA_ID,
+  TEMPORAL_WORLD_RECORD_SCHEMA_ID,
   validateAgainstSchema,
 } from "./schema-runtime.js";
 import type { StoreManifest } from "./store/manifest.js";
@@ -344,7 +346,7 @@ function validateRuntimeMemoryBlock(value: unknown): ValidationIssue[] {
 }
 
 function validateEpisode(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, TEMPORAL_WORLD_RECORD_SCHEMA_ID);
   if (!isRecord(value)) return issues;
   if (value.kind !== "episode") issues.push({ path: "kind", message: 'expected "episode"' });
   if (value.layer !== "world") issues.push({ path: "layer", message: 'expected "world"' });
@@ -358,7 +360,7 @@ function validateEpisode(value: unknown): ValidationIssue[] {
 }
 
 function validateEntity(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, TEMPORAL_WORLD_RECORD_SCHEMA_ID);
   if (!isRecord(value)) return issues;
   if (value.kind !== "entity") issues.push({ path: "kind", message: 'expected "entity"' });
   if (value.layer !== "world") issues.push({ path: "layer", message: 'expected "world"' });
@@ -372,7 +374,7 @@ function validateEntity(value: unknown): ValidationIssue[] {
 }
 
 function validateRelation(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, TEMPORAL_WORLD_RECORD_SCHEMA_ID);
   if (!isRecord(value)) return issues;
   if (value.kind !== "relation") issues.push({ path: "kind", message: 'expected "relation"' });
   if (value.layer !== "world") issues.push({ path: "layer", message: 'expected "world"' });
@@ -384,7 +386,7 @@ function validateRelation(value: unknown): ValidationIssue[] {
 }
 
 function validateWorldClaim(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, TEMPORAL_WORLD_RECORD_SCHEMA_ID);
   if (!isRecord(value)) return issues;
   if (value.layer !== "world") issues.push({ path: "layer", message: 'expected "world"' });
   if (value.authoritative_home !== "world") issues.push({ path: "authoritative_home", message: 'expected "world"' });
@@ -486,7 +488,7 @@ function validateRatificationRecord(value: unknown): ValidationIssue[] {
 }
 
 function validateContradiction(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, TEMPORAL_WORLD_RECORD_SCHEMA_ID);
   if (!isRecord(value)) return issues;
   if (value.kind !== "contradiction") issues.push({ path: "kind", message: 'expected "contradiction"' });
   if (value.layer !== "world") issues.push({ path: "layer", message: 'expected "world"' });
@@ -503,7 +505,7 @@ function validateContradiction(value: unknown): ValidationIssue[] {
 }
 
 function validateContradictionResolution(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, CONTRADICTION_RESOLUTION_SCHEMA_ID);
   if (!isRecord(value)) return issues;
   if (value.kind !== "contradiction_resolution") issues.push({ path: "kind", message: 'expected "contradiction_resolution"' });
   if (value.layer !== "governance") issues.push({ path: "layer", message: 'expected "governance"' });

@@ -57,6 +57,12 @@ A governed replacement path where one durable memory object overtakes another wi
 
 A recognized unresolved tension between claims, structures, or memory objects.
 
+### Contradiction Resolution
+
+An explicit governance-handled proposal or application path for a contradiction.
+
+It records how the system intends to preserve or close conflicting world state without erasing the conflict.
+
 ### Knowledge Wiki
 
 A persistent editorial synthesis layer containing pages, summaries, comparisons, index structures, and logs.
@@ -86,3 +92,7 @@ Examples:
 The single layer that owns the authoritative version of a given claim.
 
 The same claim may be echoed elsewhere, but its authority must have one home.
+
+### Intake Profile
+
+A semantic configuration contract that shapes how a source is normalized into the shared intake flow without changing memory law or layer ownership.

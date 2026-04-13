@@ -44,6 +44,8 @@ Adapters may not write canonical truth directly.
 
 Adapters should write back through registered intake profiles rather than ad hoc workflow branches.
 
+The current executable intake-profile contract is frozen in `docs/SOURCE-INTAKE-PROFILES.md`.
+
 That means the adapter supplies:
 
 - source payload

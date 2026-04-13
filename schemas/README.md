@@ -8,8 +8,10 @@ Planned schema families:
 - canonical memory objects
 - runtime identity objects
 - temporal world-model objects
+- contradiction resolution objects
 - proposal and ratification objects
 - disposition records
+- source intake profile contracts
 - projection manifests
 - OpenClaw adapter contracts
 - Hermes adapter contracts

@@ -40,6 +40,7 @@ The MVP should begin with these type families:
 - `CurationPacket`
 - `RatificationRecord`
 - `Contradiction`
+- `ContradictionResolution`
 - `OntologyDefinition`
 - `PolicySnapshot`
 - `WikiPage`
@@ -442,7 +443,41 @@ Minimum fields:
 - `status`
 - `created_at`
 
-### 4.17 `OntologyDefinition`
+### 4.17 `ContradictionResolution`
+
+Represents the explicit proposed or applied handling path for a contradiction.
+
+Minimum fields:
+
+- `id`
+- `layer`
+- `authoritative_home`
+- `contradiction_ref`
+- `strategy`
+- `status`
+- `winning_ref`
+- `losing_ref`
+- `rationale`
+- `created_at`
+
+`ContradictionResolution` belongs to governance because detecting tension and deciding how to legally handle it are different acts.
+
+The initial executable baseline supports these strategies:
+
+- `manual_review`
+- `coexist_temporally`
+- `supersede_existing`
+- `supersede_candidate`
+- `dismiss_contradiction`
+
+The initial executable baseline supports these statuses:
+
+- `proposed`
+- `accepted`
+- `rejected`
+- `applied`
+
+### 4.18 `OntologyDefinition`
 
 Represents the active ontology contract for the world layer.
 
@@ -463,7 +498,7 @@ The initial mode may be:
 - `learned`
 - `hybrid`
 
-### 4.18 `PolicySnapshot`
+### 4.19 `PolicySnapshot`
 
 Represents a versioned governance or authority configuration.
 
@@ -477,7 +512,7 @@ Minimum fields:
 - `created_at`
 - `active`
 
-### 4.19 `WikiPage`
+### 4.20 `WikiPage`
 
 Represents an editorial knowledge page.
 
@@ -495,7 +530,7 @@ Minimum fields:
 - `canonical_refs`
 - `world_refs`
 
-### 4.20 `WikiClaim`
+### 4.21 `WikiClaim`
 
 Represents an explicit claim stated inside a wiki page.
 
@@ -509,7 +544,7 @@ Minimum fields:
 - `claim_status`
 - `source_refs`
 
-### 4.21 `ProjectionArtifact`
+### 4.22 `ProjectionArtifact`
 
 Represents a runtime-facing derived artifact.
 
@@ -525,7 +560,7 @@ Minimum fields:
 - `upstream_refs`
 - `created_at`
 
-### 4.22 `ProjectionManifest`
+### 4.23 `ProjectionManifest`
 
 Represents the common metadata contract for a compiled runtime package.
 
@@ -540,7 +575,7 @@ Minimum fields:
 - `upstream_refs`
 - `artifact_refs`
 
-### 4.23 `Diagnostic`
+### 4.24 `Diagnostic`
 
 Represents bounded machine-readable feedback about failures, ignored edits, or unresolved tensions.
 
@@ -554,7 +589,7 @@ Minimum fields:
 - `message`
 - `related_refs`
 
-### 4.24 `DispositionRecord`
+### 4.25 `DispositionRecord`
 
 Represents the explicit fate assigned to an intake or candidate set.
 

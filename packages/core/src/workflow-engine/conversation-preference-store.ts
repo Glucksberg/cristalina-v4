@@ -48,6 +48,7 @@ import type {
 } from "../types.js";
 import { validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
+  applyAcceptedContradictionResolution,
   buildOpenClawPreferenceFeedbackIntake,
   buildConversationPreferenceIntake,
   buildStructuredPreferenceSignalIntake,
@@ -150,6 +151,18 @@ export interface ConversationPreferenceStoreResult {
   reused: boolean;
   paths: ConversationPreferenceStorePaths;
   records: ConversationPreferenceStoreRecords;
+  validation_issues: ValidationIssue[];
+}
+
+export interface ConversationPreferenceResolutionStoreResult {
+  reused: boolean;
+  paths: ConversationPreferenceStorePaths;
+  records: ConversationPreferenceStoreRecords & {
+    contradiction: Contradiction;
+    contradiction_resolution: ContradictionResolution;
+    existing_world_claim: WorldClaim;
+    candidate_world_claim: WorldClaim;
+  };
   validation_issues: ValidationIssue[];
 }
 
@@ -595,6 +608,14 @@ async function buildProjectionFromStoreState(
   });
 }
 
+async function readProjectionArtifacts(paths: ConversationPreferenceStorePaths): Promise<ProjectionArtifact[]> {
+  return Promise.all([
+    readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.canon),
+    readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.world),
+    readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.wiki),
+  ]);
+}
+
 async function ensureReplayableArtifacts(
   input: ConversationPreferenceStoreInput,
   paths: ConversationPreferenceStorePaths,
@@ -927,4 +948,124 @@ export async function writeStructuredPreferenceSignalFlowToStore(
     ...input,
     intake_kind: "structured_preference_signal",
   });
+}
+
+export async function applyConversationPreferenceResolutionToStore(
+  input: ConversationPreferenceStoreInput,
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  const existingFlow = await readConversationPreferenceFlowResult(input);
+  if (!existingFlow) {
+    throw new Error("Conversation preference flow must exist before applying contradiction resolution");
+  }
+
+  const { paths, records } = existingFlow;
+  if (!records.contradiction) {
+    throw new Error("Conversation preference flow does not contain a contradiction to apply");
+  }
+  if (!records.contradiction_resolution) {
+    throw new Error("Conversation preference flow does not contain a contradiction resolution to apply");
+  }
+
+  const rootDir = resolve(input.rootDir);
+  const existing_world_claim = await readCoreRecord<WorldClaim>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: records.contradiction_resolution.losing_ref?.id ?? records.contradiction.left_ref.id,
+        kind: "preference",
+        layer: "world",
+      } as WorldClaim,
+    ),
+  );
+
+  if (records.contradiction_resolution.status === "applied") {
+    const projection_artifacts = await readProjectionArtifacts(paths);
+    const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+
+    return {
+      reused: true,
+      paths,
+      records: {
+        ...records,
+        contradiction: records.contradiction,
+        contradiction_resolution: records.contradiction_resolution,
+        existing_world_claim,
+        candidate_world_claim: records.intake.world_claim,
+        projection_artifacts,
+        projection_manifest,
+      },
+      validation_issues: [
+        ...existingFlow.validation_issues,
+        ...validateCoreRecord(existing_world_claim),
+      ],
+    };
+  }
+
+  const applied = applyAcceptedContradictionResolution({
+    now: input.now,
+    contradiction: records.contradiction,
+    resolution: records.contradiction_resolution,
+    existing_claim: existing_world_claim,
+    candidate_claim: records.intake.world_claim,
+  });
+
+  await writeCoreRecord(rootDir, applied.existing_claim);
+  await writeCoreRecord(rootDir, applied.candidate_claim);
+  await writeCoreRecord(rootDir, applied.contradiction);
+  await writeCoreRecord(rootDir, applied.resolution);
+
+  const projection = await buildProjectionFromStoreState(rootDir, input, records.canonical_record, {
+    ...records.intake,
+    world_claim: applied.candidate_claim,
+  });
+
+  await writeFile(paths.projection_markdown, projection.markdown, "utf8");
+  for (const artifact of projection.artifacts) {
+    await writeCoreRecord(rootDir, artifact);
+  }
+  await writeCoreRecord(rootDir, projection.manifest);
+
+  const validation_issues = [
+    applied.existing_claim,
+    applied.candidate_claim,
+    applied.contradiction,
+    applied.resolution,
+    ...projection.artifacts,
+    projection.manifest,
+  ].flatMap((record) => validateCoreRecord(record));
+
+  await appendValidationLog(rootDir, {
+    at: input.now,
+    scope: input.validation_scope ?? "workflow:conversation-preference:resolution-application",
+    issues: validation_issues,
+  });
+
+  await appendAuditChange(rootDir, {
+    at: input.now,
+    operation: "world_resolution_apply",
+    record_id: applied.resolution.id,
+    record_kind: applied.resolution.kind,
+    record_layer: applied.resolution.layer,
+    detail: `Applied contradiction resolution strategy ${applied.resolution.strategy} and recompiled projection.`,
+    related_refs: [applied.contradiction.id, applied.existing_claim.id, applied.candidate_claim.id, projection.manifest.id],
+  });
+
+  return {
+    reused: false,
+    paths,
+    records: {
+      ...records,
+      intake: {
+        ...records.intake,
+        world_claim: applied.candidate_claim,
+      },
+      contradiction: applied.contradiction,
+      contradiction_resolution: applied.resolution,
+      existing_world_claim: applied.existing_claim,
+      candidate_world_claim: applied.candidate_claim,
+      projection_artifacts: projection.artifacts,
+      projection_manifest: projection.manifest,
+    },
+    validation_issues,
+  };
 }

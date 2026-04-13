@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyAcceptedContradictionResolution,
   applyContradictionResolution,
   buildOpenClawPreferenceFeedbackIntake,
   buildConversationPreferenceDispositionRecord,
@@ -580,6 +581,91 @@ test("contradiction handling can propose and apply a richer resolution path", ()
   assert.equal(resolution.status, "proposed");
   assert.equal(applied.contradiction.status, "resolved");
   assert.equal(applied.existing_claim.temporal_state?.temporal_status, "historical");
+});
+
+test("accepted contradiction resolution compiles into projection with explicit historical trace", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers.",
+    source_record: {
+      id: "src_resolution_projection_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session#turn-resolution-projection-001",
+      },
+      content_ref: "raw/sources/turn-resolution-projection-001.json",
+    },
+    ids: buildIds("resolution_projection_001"),
+  });
+
+  const existing = {
+    ...intake.world_claim,
+    id: "wcl_existing_resolution_projection_001",
+    statement: "The user prefers exhaustive answers.",
+    temporal_state: {
+      temporal_status: "active" as const,
+      valid_from: "2026-04-01T00:00:00.000Z",
+      valid_to: null,
+    },
+  };
+  const contradiction = detectWorldClaimContradiction({
+    now,
+    contradiction_id: "contra_resolution_projection_001",
+    candidate_claim: intake.world_claim,
+    existing_world_claims: [existing],
+  });
+
+  assert.ok(contradiction);
+
+  const resolution = proposeContradictionResolution({
+    now,
+    resolution_id: "cres_resolution_projection_001",
+    contradiction: contradiction!,
+    existing_claim: existing,
+    candidate_claim: intake.world_claim,
+  });
+
+  const applied = applyAcceptedContradictionResolution({
+    now,
+    contradiction: contradiction!,
+    resolution,
+    existing_claim: existing,
+    candidate_claim: intake.world_claim,
+  });
+
+  const projection = executeOpenClawBootstrapWorkflow({
+    now,
+    visibility_state: intake.world_claim.visibility_state,
+    canonical_records: [],
+    world_claims: [applied.existing_claim, applied.candidate_claim],
+    episodes: [intake.episode],
+    entities: [intake.subject_entity, intake.preference_entity],
+    relations: [intake.preference_relation],
+    contradictions: [applied.contradiction],
+    contradiction_resolutions: [applied.resolution],
+    wiki_pages: [intake.wiki_page],
+    wiki_claims: [intake.wiki_claim],
+    ids: {
+      canon_artifact: "part_openclaw_canon_resolution_projection_001",
+      world_artifact: "part_openclaw_world_resolution_projection_001",
+      wiki_artifact: "part_openclaw_wiki_resolution_projection_001",
+      manifest: "pmf_openclaw_resolution_projection_001",
+    },
+  });
+
+  assert.match(projection.markdown, /\[contradiction:contra_resolution_projection_001\] \(resolved\)/);
+  assert.match(projection.markdown, /\[contradiction-resolution:cres_resolution_projection_001\] \(applied\) coexist_temporally/);
+  assert.match(projection.markdown, /\[world:wcl_existing_resolution_projection_001\] \(disputed; historical\)/);
+  assert.match(projection.markdown, /\[world:wcl_resolution_projection_001\] \(inferred; active\)/);
 });
 
 test("validation rejects disposition refs without matching outcomes", () => {

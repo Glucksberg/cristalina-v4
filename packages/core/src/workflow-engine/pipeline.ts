@@ -686,6 +686,10 @@ export interface ContradictionResolutionApplicationResult {
   candidate_claim: WorldClaim;
 }
 
+export interface AcceptedContradictionResolutionApplicationResult extends ContradictionResolutionApplicationResult {
+  resolution: ContradictionResolution;
+}
+
 export function detectWorldClaimContradiction(
   input: ContradictionDetectionInput,
 ): Contradiction | undefined {
@@ -824,6 +828,34 @@ export function applyContradictionResolution(input: {
         candidate_claim: input.candidate_claim,
       };
   }
+}
+
+export function applyAcceptedContradictionResolution(input: {
+  now: string;
+  contradiction: Contradiction;
+  resolution: ContradictionResolution;
+  existing_claim: WorldClaim;
+  candidate_claim: WorldClaim;
+}): AcceptedContradictionResolutionApplicationResult {
+  if (input.resolution.status === "rejected") {
+    throw new Error("Rejected contradiction resolutions cannot be applied");
+  }
+
+  const resolution: ContradictionResolution = {
+    ...input.resolution,
+    updated_at: input.now,
+    status: "applied",
+  };
+
+  const applied = applyContradictionResolution({
+    ...input,
+    resolution,
+  });
+
+  return {
+    resolution,
+    ...applied,
+  };
 }
 
 function closeWorldClaimTemporalState(record: WorldClaim, now: string): WorldClaim["temporal_state"] {

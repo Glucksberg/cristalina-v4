@@ -63,8 +63,11 @@ The current core test harness now covers:
 - `Observation -> Episode -> WorldClaim`
 - derived `Entity` and `Relation`
 - contradiction object emission
+- contradiction resolution proposal and applied effect
 - disposition invariants
 - OpenClaw round-trip recompilation
+- projection separation of `world`, `wiki`, and `canon`
+- temporal closure of losing world claims after applied resolution
 
 ---
 

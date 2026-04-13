@@ -6,6 +6,8 @@ import test from "node:test";
 
 import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
 import {
+  applyConversationPreferenceResolutionToStore,
+  readConversationPreferenceFlowResult,
   writeConversationPreferenceFlowToStore,
   writeOpenClawPreferenceFeedbackFlowToStore,
   writeStructuredPreferenceSignalFlowToStore,
@@ -197,6 +199,80 @@ test("writeConversationPreferenceFlowToStore records contradictions against exis
   assert.equal(second.records.contradiction?.status, "open");
   assert.equal(second.records.contradiction?.right_ref.id, "wcl_test_002");
   assert.equal(second.records.contradiction_resolution?.strategy, "coexist_temporally");
+});
+
+test("applyConversationPreferenceResolutionToStore persists applied resolution and recompiles projection", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: "2026-04-12T01:00:00.000Z",
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_apply_002",
+      source_ref: "runtime/session-test#turn-apply-002",
+      content_ref: "raw/sources/conversation-turn-test-apply-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_apply_002",
+      episode: "ep_test_apply_002",
+      subject_entity: "ent_subject_test_apply_002",
+      preference_entity: "ent_preference_test_apply_002",
+      preference_relation: "rel_preference_test_apply_002",
+      world_claim: "wcl_test_apply_002",
+      contradiction: "contra_test_apply_002",
+      contradiction_resolution: "cres_test_apply_002",
+      wiki_page: "wpg_test_apply_002",
+      wiki_claim: "wclm_test_apply_002",
+      proposal: "prop_test_apply_002",
+      disposition: "disp_test_apply_002",
+      ratification: "rat_test_apply_002",
+      diagnostic: "diag_test_apply_002",
+      canonical: "mem_test_apply_002",
+      canon_artifact: "part_openclaw_canon_test_apply_002",
+      world_artifact: "part_openclaw_world_test_apply_002",
+      wiki_artifact: "part_openclaw_wiki_test_apply_002",
+      projection_manifest: "pmf_openclaw_test_apply_002",
+    },
+  };
+
+  await writeConversationPreferenceFlowToStore(secondInput);
+
+  const applied = await applyConversationPreferenceResolutionToStore({
+    ...secondInput,
+    now: "2026-04-12T01:05:00.000Z",
+    validation_scope: "test:conversation-preference:resolution-application",
+  });
+
+  assert.equal(applied.reused, false);
+  assert.equal(applied.records.contradiction.status, "resolved");
+  assert.equal(applied.records.contradiction_resolution.status, "applied");
+  assert.equal(applied.records.existing_world_claim.temporal_state?.temporal_status, "historical");
+
+  const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /\[contradiction:contra_test_apply_002\] \(resolved\)/);
+  assert.match(projectionMarkdown, /\[contradiction-resolution:cres_test_apply_002\] \(applied\) coexist_temporally/);
+  assert.match(projectionMarkdown, /\[world:wcl_test_001\] \(disputed; historical\)/);
+  assert.match(projectionMarkdown, /\[world:wcl_test_apply_002\] \(inferred; active\)/);
+
+  const reloaded = await readConversationPreferenceFlowResult(secondInput);
+  assert.equal(reloaded?.records.contradiction_resolution?.status, "applied");
+
+  const appliedAgain = await applyConversationPreferenceResolutionToStore({
+    ...secondInput,
+    now: "2026-04-12T01:06:00.000Z",
+    validation_scope: "test:conversation-preference:resolution-application-reused",
+  });
+  assert.equal(appliedAgain.reused, true);
+  assert.equal(appliedAgain.records.contradiction_resolution.status, "applied");
 });
 
 test("openclaw feedback round-trip preserves runtime identity and recompiles projection", async (t) => {

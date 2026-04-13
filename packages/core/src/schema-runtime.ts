@@ -43,15 +43,21 @@ export interface SchemaValidationIssue {
 
 export const OBJECT_ENVELOPE_SCHEMA_ID = "https://cristalina-v4.local/schemas/object-envelope.schema.json";
 export const MEMORY_OBJECT_SCHEMA_ID = "https://cristalina-v4.local/schemas/memory-object.schema.json";
+export const TEMPORAL_WORLD_RECORD_SCHEMA_ID = "https://cristalina-v4.local/schemas/temporal-world-record.schema.json";
+export const CONTRADICTION_RESOLUTION_SCHEMA_ID = "https://cristalina-v4.local/schemas/contradiction-resolution.schema.json";
 export const DISPOSITION_RECORD_SCHEMA_ID = "https://cristalina-v4.local/schemas/disposition-record.schema.json";
 export const RUNTIME_IDENTITY_SCHEMA_ID = "https://cristalina-v4.local/schemas/runtime-identity.schema.json";
+export const SOURCE_INTAKE_PROFILE_SCHEMA_ID = "https://cristalina-v4.local/schemas/source-intake-profile.schema.json";
 export const STORE_MANIFEST_SCHEMA_ID = "https://cristalina-v4.local/schemas/store-manifest.schema.json";
 
 const SCHEMA_PATHS = [
   "../../../schemas/object-envelope.schema.json",
   "../../../schemas/memory-object.schema.json",
+  "../../../schemas/temporal-world-record.schema.json",
+  "../../../schemas/contradiction-resolution.schema.json",
   "../../../schemas/disposition-record.schema.json",
   "../../../schemas/runtime-identity.schema.json",
+  "../../../schemas/source-intake-profile.schema.json",
   "../../../schemas/store-manifest.schema.json",
 ] as const;
 
