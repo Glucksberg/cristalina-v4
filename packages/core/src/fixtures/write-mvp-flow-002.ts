@@ -16,6 +16,7 @@ import { validateCoreRecord } from "../validation.js";
 import {
   executeCanonicalProposalWorkflow,
   executeOpenClawBootstrapWorkflow,
+  reconcileConversationPreferenceSupersede,
 } from "../workflow-engine/pipeline.js";
 
 function sourceRecord(input: {
@@ -102,7 +103,7 @@ async function main(): Promise<void> {
     },
     provenance: {
       source_type: "conversation",
-      source_ref: src1.id,
+      source_ref: src1.provenance.source_ref,
     },
     summary: "The user prefers concise answers unless they explicitly ask for depth.",
     epistemic_state: "observed",
@@ -120,7 +121,7 @@ async function main(): Promise<void> {
     },
     provenance: {
       source_type: "conversation",
-      source_ref: src1.id,
+      source_ref: src1.provenance.source_ref,
       evidence_refs: [observation1.id],
     },
     statement: "The user prefers concise answers unless they explicitly ask for depth.",
@@ -145,7 +146,7 @@ async function main(): Promise<void> {
     },
     provenance: {
       source_type: "conversation",
-      source_ref: src1.id,
+      source_ref: src1.provenance.source_ref,
       evidence_refs: [observation1.id, worldClaim1.id],
     },
     page_kind: "entity",
@@ -168,7 +169,7 @@ async function main(): Promise<void> {
     },
     provenance: {
       source_type: "conversation",
-      source_ref: src1.id,
+      source_ref: src1.provenance.source_ref,
       evidence_refs: [observation1.id, worldClaim1.id],
     },
     statement: "The user currently prefers concise answers by default.",
@@ -189,7 +190,7 @@ async function main(): Promise<void> {
     },
     provenance: {
       source_type: "conversation",
-      source_ref: src1.id,
+      source_ref: src1.provenance.source_ref,
       evidence_refs: [observation1.id, worldClaim1.id, wikiClaim.id],
     },
     operation: "create",
@@ -228,7 +229,7 @@ async function main(): Promise<void> {
     id: "prop-mvp-002-002",
     provenance: {
       source_type: "conversation",
-      source_ref: src2.id,
+      source_ref: src2.provenance.source_ref,
       evidence_refs: [canon1.id, src2.id],
     },
     operation: "revise",
@@ -270,7 +271,7 @@ async function main(): Promise<void> {
     id: "prop-mvp-002-003",
     provenance: {
       source_type: "conversation",
-      source_ref: src3.id,
+      source_ref: src3.provenance.source_ref,
       evidence_refs: [revisedCanon.id, src3.id],
     },
     operation: "supersede",
@@ -299,15 +300,24 @@ async function main(): Promise<void> {
   if (!supersedeWorkflow.accepted) throw new Error("Expected supersede proposal to be accepted");
 
   const supersededRevised = supersedeWorkflow.updated_records[0];
+  const reconciledContext = reconcileConversationPreferenceSupersede({
+    now,
+    world_claim: worldClaim1,
+    wiki_page: wikiPage,
+    wiki_claim: wikiClaim,
+    superseded_canonical_ref: supersededRevised.id,
+    proposal_ref: supersedeProposal.id,
+    ratification_ref: supersedeWorkflow.ratification_record.id,
+  });
 
   const allRecords = [
     src1,
     src2,
     src3,
     observation1,
-    worldClaim1,
-    wikiPage,
-    wikiClaim,
+    reconciledContext.world_claim,
+    reconciledContext.wiki_page,
+    reconciledContext.wiki_claim,
     createProposal,
     createWorkflow.ratification_record,
     canon1,
@@ -361,22 +371,42 @@ async function main(): Promise<void> {
     related_refs: [supersedeProposal.id, supersedeWorkflow.ratification_record.id],
   });
 
-  const wikiMarkdownPath = join(outputRoot, wikiPage.path);
+  await appendAuditChange(outputRoot, {
+    at: now,
+    operation: "world_reconcile_after_supersede",
+    record_id: reconciledContext.world_claim.id,
+    record_kind: reconciledContext.world_claim.kind,
+    record_layer: reconciledContext.world_claim.layer,
+    detail: "Marked the world claim as disputed historical state after canonical supersede.",
+    related_refs: [supersededRevised.id, supersedeProposal.id, supersedeWorkflow.ratification_record.id],
+  });
+
+  await appendAuditChange(outputRoot, {
+    at: now,
+    operation: "wiki_reconcile_after_supersede",
+    record_id: reconciledContext.wiki_claim.id,
+    record_kind: reconciledContext.wiki_claim.kind,
+    record_layer: reconciledContext.wiki_claim.layer,
+    detail: "Downgraded the wiki claim to editorial state after canonical supersede.",
+    related_refs: [supersededRevised.id, supersedeProposal.id, supersedeWorkflow.ratification_record.id],
+  });
+
+  const wikiMarkdownPath = join(outputRoot, reconciledContext.wiki_page.path);
   await writeFile(
     wikiMarkdownPath,
     [
       "---",
-      `page_id: ${wikiPage.id}`,
+      `page_id: ${reconciledContext.wiki_page.id}`,
       "page_kind: entity",
-      `title: ${wikiPage.title}`,
-      `source_refs: [${wikiPage.source_refs.join(", ")}]`,
+      `title: ${reconciledContext.wiki_page.title}`,
+      `source_refs: [${reconciledContext.wiki_page.source_refs.join(", ")}]`,
       "---",
       "",
       "# User Interaction Preferences",
       "",
       "- Initial canon: concise unless depth is requested.",
       "- Revised canon: concise by default, more explicit when implementation depth is requested.",
-      "- Current status: withdrawn from active canon pending confirmation.",
+      "- Current status: no active canonical preference; the previous preference is pending further confirmation.",
       "",
     ].join("\n"),
     "utf8",
@@ -386,10 +416,11 @@ async function main(): Promise<void> {
   const activeCanon = finalCanonRecords.filter((record) => record.governance_state === "ratified");
   const compiled = executeOpenClawBootstrapWorkflow({
     now,
+    visibility_state: supersededRevised.visibility_state,
     canonical_records: activeCanon,
-    world_claims: [worldClaim1],
-    wiki_pages: [wikiPage],
-    wiki_claims: [wikiClaim],
+    world_claims: [reconciledContext.world_claim],
+    wiki_pages: [reconciledContext.wiki_page],
+    wiki_claims: [reconciledContext.wiki_claim],
     ids: {
       canon_artifact: "part-openclaw-flow2-canon-001",
       world_artifact: "part-openclaw-flow2-world-001",

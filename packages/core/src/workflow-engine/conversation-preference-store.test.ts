@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadCanonicalRecords } from "../store/io.js";
+import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
 import { writeConversationPreferenceFlowToStore, type ConversationPreferenceStoreInput } from "./conversation-preference-store.js";
 
 function buildInput(rootDir: string): ConversationPreferenceStoreInput {
@@ -116,4 +116,37 @@ test("writeConversationPreferenceFlowToStore repairs missing derived artifacts o
   assert.equal(repaired.reused, true);
   assert.match(repairedWikiMarkdown, /User Interaction Preferences/);
   assert.equal(auditLogAfter, auditLogBefore);
+});
+
+test("loadCanonicalRecords excludes canonical identity records", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(input);
+
+  await writeCoreRecord(rootDir, {
+    id: "actor_test_001",
+    kind: "actor_identity",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "operator",
+      source_ref: "user:test",
+    },
+    actor_kind: "owner",
+    label: "Test Owner",
+    status: "active",
+  });
+
+  const canonicalRecords = await loadCanonicalRecords(rootDir);
+  assert.equal(canonicalRecords.length, 1);
+  assert.equal(canonicalRecords[0]?.kind, "preference");
 });

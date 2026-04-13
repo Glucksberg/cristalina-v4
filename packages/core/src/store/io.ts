@@ -2,6 +2,7 @@ import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
+import { MEMORY_OBJECT_KINDS } from "../types.js";
 import type { CanonicalMemoryObject, CoreRecord } from "../types.js";
 import { STORAGE_LAYOUT } from "../storage.js";
 import { assertCoreRecord, assertStoreManifest } from "../validation.js";
@@ -16,6 +17,21 @@ const CANON_KIND_DIRECTORIES = {
   value: STORAGE_LAYOUT.canon.values,
   identity_trait: STORAGE_LAYOUT.canon.identityTraits,
 } as const;
+
+const CANONICAL_CLAIM_KINDS = new Set(
+  MEMORY_OBJECT_KINDS.filter((kind) => !["entity", "relation", "episode"].includes(kind)),
+);
+
+function isCanonicalMemoryRecord(record: CoreRecord): record is CanonicalMemoryObject {
+  return (
+    record.layer === "canon" &&
+    CANONICAL_CLAIM_KINDS.has(record.kind as (typeof MEMORY_OBJECT_KINDS)[number]) &&
+    "statement" in record &&
+    typeof record.statement === "string" &&
+    "governance_state" in record &&
+    typeof record.governance_state === "string"
+  );
+}
 
 function extensionlessRecordPath(record: CoreRecord): string {
   switch (record.kind) {
@@ -222,7 +238,7 @@ async function collectJsonFiles(rootDir: string, relativeDir: string): Promise<s
 export async function loadCanonicalRecords(rootDir: string): Promise<CanonicalMemoryObject[]> {
   const canonFiles = await collectJsonFiles(rootDir, STORAGE_LAYOUT.canon.root);
   const records = await Promise.all(canonFiles.map((file) => readCoreRecord<CoreRecord>(join(rootDir, file))));
-  return records.filter((record): record is CanonicalMemoryObject => record.layer === "canon");
+  return records.filter(isCanonicalMemoryRecord);
 }
 
 export async function loadCanonicalRecordById(rootDir: string, recordId: string): Promise<CanonicalMemoryObject | undefined> {

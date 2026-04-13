@@ -3,14 +3,14 @@
   "kind": "wiki_page",
   "layer": "wiki",
   "authoritative_home": "wiki",
-  "created_at": "2026-04-12T13:34:13.800Z",
-  "updated_at": "2026-04-12T13:34:13.800Z",
+  "created_at": "2026-04-13T04:42:53.827Z",
+  "updated_at": "2026-04-13T04:42:53.827Z",
   "visibility_state": {
     "privacy_scope": "owner_private"
   },
   "provenance": {
     "source_type": "conversation",
-    "source_ref": "src-mvp-002-001",
+    "source_ref": "runtime/session-002#turn-001",
     "evidence_refs": [
       "obs-mvp-002-001",
       "wcl-mvp-002-001"
@@ -27,5 +27,10 @@
   "canonical_refs": [],
   "world_refs": [
     "wcl-mvp-002-001"
+  ],
+  "upstream_refs": [
+    "mem-mvp-002-002",
+    "prop-mvp-002-003",
+    "rat-mvp-002-003"
   ]
 }

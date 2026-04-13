@@ -120,19 +120,22 @@ The system should allow:
 
 ## 5. Proposal Operations
 
-The MVP should support at least these proposal operations:
+The current executable baseline supports these proposal operations:
 
 - `create`
 - `revise`
-- `confirm`
 - `supersede`
+
+The next expansion after the baseline kernel should add:
+
+- `confirm`
 - `deprecate`
 - `link`
 - `contradict`
 
 Not every operation targets canon.
 
-Some may target:
+Some later operations may target:
 
 - world-model updates
 - wiki maintenance follow-ups

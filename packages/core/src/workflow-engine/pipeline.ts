@@ -10,6 +10,7 @@ import type {
   Proposal,
   RatificationRecord,
   SourceRecord,
+  VisibilityState,
   WikiClaim,
   WikiPage,
   WorldClaim,
@@ -41,9 +42,10 @@ export interface ConversationPreferenceIntakeArtifacts {
 }
 
 export function buildConversationPreferenceIntake(input: ConversationPreferenceIntakeInput): ConversationPreferenceIntakeArtifacts {
+  const source_ref = input.source_record.provenance.source_ref;
   const provenance = {
     source_type: "conversation",
-    source_ref: input.source_record.id,
+    source_ref,
   } as const;
 
   const observation: Observation = {
@@ -208,6 +210,66 @@ export interface CanonicalProposalWorkflowResult extends GovernanceEvaluationRes
   updated_records: CanonicalMemoryObject[];
 }
 
+export interface ConversationPreferenceSupersedeReconciliationInput {
+  now: string;
+  world_claim: WorldClaim;
+  wiki_page: WikiPage;
+  wiki_claim: WikiClaim;
+  superseded_canonical_ref: string;
+  proposal_ref: string;
+  ratification_ref: string;
+  active_canonical_refs?: string[];
+}
+
+export interface ConversationPreferenceSupersedeReconciliationResult {
+  world_claim: WorldClaim;
+  wiki_page: WikiPage;
+  wiki_claim: WikiClaim;
+}
+
+function closeWorldClaimTemporalState(record: WorldClaim, now: string): WorldClaim["temporal_state"] {
+  const temporal_state = record.temporal_state;
+  return {
+    temporal_status: "historical",
+    valid_from: temporal_state?.valid_from ?? record.created_at,
+    valid_to: now,
+    temporal_confidence: temporal_state?.temporal_confidence ?? null,
+  };
+}
+
+export function reconcileConversationPreferenceSupersede(
+  input: ConversationPreferenceSupersedeReconciliationInput,
+): ConversationPreferenceSupersedeReconciliationResult {
+  const sharedRefs = [
+    input.superseded_canonical_ref,
+    input.proposal_ref,
+    input.ratification_ref,
+  ];
+
+  return {
+    world_claim: {
+      ...input.world_claim,
+      updated_at: input.now,
+      epistemic_state: "disputed",
+      temporal_state: closeWorldClaimTemporalState(input.world_claim, input.now),
+      upstream_refs: [...new Set([...(input.world_claim.upstream_refs ?? []), ...sharedRefs])],
+    },
+    wiki_page: {
+      ...input.wiki_page,
+      updated_at: input.now,
+      canonical_refs: [...new Set(input.active_canonical_refs ?? [])],
+      upstream_refs: [...new Set([...(input.wiki_page.upstream_refs ?? []), ...sharedRefs])],
+    },
+    wiki_claim: {
+      ...input.wiki_claim,
+      updated_at: input.now,
+      statement: "The previous concise-answer preference is not currently active canon and is pending further confirmation.",
+      claim_status: "editorial",
+      upstream_refs: [...new Set([...(input.wiki_claim.upstream_refs ?? []), ...sharedRefs])],
+    },
+  };
+}
+
 function mergeExistingCanonRecords(input: CanonicalProposalWorkflowInput): CanonicalMemoryObject[] {
   const merged = [...(input.existing_canon_records ?? [])];
   if (input.existing_record && !merged.some((record) => record.id === input.existing_record?.id)) {
@@ -277,6 +339,7 @@ export function executeCanonicalProposalWorkflow(input: CanonicalProposalWorkflo
 
 export interface OpenClawBootstrapWorkflowInput {
   now: string;
+  visibility_state: VisibilityState;
   canonical_records: CanonicalMemoryObject[];
   world_claims: WorldClaim[];
   wiki_pages: WikiPage[];
@@ -298,9 +361,7 @@ export interface OpenClawBootstrapWorkflowResult {
 export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflowInput): OpenClawBootstrapWorkflowResult {
   return compileOpenClawBootstrapProjection({
     now: input.now,
-    visibility_state: {
-      privacy_scope: "owner_private",
-    },
+    visibility_state: input.visibility_state,
     projection_path: "derived/openclaw/bootstrap-memory.md",
     canonical_records: input.canonical_records,
     world_claims: input.world_claims,

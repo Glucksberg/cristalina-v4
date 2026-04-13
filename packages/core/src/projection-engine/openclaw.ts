@@ -15,12 +15,18 @@ function uniqueRefs(...groups: string[][]): string[] {
 
 function renderCanonSection(records: CanonicalMemoryObject[]): string[] {
   if (records.length === 0) return ["- (none)"];
-  return records.map((record) => `- [canon:${record.id}] ${record.statement}`);
+  return records.map((record) => {
+    const temporal = record.temporal_state?.temporal_status ?? "unresolved";
+    return `- [canon:${record.id}] (${record.governance_state}; ${temporal}) ${record.statement}`;
+  });
 }
 
 function renderWorldSection(records: WorldClaim[]): string[] {
   if (records.length === 0) return ["- (none)"];
-  return records.map((record) => `- [world:${record.id}] ${record.statement}`);
+  return records.map((record) => {
+    const temporal = record.temporal_state?.temporal_status ?? "unresolved";
+    return `- [world:${record.id}] (${record.epistemic_state}; ${temporal}) ${record.statement}`;
+  });
 }
 
 function renderWikiSection(pages: WikiPage[], claims: WikiClaim[]): string[] {
@@ -30,7 +36,7 @@ function renderWikiSection(pages: WikiPage[], claims: WikiClaim[]): string[] {
     lines.push(`- [wiki:${page.id}] ${page.title}`);
   }
   for (const claim of claims) {
-    lines.push(`- [wiki-claim:${claim.id}] ${claim.statement}`);
+    lines.push(`- [wiki-claim:${claim.id}] (${claim.claim_status}) ${claim.statement}`);
   }
   return lines;
 }

@@ -354,10 +354,18 @@ function assertLoadedFlowMatchesInput(
   if (loaded.source_record.id !== input.source.id) mismatches.push("source.id");
   if (loaded.source_record.content_ref !== input.source.content_ref) mismatches.push("source.content_ref");
   if (loaded.source_record.provenance.source_ref !== input.source.source_ref) mismatches.push("source.source_ref");
+  if (loaded.intake.observation.provenance.source_ref !== input.source.source_ref) mismatches.push("observation.provenance.source_ref");
   if (loaded.intake.observation.summary !== input.statement) mismatches.push("observation.summary");
+  if (loaded.intake.world_claim.provenance.source_ref !== input.source.source_ref) mismatches.push("world_claim.provenance.source_ref");
   if (loaded.intake.world_claim.statement !== input.statement) mismatches.push("world_claim.statement");
+  if (loaded.intake.wiki_page.provenance.source_ref !== input.source.source_ref) mismatches.push("wiki_page.provenance.source_ref");
+  if (loaded.intake.wiki_claim.provenance.source_ref !== input.source.source_ref) mismatches.push("wiki_claim.provenance.source_ref");
   if (loaded.intake.wiki_claim.statement !== input.statement) mismatches.push("wiki_claim.statement");
+  if (loaded.intake.proposal.provenance.source_ref !== input.source.source_ref) mismatches.push("proposal.provenance.source_ref");
   if (proposalStatement !== input.statement) mismatches.push("proposal.candidate_payload.statement");
+  if (loaded.intake.disposition_record.provenance.source_ref !== input.source.source_ref) mismatches.push("disposition_record.provenance.source_ref");
+  if (loaded.ratification_record.provenance.source_ref !== input.source.source_ref) mismatches.push("ratification_record.provenance.source_ref");
+  if (loaded.canonical_record.provenance.source_ref !== input.source.source_ref) mismatches.push("canonical_record.provenance.source_ref");
   if (loaded.canonical_record.statement !== input.statement) mismatches.push("canonical_record.statement");
 
   if (mismatches.length > 0) {
@@ -391,6 +399,7 @@ async function ensureReplayableArtifacts(
 
   const projection = executeOpenClawBootstrapWorkflow({
     now: loaded.canonical_record.updated_at ?? loaded.canonical_record.created_at,
+    visibility_state: loaded.canonical_record.visibility_state,
     canonical_records: [loaded.canonical_record],
     world_claims: [loaded.intake.world_claim],
     wiki_pages: [loaded.intake.wiki_page],
@@ -514,6 +523,7 @@ export async function writeConversationPreferenceFlowToStore(
 
   const projection = executeOpenClawBootstrapWorkflow({
     now: input.now,
+    visibility_state: canonicalWorkflow.created_record.visibility_state,
     canonical_records: [canonicalWorkflow.created_record],
     world_claims: [intake.world_claim],
     wiki_pages: [intake.wiki_page],

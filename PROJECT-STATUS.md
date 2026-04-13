@@ -1,6 +1,6 @@
 # Project Status
 
-**Current status:** Architecture-first, hardening in progress
+**Current status:** Core hardening in progress, with executable kernel baseline
 
 What already exists:
 
@@ -14,21 +14,26 @@ What already exists:
 - base types
 - legal transitions
 - MVP flow
-- core scaffold
+- store manifest and store IO
+- core validation layer
+- governance engine baseline
+- canonical apply path
+- OpenClaw projection compiler baseline
+- executable core fixtures and tests
 
 What is next:
 
 - docs/schema/scaffold convergence
-- manifest and store IO
-- proposal engine baseline
-- canonical apply path
-- common projection manifest
-- disposition record and runtime-identity fixtures
+- contradiction handling baseline
+- richer proposal operations beyond create/revise/supersede
+- common projection manifest hardening across adapters
+- runtime-identity fixtures
+- real OpenClaw adapter package
+- real Hermes adapter package
+- eval harness
 
 What does not exist yet:
 
-- real store reader/writer
-- real governance engine
 - real OpenClaw adapter
 - real Hermes adapter
 - eval harness
