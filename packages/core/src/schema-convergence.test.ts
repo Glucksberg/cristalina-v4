@@ -4,8 +4,11 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import {
+  ACTOR_KINDS,
+  DISPOSITION_OUTCOMES,
   EPISTEMIC_STATES,
   GOVERNANCE_STATES,
+  RUNTIMES,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
 } from "./types.js";
@@ -56,4 +59,25 @@ test("canonical memory schema stays aligned with hardened canonical governance s
     expectEnum((properties.temporal_state as { properties?: Record<string, unknown> } | undefined)?.properties?.temporal_status),
     [...TEMPORAL_STATUSES],
   );
+});
+
+test("disposition schema stays aligned with executable disposition enums", async () => {
+  const schema = await readSchema("../../schemas/disposition-record.schema.json");
+  const variant = schema.allOf?.[1];
+  const properties = variant?.properties ?? {};
+
+  assert.deepEqual(
+    expectEnum((properties.outcomes as { items?: unknown } | undefined)?.items),
+    [...DISPOSITION_OUTCOMES],
+  );
+});
+
+test("runtime identity schema stays aligned with runtime and actor enums", async () => {
+  const schema = await readSchema("../../schemas/runtime-identity.schema.json");
+  const variants = schema.allOf?.[1] as { oneOf?: Array<{ properties?: Record<string, unknown> }> } | undefined;
+  const actorVariant = variants?.oneOf?.[0];
+  const runtimeInstanceVariant = variants?.oneOf?.[1];
+
+  assert.deepEqual(expectEnum(actorVariant?.properties?.actor_kind), [...ACTOR_KINDS]);
+  assert.deepEqual(expectEnum(runtimeInstanceVariant?.properties?.runtime), [...RUNTIMES]);
 });

@@ -5,7 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
-import { writeConversationPreferenceFlowToStore, type ConversationPreferenceStoreInput } from "./conversation-preference-store.js";
+import {
+  writeConversationPreferenceFlowToStore,
+  writeOpenClawPreferenceFeedbackFlowToStore,
+  type ConversationPreferenceStoreInput,
+} from "./conversation-preference-store.js";
 
 function buildInput(rootDir: string): ConversationPreferenceStoreInput {
   return {
@@ -13,6 +17,22 @@ function buildInput(rootDir: string): ConversationPreferenceStoreInput {
     now: "2026-04-12T00:00:00.000Z",
     actor: "system:test",
     statement: "The user prefers concise answers unless they explicitly ask for depth.",
+    identity_context: {
+      runtime: "openclaw",
+      ids: {
+        agent_identity: "actor_agent_test_001",
+        owner_identity: "actor_owner_test_001",
+        runtime_instance: "runtime_test_001",
+        runtime_session: "session_test_001",
+        conversation_thread: "thread_test_001",
+      },
+      agent_label: "Cristalina Test Agent",
+      owner_label: "Test Owner",
+      session_objective: "Track stable interaction preferences",
+      session_summary: "Session summary",
+      message_refs: ["msg_test_001"],
+      thread_summary: "OpenClaw thread summary",
+    },
     source: {
       id: "src_test_001",
       source_ref: "runtime/session-test#turn-001",
@@ -22,7 +42,12 @@ function buildInput(rootDir: string): ConversationPreferenceStoreInput {
     },
     ids: {
       observation: "obs_test_001",
+      episode: "ep_test_001",
+      subject_entity: "ent_subject_test_001",
+      preference_entity: "ent_preference_test_001",
+      preference_relation: "rel_preference_test_001",
       world_claim: "wcl_test_001",
+      contradiction: "contra_test_001",
       wiki_page: "wpg_test_001",
       wiki_claim: "wclm_test_001",
       proposal: "prop_test_001",
@@ -52,6 +77,9 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
   assert.equal(first.validation_issues.length, 0);
   assert.equal(first.records.canonical_record.id, input.ids.canonical);
   assert.equal(first.records.canonical_record.governance_state, "ratified");
+  assert.equal(first.records.intake.runtime_instance?.id, input.identity_context?.ids.runtime_instance);
+  assert.equal(first.records.intake.episode.id, input.ids.episode);
+  assert.equal(first.records.intake.preference_relation.object_ref.id, input.ids.preference_entity);
 
   const canonicalRecords = await loadCanonicalRecords(rootDir);
   assert.equal(canonicalRecords.length, 1);
@@ -63,6 +91,8 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
 
   const projectionMarkdown = await readFile(first.paths.projection_markdown, "utf8");
   assert.match(projectionMarkdown, /\[canon:mem_test_001\]/);
+  assert.match(projectionMarkdown, /\[thread:thread_test_001\]/);
+  assert.match(projectionMarkdown, /\[episode:ep_test_001\]/);
 
   const auditLogBefore = await readFile(join(rootDir, "audits/changes.log"), "utf8");
   const second = await writeConversationPreferenceFlowToStore(input);
@@ -116,6 +146,104 @@ test("writeConversationPreferenceFlowToStore repairs missing derived artifacts o
   assert.equal(repaired.reused, true);
   assert.match(repairedWikiMarkdown, /User Interaction Preferences/);
   assert.equal(auditLogAfter, auditLogBefore);
+});
+
+test("writeConversationPreferenceFlowToStore records contradictions against existing active world claims", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: "2026-04-12T01:00:00.000Z",
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_002",
+      source_ref: "runtime/session-test#turn-002",
+      content_ref: "raw/sources/conversation-turn-test-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_002",
+      episode: "ep_test_002",
+      subject_entity: "ent_subject_test_002",
+      preference_entity: "ent_preference_test_002",
+      preference_relation: "rel_preference_test_002",
+      world_claim: "wcl_test_002",
+      contradiction: "contra_test_002",
+      wiki_page: "wpg_test_002",
+      wiki_claim: "wclm_test_002",
+      proposal: "prop_test_002",
+      disposition: "disp_test_002",
+      ratification: "rat_test_002",
+      diagnostic: "diag_test_002",
+      canonical: "mem_test_002",
+      canon_artifact: "part_openclaw_canon_test_002",
+      world_artifact: "part_openclaw_world_test_002",
+      wiki_artifact: "part_openclaw_wiki_test_002",
+      projection_manifest: "pmf_openclaw_test_002",
+    },
+  };
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(second.records.contradiction?.status, "open");
+  assert.equal(second.records.contradiction?.right_ref.id, "wcl_test_002");
+});
+
+test("openclaw feedback round-trip preserves runtime identity and recompiles projection", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const seed = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(seed);
+
+  const roundTrip = await writeOpenClawPreferenceFeedbackFlowToStore({
+    ...seed,
+    now: "2026-04-12T02:00:00.000Z",
+    statement: "OpenClaw confirms the concise-answer preference is still active.",
+    source: {
+      id: "src_feedback_test_001",
+      source_ref: "openclaw/runtime-001#thread-001",
+      content_ref: "raw/imports/openclaw-feedback-test-001.json",
+      runtime: "openclaw",
+      message: "Runtime feedback confirms the concise-answer preference.",
+      source_type: "openclaw_runtime_feedback",
+    },
+    ids: {
+      observation: "obs_feedback_test_001",
+      episode: "ep_feedback_test_001",
+      subject_entity: "ent_subject_feedback_test_001",
+      preference_entity: "ent_preference_feedback_test_001",
+      preference_relation: "rel_preference_feedback_test_001",
+      world_claim: "wcl_feedback_test_001",
+      contradiction: "contra_feedback_test_001",
+      wiki_page: "wpg_feedback_test_001",
+      wiki_claim: "wclm_feedback_test_001",
+      proposal: "prop_feedback_test_001",
+      disposition: "disp_feedback_test_001",
+      ratification: "rat_feedback_test_001",
+      diagnostic: "diag_feedback_test_001",
+      canonical: "mem_feedback_test_001",
+      canon_artifact: "part_openclaw_canon_feedback_test_001",
+      world_artifact: "part_openclaw_world_feedback_test_001",
+      wiki_artifact: "part_openclaw_wiki_feedback_test_001",
+      projection_manifest: "pmf_openclaw_feedback_test_001",
+    },
+    validation_scope: "test:openclaw-roundtrip",
+  });
+
+  const projectionMarkdown = await readFile(roundTrip.paths.projection_markdown, "utf8");
+  assert.equal(roundTrip.records.intake.runtime_instance?.id, seed.identity_context?.ids.runtime_instance);
+  assert.equal(roundTrip.records.projection_manifest.runtime_instance_ref, seed.identity_context?.ids.runtime_instance);
+  assert.match(projectionMarkdown, /\[runtime:runtime_test_001\]/);
+  assert.match(projectionMarkdown, /\[wiki:wpg_feedback_test_001\]/);
 });
 
 test("loadCanonicalRecords excludes canonical identity records", async (t) => {

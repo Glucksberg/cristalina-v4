@@ -3,7 +3,22 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { MEMORY_OBJECT_KINDS } from "../types.js";
-import type { CanonicalMemoryObject, CoreRecord } from "../types.js";
+import type {
+  ActorIdentity,
+  CanonicalMemoryObject,
+  Contradiction,
+  CoreRecord,
+  Diagnostic,
+  Entity,
+  Episode,
+  Relation,
+  RuntimeInstance,
+  RuntimeSession,
+  ConversationThread,
+  WikiClaim,
+  WikiPage,
+  WorldClaim,
+} from "../types.js";
 import { STORAGE_LAYOUT } from "../storage.js";
 import { assertCoreRecord, assertStoreManifest } from "../validation.js";
 import { createStoreManifest, parseStoreManifestYaml, serializeStoreManifestYaml, type StoreManifest } from "./manifest.js";
@@ -235,13 +250,77 @@ async function collectJsonFiles(rootDir: string, relativeDir: string): Promise<s
   return nested.flat();
 }
 
+async function loadLayerRecords(rootDir: string, relativeDir: string): Promise<CoreRecord[]> {
+  const files = await collectJsonFiles(rootDir, relativeDir);
+  return Promise.all(files.map((file) => readCoreRecord<CoreRecord>(join(rootDir, file))));
+}
+
 export async function loadCanonicalRecords(rootDir: string): Promise<CanonicalMemoryObject[]> {
-  const canonFiles = await collectJsonFiles(rootDir, STORAGE_LAYOUT.canon.root);
-  const records = await Promise.all(canonFiles.map((file) => readCoreRecord<CoreRecord>(join(rootDir, file))));
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.canon.root);
   return records.filter(isCanonicalMemoryRecord);
 }
 
 export async function loadCanonicalRecordById(rootDir: string, recordId: string): Promise<CanonicalMemoryObject | undefined> {
   const records = await loadCanonicalRecords(rootDir);
   return records.find((record) => record.id === recordId);
+}
+
+export async function loadWorldClaims(rootDir: string): Promise<WorldClaim[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.world.claims);
+  return records.filter((record): record is WorldClaim => record.layer === "world" && "statement" in record && "support_refs" in record);
+}
+
+export async function loadWorldEpisodes(rootDir: string): Promise<Episode[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.world.episodes);
+  return records.filter((record): record is Episode => record.kind === "episode");
+}
+
+export async function loadWorldEntities(rootDir: string): Promise<Entity[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.world.entities);
+  return records.filter((record): record is Entity => record.kind === "entity");
+}
+
+export async function loadWorldRelations(rootDir: string): Promise<Relation[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.world.relations);
+  return records.filter((record): record is Relation => record.kind === "relation");
+}
+
+export async function loadWorldContradictions(rootDir: string): Promise<Contradiction[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.world.contradictions);
+  return records.filter((record): record is Contradiction => record.kind === "contradiction");
+}
+
+export async function loadWikiPages(rootDir: string): Promise<WikiPage[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.wiki.pages);
+  return records.filter((record): record is WikiPage => record.kind === "wiki_page");
+}
+
+export async function loadWikiClaims(rootDir: string): Promise<WikiClaim[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.wiki.claims);
+  return records.filter((record): record is WikiClaim => record.kind === "wiki_claim");
+}
+
+export async function loadDiagnostics(rootDir: string): Promise<Diagnostic[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.audits.diagnostics);
+  return records.filter((record): record is Diagnostic => record.kind === "diagnostic");
+}
+
+export async function loadActorIdentities(rootDir: string): Promise<ActorIdentity[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.canon.identity);
+  return records.filter((record): record is ActorIdentity => record.kind === "actor_identity");
+}
+
+export async function loadRuntimeInstances(rootDir: string): Promise<RuntimeInstance[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.runtime.instances);
+  return records.filter((record): record is RuntimeInstance => record.kind === "runtime_instance");
+}
+
+export async function loadRuntimeSessions(rootDir: string): Promise<RuntimeSession[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.runtime.sessions);
+  return records.filter((record): record is RuntimeSession => record.kind === "runtime_session");
+}
+
+export async function loadConversationThreads(rootDir: string): Promise<ConversationThread[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.runtime.threads);
+  return records.filter((record): record is ConversationThread => record.kind === "conversation_thread");
 }

@@ -46,7 +46,8 @@
               "diagnostic_only"
             ]
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "target_layers": {
           "type": "array",
@@ -61,19 +62,22 @@
               "audits"
             ]
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "proposal_refs": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "minItems": 1
         },
         "diagnostic_refs": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "minItems": 1
         },
         "reason_codes": {
           "type": "array",
@@ -84,6 +88,52 @@
         }
       },
       "additionalProperties": true
+    },
+    {
+      "if": {
+        "properties": {
+          "outcomes": {
+            "contains": {
+              "const": "proposal_for_canon"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "proposal_refs"
+        ],
+        "properties": {
+          "target_layers": {
+            "contains": {
+              "const": "canon"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcomes": {
+            "contains": {
+              "const": "diagnostic_only"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "diagnostic_refs"
+        ],
+        "properties": {
+          "target_layers": {
+            "contains": {
+              "const": "audits"
+            }
+          }
+        }
+      }
     }
   ]
 }

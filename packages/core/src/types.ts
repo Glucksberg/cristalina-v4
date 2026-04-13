@@ -78,6 +78,11 @@ export const RUNTIMES = [
   "generic",
 ] as const;
 
+export const SOURCE_INTAKE_KINDS = [
+  "conversation_preference",
+  "openclaw_projection_feedback",
+] as const;
+
 export const PROPOSAL_OPERATIONS = [
   "create",
   "revise",
@@ -103,8 +108,27 @@ export type Layer = typeof LAYERS[number];
 export type AuthoritativeHome = typeof AUTHORITATIVE_HOMES[number];
 export type ActorKind = typeof ACTOR_KINDS[number];
 export type RuntimeKind = typeof RUNTIMES[number];
+export type SourceIntakeKind = typeof SOURCE_INTAKE_KINDS[number];
 export type ProposalOperation = typeof PROPOSAL_OPERATIONS[number];
 export type DispositionOutcome = typeof DISPOSITION_OUTCOMES[number];
+export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
+
+export const DISPOSITION_OUTCOME_TARGET_LAYER: Record<DispositionOutcome, DispositionTargetLayer> = {
+  evidence_only: "governance",
+  runtime_only: "runtime",
+  world_update: "world",
+  wiki_update: "wiki",
+  proposal_for_canon: "canon",
+  queued_review: "governance",
+  diagnostic_only: "audits",
+};
+
+export const DISPOSITION_OUTCOME_REF_REQUIREMENTS: Partial<
+  Record<DispositionOutcome, "proposal_refs" | "diagnostic_refs">
+> = {
+  proposal_for_canon: "proposal_refs",
+  diagnostic_only: "diagnostic_refs",
+};
 
 export interface Reference {
   id: string;
@@ -391,7 +415,7 @@ export interface DispositionRecord extends RecordEnvelope {
   authoritative_home: "governance";
   input_refs: string[];
   outcomes: DispositionOutcome[];
-  target_layers: Array<Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">>;
+  target_layers: DispositionTargetLayer[];
   proposal_refs?: string[];
   diagnostic_refs?: string[];
   reason_codes: string[];

@@ -107,6 +107,17 @@ Projection packages should carry enough metadata to answer:
 
 Without this, cross-runtime continuity turns vague fast.
 
+### Executable baseline
+
+The current core baseline now materializes:
+
+- `ActorIdentity`
+- `RuntimeInstance`
+- `RuntimeSession`
+- `ConversationThread`
+
+inside the preference intake flow and reuses those refs inside projection manifests and OpenClaw bootstrap rendering.
+
 ---
 
 ## 7. Adapter Rule

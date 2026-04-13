@@ -12,6 +12,8 @@ import type {
 } from "./types.js";
 import {
   ACTOR_KINDS,
+  DISPOSITION_OUTCOME_REF_REQUIREMENTS,
+  DISPOSITION_OUTCOME_TARGET_LAYER,
   DISPOSITION_OUTCOMES,
   EPISTEMIC_STATES,
   GOVERNANCE_STATES,
@@ -22,6 +24,13 @@ import {
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
 } from "./types.js";
+import {
+  DISPOSITION_RECORD_SCHEMA_ID,
+  MEMORY_OBJECT_SCHEMA_ID,
+  RUNTIME_IDENTITY_SCHEMA_ID,
+  STORE_MANIFEST_SCHEMA_ID,
+  validateAgainstSchema,
+} from "./schema-runtime.js";
 import type { StoreManifest } from "./store/manifest.js";
 
 const AUTHORITATIVE_HOMES = [
@@ -63,6 +72,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function hasUniqueEntries(value: string[]): boolean {
+  return new Set(value).size === value.length;
 }
 
 function isEnumValue<T extends string>(value: unknown, allowed: readonly T[]): value is T {
@@ -226,6 +239,17 @@ function validateObservation(value: unknown): ValidationIssue[] {
   if (value.authoritative_home !== "runtime") issues.push({ path: "authoritative_home", message: 'expected "runtime"' });
   pushRequiredString(issues, value, "summary");
   pushEnum(issues, value, "epistemic_state", EPISTEMIC_STATES);
+  if (value.runtime_session_ref !== undefined && value.runtime_session_ref !== null && typeof value.runtime_instance_ref !== "string") {
+    issues.push({ path: "runtime_instance_ref", message: "runtime_session_ref requires runtime_instance_ref" });
+  }
+  if (value.conversation_thread_ref !== undefined && value.conversation_thread_ref !== null) {
+    if (typeof value.runtime_instance_ref !== "string") {
+      issues.push({ path: "runtime_instance_ref", message: "conversation_thread_ref requires runtime_instance_ref" });
+    }
+    if (typeof value.runtime_session_ref !== "string") {
+      issues.push({ path: "runtime_session_ref", message: "conversation_thread_ref requires runtime_session_ref" });
+    }
+  }
   return issues;
 }
 
@@ -372,23 +396,15 @@ function validateWorldClaim(value: unknown): ValidationIssue[] {
   if (!isStringArray(value.support_refs)) {
     issues.push({ path: "support_refs", message: "expected string array" });
   }
+  if (value.governance_state !== undefined) {
+    issues.push({ path: "governance_state", message: "world claims cannot carry canonical governance state" });
+  }
   return issues;
 }
 
 function validateCanonicalMemoryObject(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, MEMORY_OBJECT_SCHEMA_ID);
   if (!isRecord(value)) return issues;
-  if (value.layer !== "canon") issues.push({ path: "layer", message: 'expected "canon"' });
-  if (value.authoritative_home !== "canon") issues.push({ path: "authoritative_home", message: 'expected "canon"' });
-  if (!isEnumValue(value.kind, MEMORY_OBJECT_KINDS.filter((kind) => !["entity", "relation", "episode"].includes(kind)))) {
-    issues.push({ path: "kind", message: "expected canonical memory kind" });
-  }
-  pushRequiredString(issues, value, "statement");
-  pushEnum(issues, value, "epistemic_state", EPISTEMIC_STATES);
-  pushEnum(issues, value, "governance_state", CANONICAL_MEMORY_GOVERNANCE_STATES);
-  if (!isRecord(value.temporal_state)) {
-    issues.push({ path: "temporal_state", message: "expected object" });
-  }
   if (
     value.governance_state === "superseded" &&
     isRecord(value.temporal_state)
@@ -477,6 +493,9 @@ function validateContradiction(value: unknown): ValidationIssue[] {
   if (!isEnumValue(value.status, ["open", "resolved", "dismissed"] as const)) {
     issues.push({ path: "status", message: 'expected one of: open, resolved, dismissed' });
   }
+  if (isRecord(value.left_ref) && isRecord(value.right_ref) && value.left_ref.id === value.right_ref.id) {
+    issues.push({ path: "right_ref.id", message: "contradiction sides must point to different records" });
+  }
   return issues;
 }
 
@@ -522,6 +541,12 @@ function validateWikiPage(value: unknown): ValidationIssue[] {
   pushStringArray(issues, value, "source_refs");
   pushStringArray(issues, value, "canonical_refs");
   pushStringArray(issues, value, "world_refs");
+  if (value.governance_state !== undefined) {
+    issues.push({ path: "governance_state", message: "wiki pages cannot carry canonical governance state" });
+  }
+  if (value.epistemic_state !== undefined) {
+    issues.push({ path: "epistemic_state", message: "wiki pages cannot act as epistemic truth objects" });
+  }
   return issues;
 }
 
@@ -537,6 +562,15 @@ function validateWikiClaim(value: unknown): ValidationIssue[] {
     issues.push({ path: "claim_status", message: "expected legal wiki claim status" });
   }
   pushStringArray(issues, value, "source_refs");
+  if (value.governance_state !== undefined) {
+    issues.push({ path: "governance_state", message: "wiki claims cannot carry canonical governance state" });
+  }
+  if (value.epistemic_state !== undefined) {
+    issues.push({ path: "epistemic_state", message: "wiki claims cannot act as epistemic truth objects" });
+  }
+  if (value.temporal_state !== undefined) {
+    issues.push({ path: "temporal_state", message: "wiki claims should reference world/canon temporality instead of defining it" });
+  }
   return issues;
 }
 
@@ -599,32 +633,52 @@ function validateDiagnostic(value: unknown): ValidationIssue[] {
 }
 
 function validateDispositionRecordInternal(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, DISPOSITION_RECORD_SCHEMA_ID);
   if (!isRecord(value)) return issues;
-  if (value.kind !== "disposition_record") issues.push({ path: "kind", message: 'expected "disposition_record"' });
-  if (value.layer !== "governance") issues.push({ path: "layer", message: 'expected "governance"' });
-  if (value.authoritative_home !== "governance") issues.push({ path: "authoritative_home", message: 'expected "governance"' });
-  if (!isStringArray(value.input_refs) || value.input_refs.length === 0) {
-    issues.push({ path: "input_refs", message: "expected non-empty string array" });
+  if (!isStringArray(value.input_refs) || !hasUniqueEntries(value.input_refs)) {
+    issues.push({ path: "input_refs", message: "expected unique string array" });
   }
-  if (!Array.isArray(value.outcomes) || value.outcomes.length === 0 || !value.outcomes.every((entry) => isEnumValue(entry, DISPOSITION_OUTCOMES))) {
-    issues.push({ path: "outcomes", message: `expected non-empty array of: ${DISPOSITION_OUTCOMES.join(", ")}` });
+  if (Array.isArray(value.outcomes) && !hasUniqueEntries(value.outcomes.filter((entry): entry is string => typeof entry === "string"))) {
+    issues.push({ path: "outcomes", message: "expected unique outcomes" });
   }
-  if (
-    !Array.isArray(value.target_layers) ||
-    value.target_layers.length === 0 ||
-    !value.target_layers.every((entry) => isEnumValue(entry, ["runtime", "world", "wiki", "governance", "canon", "audits"] as const))
-  ) {
-    issues.push({ path: "target_layers", message: "expected non-empty array of legal target layers" });
+  if (Array.isArray(value.target_layers) && !hasUniqueEntries(value.target_layers.filter((entry): entry is string => typeof entry === "string"))) {
+    issues.push({ path: "target_layers", message: "expected unique target layers" });
   }
-  if (value.proposal_refs !== undefined && !isStringArray(value.proposal_refs)) {
-    issues.push({ path: "proposal_refs", message: "expected string array" });
+  if (isStringArray(value.reason_codes) && !hasUniqueEntries(value.reason_codes)) {
+    issues.push({ path: "reason_codes", message: "expected unique reason codes" });
   }
-  if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
-    issues.push({ path: "diagnostic_refs", message: "expected string array" });
+  if (isStringArray(value.outcomes) && isStringArray(value.target_layers)) {
+    for (const outcome of value.outcomes) {
+      if (!isEnumValue(outcome, DISPOSITION_OUTCOMES)) continue;
+
+      const requiredTarget = DISPOSITION_OUTCOME_TARGET_LAYER[outcome];
+      if (!value.target_layers.includes(requiredTarget)) {
+        issues.push({
+          path: "target_layers",
+          message: `${outcome} requires target layer ${requiredTarget}`,
+        });
+      }
+
+      const requiredRefField = DISPOSITION_OUTCOME_REF_REQUIREMENTS[outcome];
+      if (requiredRefField) {
+        const refs = value[requiredRefField];
+        if (!isStringArray(refs) || refs.length === 0) {
+          issues.push({
+            path: requiredRefField,
+            message: `${outcome} requires ${requiredRefField}`,
+          });
+        }
+      }
+    }
   }
-  if (!isStringArray(value.reason_codes) || value.reason_codes.length === 0) {
-    issues.push({ path: "reason_codes", message: "expected non-empty string array" });
+
+  const outcomeValues = isStringArray(value.outcomes) ? value.outcomes : undefined;
+
+  if (value.proposal_refs !== undefined && isStringArray(value.proposal_refs) && !outcomeValues?.includes("proposal_for_canon")) {
+    issues.push({ path: "proposal_refs", message: "proposal_refs require proposal_for_canon outcome" });
+  }
+  if (value.diagnostic_refs !== undefined && isStringArray(value.diagnostic_refs) && !outcomeValues?.includes("diagnostic_only")) {
+    issues.push({ path: "diagnostic_refs", message: "diagnostic_refs require diagnostic_only outcome" });
   }
   return issues;
 }
@@ -636,39 +690,7 @@ function validateGenericRecord(value: unknown): ValidationIssue[] {
 }
 
 export function validateStoreManifest(value: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (!isRecord(value)) {
-    return [{ path: "$", message: "expected object" }];
-  }
-
-  if (value.format !== "cristalina-v4-store") {
-    issues.push({ path: "format", message: 'expected "cristalina-v4-store"' });
-  }
-  if (value.version !== 1) {
-    issues.push({ path: "version", message: "expected 1" });
-  }
-  if (value.layout_version !== 1) {
-    issues.push({ path: "layout_version", message: "expected 1" });
-  }
-  pushRequiredString(issues, value, "store_id");
-  if (!isIsoTimestamp(value.created_at)) {
-    issues.push({ path: "created_at", message: "expected ISO-like timestamp" });
-  }
-  if (!isIsoTimestamp(value.updated_at)) {
-    issues.push({ path: "updated_at", message: "expected ISO-like timestamp" });
-  }
-
-  if (!isRecord(value.roots)) {
-    issues.push({ path: "roots", message: "expected object" });
-  } else {
-    for (const layer of LAYERS) {
-      if (value.roots[layer] !== layer) {
-        issues.push({ path: `roots.${layer}`, message: `expected "${layer}"` });
-      }
-    }
-  }
-
-  return issues;
+  return validateAgainstSchema(value, STORE_MANIFEST_SCHEMA_ID);
 }
 
 export function assertStoreManifest(value: unknown): asserts value is StoreManifest {
@@ -681,22 +703,7 @@ export function assertStoreManifest(value: unknown): asserts value is StoreManif
 export function validateRuntimeIdentityRecord(
   value: unknown,
 ): ValidationIssue[] {
-  if (!isRecord(value) || typeof value.kind !== "string") {
-    return validateEnvelope(value);
-  }
-
-  switch (value.kind) {
-    case "actor_identity":
-      return validateActorIdentity(value);
-    case "runtime_instance":
-      return validateRuntimeInstance(value);
-    case "runtime_session":
-      return validateRuntimeSession(value);
-    case "conversation_thread":
-      return validateConversationThread(value);
-    default:
-      return [{ path: "kind", message: "expected a runtime identity kind" }];
-  }
+  return validateAgainstSchema(value, RUNTIME_IDENTITY_SCHEMA_ID);
 }
 
 export function assertRuntimeIdentityRecord(

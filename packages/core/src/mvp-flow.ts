@@ -53,6 +53,10 @@ export function buildConversationPreferenceFlow(input: ConversationPreferenceInp
     statement: input.statement,
     ids: {
       observation: "obs-mvp-001",
+      episode: "ep-mvp-001",
+      subject_entity: "ent-subject-mvp-001",
+      preference_entity: "ent-preference-mvp-001",
+      preference_relation: "rel-preference-mvp-001",
       world_claim: "wcl-mvp-001",
       wiki_page: "wpg-mvp-001",
       wiki_claim: "wclm-mvp-001",

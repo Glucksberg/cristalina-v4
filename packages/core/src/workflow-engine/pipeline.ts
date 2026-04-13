@@ -2,20 +2,31 @@ import { applyApprovedCanonicalProposal } from "../canon/engine.js";
 import { evaluateCanonicalProposal, type GovernanceEvaluationResult } from "../governance/engine.js";
 import { compileOpenClawBootstrapProjection } from "../projection-engine/openclaw.js";
 import type {
+  ActorIdentity,
   CanonicalMemoryObject,
+  Contradiction,
   Diagnostic,
   DispositionRecord,
+  Entity,
+  Episode,
   Observation,
   ProjectionArtifact,
   ProjectionManifest,
   Proposal,
+  Relation,
+  RuntimeInstance,
+  RuntimeKind,
+  RuntimeSession,
+  SourceIntakeKind,
   RatificationRecord,
   SourceRecord,
   VisibilityState,
+  ConversationThread,
   WikiClaim,
   WikiPage,
   WorldClaim,
 } from "../types.js";
+import { DISPOSITION_OUTCOME_TARGET_LAYER } from "../types.js";
 
 export interface ConversationPreferenceIntakeIds {
   observation: string;
@@ -24,18 +35,52 @@ export interface ConversationPreferenceIntakeIds {
   wiki_claim: string;
   proposal: string;
   disposition: string;
+  episode: string;
+  subject_entity: string;
+  preference_entity: string;
+  preference_relation: string;
+}
+
+export interface ConversationPreferenceRuntimeIdentityIds {
+  agent_identity: string;
+  owner_identity?: string;
+  runtime_instance: string;
+  runtime_session: string;
+  conversation_thread: string;
+}
+
+export interface ConversationPreferenceRuntimeIdentityContext {
+  runtime: RuntimeKind;
+  ids: ConversationPreferenceRuntimeIdentityIds;
+  agent_label: string;
+  owner_label?: string;
+  session_objective?: string | null;
+  session_summary?: string | null;
+  message_refs: string[];
+  thread_summary?: string | null;
 }
 
 export interface ConversationPreferenceIntakeInput {
   now: string;
   source_record: SourceRecord;
   statement: string;
+  intake_kind?: SourceIntakeKind;
   ids: ConversationPreferenceIntakeIds;
+  identity_context?: ConversationPreferenceRuntimeIdentityContext;
   disposition_strategy?: ConversationPreferenceDispositionStrategy;
 }
 
 export interface ConversationPreferenceIntakeArtifacts {
   observation: Observation;
+  agent_identity?: ActorIdentity;
+  owner_identity?: ActorIdentity;
+  runtime_instance?: RuntimeInstance;
+  runtime_session?: RuntimeSession;
+  conversation_thread?: ConversationThread;
+  episode: Episode;
+  subject_entity: Entity;
+  preference_entity: Entity;
+  preference_relation: Relation;
   world_claim: WorldClaim;
   wiki_page: WikiPage;
   wiki_claim: WikiClaim;
@@ -74,10 +119,155 @@ function defaultConversationPreferenceReasonCodes(strategy: ConversationPreferen
   return codes;
 }
 
+function buildRuntimeIdentityArtifacts(
+  input: Pick<ConversationPreferenceIntakeInput, "now" | "source_record"> & {
+    identity_context?: ConversationPreferenceRuntimeIdentityContext;
+  },
+): Pick<
+  ConversationPreferenceIntakeArtifacts,
+  "agent_identity" | "owner_identity" | "runtime_instance" | "runtime_session" | "conversation_thread"
+> {
+  const context = input.identity_context;
+  if (!context) {
+    return {};
+  }
+
+  const agent_identity: ActorIdentity = {
+    id: context.ids.agent_identity,
+    kind: "actor_identity",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      source_type: "runtime_identity",
+      source_ref: input.source_record.provenance.source_ref,
+    },
+    actor_kind: "agent",
+    label: context.agent_label,
+    status: "active",
+  };
+
+  const owner_identity = context.owner_label
+    ? ({
+        id: context.ids.owner_identity ?? `${context.ids.runtime_instance}.owner`,
+        kind: "actor_identity",
+        layer: "canon",
+        authoritative_home: "canon",
+        created_at: input.now,
+        updated_at: input.now,
+        visibility_state: {
+          privacy_scope: input.source_record.visibility_state.privacy_scope,
+        },
+        provenance: {
+          source_type: "runtime_identity",
+          source_ref: input.source_record.provenance.source_ref,
+        },
+        actor_kind: "owner",
+        label: context.owner_label,
+        status: "active",
+      } satisfies ActorIdentity)
+    : undefined;
+
+  const runtime_instance: RuntimeInstance = {
+    id: context.ids.runtime_instance,
+    kind: "runtime_instance",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      source_type: "runtime_identity",
+      source_ref: input.source_record.provenance.source_ref,
+      actor_ref: agent_identity.id,
+    },
+    runtime: context.runtime,
+    agent_identity_ref: agent_identity.id,
+    owner_identity_ref: owner_identity?.id ?? null,
+    status: "active",
+  };
+
+  const runtime_session: RuntimeSession = {
+    id: context.ids.runtime_session,
+    kind: "runtime_session",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      source_type: "runtime_identity",
+      source_ref: input.source_record.provenance.source_ref,
+      actor_ref: agent_identity.id,
+      runtime_ref: runtime_instance.id,
+    },
+    runtime_instance_ref: runtime_instance.id,
+    status: "active",
+    objective: context.session_objective ?? null,
+    summary: context.session_summary ?? null,
+  };
+
+  const conversation_thread: ConversationThread = {
+    id: context.ids.conversation_thread,
+    kind: "conversation_thread",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      source_type: "runtime_identity",
+      source_ref: input.source_record.provenance.source_ref,
+      actor_ref: agent_identity.id,
+      runtime_ref: runtime_instance.id,
+      session_ref: runtime_session.id,
+    },
+    runtime: context.runtime,
+    runtime_instance_ref: runtime_instance.id,
+    runtime_session_ref: runtime_session.id,
+    message_refs: context.message_refs,
+    summary: context.thread_summary ?? null,
+  };
+
+  return {
+    agent_identity,
+    owner_identity,
+    runtime_instance,
+    runtime_session,
+    conversation_thread,
+  };
+}
+
+function buildSharedProvenance(
+  input: Pick<ConversationPreferenceIntakeInput, "source_record" | "identity_context">,
+): SourceRecord["provenance"] {
+  return {
+    source_type: input.identity_context?.runtime === "openclaw" && input.source_record.provenance.source_type !== "conversation"
+      ? "openclaw_runtime_feedback"
+      : "conversation",
+    source_ref: input.source_record.provenance.source_ref,
+    actor_ref: input.identity_context?.ids.agent_identity,
+    runtime_ref: input.identity_context?.ids.runtime_instance,
+    session_ref: input.identity_context?.ids.runtime_session,
+    thread_ref: input.identity_context?.ids.conversation_thread,
+  };
+}
+
 export function buildConversationPreferenceDispositionRecord(input: {
   now: string;
   source_record: SourceRecord;
   observation_id: string;
+  episode_id?: string;
   disposition_id: string;
   proposal_id?: string;
   strategy?: ConversationPreferenceDispositionStrategy;
@@ -90,31 +280,20 @@ export function buildConversationPreferenceDispositionRecord(input: {
   const outcomes: DispositionRecord["outcomes"] = [];
   const target_layers: DispositionRecord["target_layers"] = [];
 
-  if (strategy.evidence_only) outcomes.push("evidence_only");
-  if (strategy.evidence_only) target_layers.push("governance");
-  if (strategy.runtime_only) {
-    outcomes.push("runtime_only");
-    target_layers.push("runtime");
-  }
-  if (strategy.world_update) {
-    outcomes.push("world_update");
-    target_layers.push("world");
-  }
-  if (strategy.wiki_update) {
-    outcomes.push("wiki_update");
-    target_layers.push("wiki");
-  }
-  if (strategy.proposal_for_canon) {
-    outcomes.push("proposal_for_canon");
-    target_layers.push("canon");
-  }
-  if (strategy.queued_review) {
-    outcomes.push("queued_review");
-    target_layers.push("governance");
-  }
-  if ((strategy.diagnostic_refs?.length ?? 0) > 0) {
-    outcomes.push("diagnostic_only");
-    target_layers.push("audits");
+  const flags: Array<[boolean | undefined, DispositionRecord["outcomes"][number]]> = [
+    [strategy.evidence_only, "evidence_only"],
+    [strategy.runtime_only, "runtime_only"],
+    [strategy.world_update, "world_update"],
+    [strategy.wiki_update, "wiki_update"],
+    [strategy.proposal_for_canon, "proposal_for_canon"],
+    [strategy.queued_review, "queued_review"],
+    [(strategy.diagnostic_refs?.length ?? 0) > 0, "diagnostic_only"],
+  ];
+
+  for (const [enabled, outcome] of flags) {
+    if (!enabled) continue;
+    outcomes.push(outcome);
+    target_layers.push(DISPOSITION_OUTCOME_TARGET_LAYER[outcome]);
   }
 
   if (outcomes.length === 0) {
@@ -136,25 +315,37 @@ export function buildConversationPreferenceDispositionRecord(input: {
       privacy_scope: input.source_record.visibility_state.privacy_scope,
     },
     provenance: {
-      source_type: "conversation",
+      source_type: input.source_record.provenance.source_type,
       source_ref: input.source_record.provenance.source_ref,
-      evidence_refs: [input.observation_id],
+      evidence_refs: [input.observation_id, ...(input.episode_id ? [input.episode_id] : [])],
+      actor_ref: input.source_record.provenance.actor_ref ?? null,
+      runtime_ref: input.source_record.provenance.runtime_ref ?? null,
+      session_ref: input.source_record.provenance.session_ref ?? null,
+      thread_ref: input.source_record.provenance.thread_ref ?? null,
     },
-    input_refs: [input.observation_id],
+    input_refs: [input.observation_id, ...(input.episode_id ? [input.episode_id] : [])],
     outcomes: [...new Set(outcomes)],
     target_layers: [...new Set(target_layers)],
-    proposal_refs: strategy.proposal_for_canon && input.proposal_id ? [input.proposal_id] : undefined,
-    diagnostic_refs: strategy.diagnostic_refs,
+    ...(strategy.proposal_for_canon && input.proposal_id ? { proposal_refs: [input.proposal_id] } : {}),
+    ...((strategy.diagnostic_refs?.length ?? 0) > 0 ? { diagnostic_refs: strategy.diagnostic_refs } : {}),
     reason_codes: strategy.reason_codes ?? defaultConversationPreferenceReasonCodes(strategy),
   };
 }
 
-export function buildConversationPreferenceIntake(input: ConversationPreferenceIntakeInput): ConversationPreferenceIntakeArtifacts {
-  const source_ref = input.source_record.provenance.source_ref;
-  const provenance = {
-    source_type: "conversation",
-    source_ref,
-  } as const;
+export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeInput): ConversationPreferenceIntakeArtifacts {
+  const intake_kind = input.intake_kind ?? "conversation_preference";
+  const runtimeIdentity = buildRuntimeIdentityArtifacts(input);
+  const provenance = buildSharedProvenance(input);
+  const evidencePrefix = [
+    runtimeIdentity.runtime_instance?.id,
+    runtimeIdentity.runtime_session?.id,
+    runtimeIdentity.conversation_thread?.id,
+  ].filter((value): value is string => typeof value === "string");
+
+  const observationSummary =
+    intake_kind === "openclaw_projection_feedback"
+      ? `OpenClaw runtime feedback: ${input.statement}`
+      : input.statement;
 
   const observation: Observation = {
     id: input.ids.observation,
@@ -167,8 +358,107 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
       privacy_scope: input.source_record.visibility_state.privacy_scope,
     },
     provenance,
-    summary: input.statement,
+    summary: observationSummary,
     epistemic_state: "observed",
+    runtime_instance_ref: runtimeIdentity.runtime_instance?.id ?? null,
+    runtime_session_ref: runtimeIdentity.runtime_session?.id ?? null,
+    conversation_thread_ref: runtimeIdentity.conversation_thread?.id ?? null,
+  };
+
+  const episode: Episode = {
+    id: input.ids.episode,
+    kind: "episode",
+    layer: "world",
+    authoritative_home: "world",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [...evidencePrefix, observation.id],
+    },
+    summary:
+      intake_kind === "openclaw_projection_feedback"
+        ? "Runtime feedback produced a bounded preference episode."
+        : "Conversation produced a bounded preference episode.",
+    observation_refs: [observation.id],
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: input.now,
+      valid_to: null,
+    },
+  };
+
+  const subject_entity: Entity = {
+    id: input.ids.subject_entity,
+    kind: "entity",
+    layer: "world",
+    authoritative_home: "world",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [...evidencePrefix, observation.id, episode.id],
+    },
+    entity_kind: input.identity_context?.owner_label ? "person" : "participant",
+    label: input.identity_context?.owner_label ?? "Conversation Participant",
+    status: "active",
+  };
+
+  const preference_entity: Entity = {
+    id: input.ids.preference_entity,
+    kind: "entity",
+    layer: "world",
+    authoritative_home: "world",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [...evidencePrefix, observation.id, episode.id],
+    },
+    entity_kind: "topic",
+    label: "User Interaction Preferences",
+    status: "active",
+  };
+
+  const preference_relation: Relation = {
+    id: input.ids.preference_relation,
+    kind: "relation",
+    layer: "world",
+    authoritative_home: "world",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      ...provenance,
+      evidence_refs: [...evidencePrefix, observation.id, episode.id],
+    },
+    subject_ref: {
+      id: subject_entity.id,
+      kind: subject_entity.kind,
+      layer: subject_entity.layer,
+    },
+    object_ref: {
+      id: preference_entity.id,
+      kind: preference_entity.kind,
+      layer: preference_entity.layer,
+    },
+    relation_type: "expressed_preference",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: input.now,
+      valid_to: null,
+    },
   };
 
   const world_claim: WorldClaim = {
@@ -183,7 +473,7 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
     },
     provenance: {
       ...provenance,
-      evidence_refs: [observation.id],
+      evidence_refs: [...evidencePrefix, observation.id, episode.id, preference_relation.id],
     },
     statement: input.statement,
     epistemic_state: "inferred",
@@ -192,8 +482,17 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
       valid_from: input.now,
       valid_to: null,
     },
-    support_refs: [observation.id],
+    support_refs: [observation.id, episode.id, preference_relation.id],
   };
+
+  const wikiTitle =
+    intake_kind === "openclaw_projection_feedback"
+      ? "Runtime Preference Feedback"
+      : "User Interaction Preferences";
+  const wikiPath =
+    intake_kind === "openclaw_projection_feedback"
+      ? "wiki/pages/runtime-preference-feedback.md"
+      : "wiki/pages/user-interaction-preferences.md";
 
   const wiki_page: WikiPage = {
     id: input.ids.wiki_page,
@@ -207,14 +506,14 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
     },
     provenance: {
       ...provenance,
-      evidence_refs: [observation.id, world_claim.id],
+      evidence_refs: [...evidencePrefix, observation.id, episode.id, world_claim.id],
     },
     page_kind: "entity",
-    title: "User Interaction Preferences",
-    path: "wiki/pages/user-interaction-preferences.md",
+    title: wikiTitle,
+    path: wikiPath,
     source_refs: [input.source_record.id],
     canonical_refs: [],
-    world_refs: [world_claim.id],
+    world_refs: [world_claim.id, episode.id, subject_entity.id, preference_entity.id, preference_relation.id],
   };
 
   const wiki_claim: WikiClaim = {
@@ -229,13 +528,18 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
     },
     provenance: {
       ...provenance,
-      evidence_refs: [observation.id, world_claim.id],
+      evidence_refs: [...evidencePrefix, observation.id, episode.id, world_claim.id],
     },
     statement: input.statement,
     page_ref: wiki_page.id,
     claim_status: "candidate_for_promotion",
     source_refs: [input.source_record.id],
   };
+
+  const proposalReason =
+    intake_kind === "openclaw_projection_feedback"
+      ? "OpenClaw runtime feedback indicates a user interaction preference that should become governed memory."
+      : "Conversation indicates a user interaction preference that should become governed memory.";
 
   const proposal: Proposal = {
     id: input.ids.proposal,
@@ -249,7 +553,7 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
     },
     provenance: {
       ...provenance,
-      evidence_refs: [observation.id, world_claim.id, wiki_claim.id],
+      evidence_refs: [...evidencePrefix, observation.id, episode.id, world_claim.id, wiki_claim.id],
     },
     operation: "create",
     candidate_kind: "preference",
@@ -264,30 +568,55 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
         valid_to: null,
       },
       epistemic_state: "confirmed",
-      support_refs: [observation.id, world_claim.id, wiki_claim.id],
+      support_refs: [observation.id, episode.id, world_claim.id, wiki_claim.id, preference_relation.id],
     },
-    reason: "Conversation indicates a user interaction preference that should become governed memory.",
-    evidence_refs: [observation.id],
+    reason: proposalReason,
+    evidence_refs: [observation.id, episode.id],
     governance_state: "proposed",
   };
 
   const disposition_record = buildConversationPreferenceDispositionRecord({
     now: input.now,
-    source_record: input.source_record,
+    source_record: {
+      ...input.source_record,
+      provenance,
+    },
     observation_id: observation.id,
+    episode_id: episode.id,
     disposition_id: input.ids.disposition,
     proposal_id: proposal.id,
     strategy: input.disposition_strategy,
   });
 
   return {
+    ...runtimeIdentity,
     observation,
+    episode,
+    subject_entity,
+    preference_entity,
+    preference_relation,
     world_claim,
     wiki_page,
     wiki_claim,
     proposal,
     disposition_record,
   };
+}
+
+export function buildConversationPreferenceIntake(input: ConversationPreferenceIntakeInput): ConversationPreferenceIntakeArtifacts {
+  return buildPreferenceSignalIntake({
+    ...input,
+    intake_kind: "conversation_preference",
+  });
+}
+
+export function buildOpenClawPreferenceFeedbackIntake(
+  input: Omit<ConversationPreferenceIntakeInput, "intake_kind">,
+): ConversationPreferenceIntakeArtifacts {
+  return buildPreferenceSignalIntake({
+    ...input,
+    intake_kind: "openclaw_projection_feedback",
+  });
 }
 
 export interface CanonicalProposalWorkflowInput {
@@ -321,6 +650,55 @@ export interface ConversationPreferenceSupersedeReconciliationResult {
   world_claim: WorldClaim;
   wiki_page: WikiPage;
   wiki_claim: WikiClaim;
+}
+
+export interface ContradictionDetectionInput {
+  now: string;
+  contradiction_id: string;
+  candidate_claim: WorldClaim;
+  existing_world_claims: WorldClaim[];
+}
+
+export function detectWorldClaimContradiction(
+  input: ContradictionDetectionInput,
+): Contradiction | undefined {
+  const conflictingClaim = input.existing_world_claims.find((record) => {
+    const isComparableKind = record.kind === input.candidate_claim.kind;
+    const isDifferentRecord = record.id !== input.candidate_claim.id;
+    const isActive = record.temporal_state?.temporal_status === "active";
+    const isDifferentStatement = record.statement !== input.candidate_claim.statement;
+    return isComparableKind && isDifferentRecord && isActive && isDifferentStatement;
+  });
+
+  if (!conflictingClaim) {
+    return undefined;
+  }
+
+  return {
+    id: input.contradiction_id,
+    kind: "contradiction",
+    layer: "world",
+    authoritative_home: "world",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: input.candidate_claim.visibility_state,
+    provenance: {
+      ...input.candidate_claim.provenance,
+      source_type: "contradiction_detection",
+      evidence_refs: [conflictingClaim.id, input.candidate_claim.id],
+    },
+    left_ref: {
+      id: conflictingClaim.id,
+      kind: conflictingClaim.kind,
+      layer: conflictingClaim.layer,
+    },
+    right_ref: {
+      id: input.candidate_claim.id,
+      kind: input.candidate_claim.kind,
+      layer: input.candidate_claim.layer,
+    },
+    status: "open",
+  };
 }
 
 function closeWorldClaimTemporalState(record: WorldClaim, now: string): WorldClaim["temporal_state"] {
@@ -438,9 +816,20 @@ export interface OpenClawBootstrapWorkflowInput {
   visibility_state: VisibilityState;
   canonical_records: CanonicalMemoryObject[];
   world_claims: WorldClaim[];
+  episodes?: Episode[];
+  entities?: Entity[];
+  relations?: Relation[];
+  contradictions?: Contradiction[];
   wiki_pages: WikiPage[];
   wiki_claims: WikiClaim[];
   diagnostics?: Diagnostic[];
+  runtime_identity?: {
+    actor_identity?: ActorIdentity;
+    owner_identity?: ActorIdentity;
+    runtime_instance?: RuntimeInstance;
+    runtime_session?: RuntimeSession;
+    conversation_thread?: ConversationThread;
+  };
   identity_context?: {
     actor_identity_ref?: string | null;
     runtime_instance_ref?: string | null;
@@ -468,9 +857,14 @@ export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflo
     projection_path: "derived/openclaw/bootstrap-memory.md",
     canonical_records: input.canonical_records,
     world_claims: input.world_claims,
+    episodes: input.episodes ?? [],
+    entities: input.entities ?? [],
+    relations: input.relations ?? [],
+    contradictions: input.contradictions ?? [],
     wiki_pages: input.wiki_pages,
     wiki_claims: input.wiki_claims,
     diagnostics: input.diagnostics,
+    runtime_identity: input.runtime_identity,
     identity_context: input.identity_context,
     ids: input.ids,
   });

@@ -71,6 +71,15 @@ Its job is to preserve:
 
 This should live under governance or audits, not inside one adapter.
 
+### Executable invariants
+
+The executable baseline should now enforce at least:
+
+- `proposal_for_canon` requires `proposal_refs`
+- `diagnostic_only` requires `diagnostic_refs`
+- each outcome must map to its legal target layer
+- disposition arrays should stay deduplicated so routing remains inspectable
+
 ---
 
 ## 5. Routing Matrix

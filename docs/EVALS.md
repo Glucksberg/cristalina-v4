@@ -55,6 +55,17 @@ Does the system actually accumulate useful knowledge over time, or just more art
 - Hermes projection fidelity
 - end-to-end MVP flow correctness
 
+### Current executable baseline
+
+The current core test harness now covers:
+
+- identity-aware preference intake
+- `Observation -> Episode -> WorldClaim`
+- derived `Entity` and `Relation`
+- contradiction object emission
+- disposition invariants
+- OpenClaw round-trip recompilation
+
 ---
 
 ## 4. Comparative Pressure
