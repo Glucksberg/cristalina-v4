@@ -1,5 +1,5 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import type { CanonicalMemoryObject, CoreRecord } from "../types.js";
@@ -73,8 +73,24 @@ function extensionlessRecordPath(record: CoreRecord): string {
   }
 }
 
+function resolveWithinRoot(rootDir: string, relativePath: string): string {
+  const rootPath = resolve(rootDir);
+  const targetPath = resolve(rootPath, relativePath);
+  const relativePathFromRoot = relative(rootPath, targetPath);
+
+  if (
+    relativePathFromRoot === "" ||
+    relativePathFromRoot.startsWith("..") ||
+    isAbsolute(relativePathFromRoot)
+  ) {
+    throw new Error(`Resolved path escapes store root: ${relativePath}`);
+  }
+
+  return targetPath;
+}
+
 function recordFilePath(rootDir: string, record: CoreRecord): string {
-  return join(rootDir, `${extensionlessRecordPath(record)}.json`);
+  return resolveWithinRoot(rootDir, `${extensionlessRecordPath(record)}.json`);
 }
 
 async function ensureParent(filePath: string): Promise<void> {
@@ -82,6 +98,14 @@ async function ensureParent(filePath: string): Promise<void> {
 }
 
 export async function initializeStore(rootDir: string, now = new Date().toISOString()): Promise<StoreManifest> {
+  const manifestPath = resolveWithinRoot(rootDir, STORAGE_LAYOUT.manifest);
+  const existingManifest = await access(manifestPath)
+    .then(async () => readManifest(rootDir))
+    .catch(() => undefined);
+  if (existingManifest) {
+    return existingManifest;
+  }
+
   const manifest = createStoreManifest({
     store_id: randomUUID(),
     now,
@@ -147,13 +171,13 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
 
 export async function writeManifest(rootDir: string, manifest: StoreManifest): Promise<void> {
   assertStoreManifest(manifest);
-  const filePath = join(rootDir, STORAGE_LAYOUT.manifest);
+  const filePath = resolveWithinRoot(rootDir, STORAGE_LAYOUT.manifest);
   await ensureParent(filePath);
   await writeFile(filePath, serializeStoreManifestYaml(manifest), "utf8");
 }
 
 export async function readManifest(rootDir: string): Promise<StoreManifest> {
-  const filePath = join(rootDir, STORAGE_LAYOUT.manifest);
+  const filePath = resolveWithinRoot(rootDir, STORAGE_LAYOUT.manifest);
   const source = await readFile(filePath, "utf8");
   const manifest = parseStoreManifestYaml(source);
   assertStoreManifest(manifest);
@@ -180,7 +204,7 @@ export function coreRecordPath(rootDir: string, record: CoreRecord): string {
 }
 
 async function collectJsonFiles(rootDir: string, relativeDir: string): Promise<string[]> {
-  const absoluteDir = join(rootDir, relativeDir);
+  const absoluteDir = resolveWithinRoot(rootDir, relativeDir);
   const entries = await readdir(absoluteDir, { withFileTypes: true }).catch(() => []);
   const nested = await Promise.all(
     entries.map(async (entry) => {

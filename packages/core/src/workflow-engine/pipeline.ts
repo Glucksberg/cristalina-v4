@@ -216,10 +216,37 @@ function mergeExistingCanonRecords(input: CanonicalProposalWorkflowInput): Canon
   return merged;
 }
 
+function resolveWorkflowExistingRecord(
+  input: CanonicalProposalWorkflowInput,
+  existingRecords: CanonicalMemoryObject[],
+): CanonicalMemoryObject | undefined {
+  const targetId =
+    input.proposal.target_ref && typeof input.proposal.target_ref.id === "string"
+      ? input.proposal.target_ref.id
+      : undefined;
+  const targetRecord = targetId
+    ? existingRecords.find((record) => record.id === targetId)
+    : undefined;
+
+  if (
+    input.existing_record &&
+    targetRecord &&
+    input.existing_record.id !== targetRecord.id
+  ) {
+    throw new Error(
+      `Workflow existing_record ${input.existing_record.id} does not match target_ref ${targetRecord.id}`,
+    );
+  }
+
+  return targetRecord ?? input.existing_record;
+}
+
 export function executeCanonicalProposalWorkflow(input: CanonicalProposalWorkflowInput): CanonicalProposalWorkflowResult {
+  const existingRecords = mergeExistingCanonRecords(input);
+  const resolvedExistingRecord = resolveWorkflowExistingRecord(input, existingRecords);
   const governance = evaluateCanonicalProposal({
     proposal: input.proposal,
-    existing_canon_records: mergeExistingCanonRecords(input),
+    existing_canon_records: existingRecords,
     now: input.now,
     actor: input.actor,
     ratification_id: input.ratification_id,
@@ -236,7 +263,7 @@ export function executeCanonicalProposalWorkflow(input: CanonicalProposalWorkflo
   const applyResult = applyApprovedCanonicalProposal({
     proposal: input.proposal,
     ratification_record: governance.ratification_record,
-    existing_record: input.existing_record,
+    existing_record: resolvedExistingRecord,
     canonical_id: input.canonical_id,
     now: input.now,
   });

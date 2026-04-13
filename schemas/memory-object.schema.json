@@ -51,12 +51,9 @@
         "governance_state": {
           "type": "string",
           "enum": [
-            "draft",
-            "proposed",
             "ratified",
             "superseded",
-            "archived",
-            "rejected"
+            "archived"
           ]
         }
       },

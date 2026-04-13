@@ -50,6 +50,13 @@ export class ValidationError extends Error {
   }
 }
 
+const SAFE_RECORD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const CANONICAL_MEMORY_GOVERNANCE_STATES = [
+  "ratified",
+  "superseded",
+  "archived",
+] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -73,6 +80,20 @@ function isBoolean(value: unknown): value is boolean {
 function pushRequiredString(issues: ValidationIssue[], record: Record<string, unknown>, key: string, path = key): void {
   if (typeof record[key] !== "string" || record[key] === "") {
     issues.push({ path, message: "expected non-empty string" });
+  }
+}
+
+function pushSafeRecordId(issues: ValidationIssue[], value: unknown, path: string): void {
+  if (typeof value !== "string" || value === "") {
+    issues.push({ path, message: "expected non-empty string" });
+    return;
+  }
+
+  if (!SAFE_RECORD_ID_PATTERN.test(value)) {
+    issues.push({
+      path,
+      message: "expected safe record id using only letters, numbers, dot, underscore, and dash",
+    });
   }
 }
 
@@ -100,7 +121,7 @@ function pushReference(issues: ValidationIssue[], value: unknown, path: string):
     return;
   }
 
-  pushRequiredString(issues, value, "id", `${path}.id`);
+  pushSafeRecordId(issues, value.id, `${path}.id`);
 
   if (value.kind !== undefined && typeof value.kind !== "string") {
     issues.push({ path: `${path}.kind`, message: "expected string" });
@@ -117,7 +138,7 @@ function validateEnvelope(value: unknown): ValidationIssue[] {
     return [{ path: "$", message: "expected object" }];
   }
 
-  pushRequiredString(issues, value, "id");
+  pushSafeRecordId(issues, value.id, "id");
   pushRequiredString(issues, value, "kind");
   pushEnum(issues, value, "layer", LAYERS);
   pushEnum(issues, value, "authoritative_home", AUTHORITATIVE_HOMES);
@@ -364,7 +385,7 @@ function validateCanonicalMemoryObject(value: unknown): ValidationIssue[] {
   }
   pushRequiredString(issues, value, "statement");
   pushEnum(issues, value, "epistemic_state", EPISTEMIC_STATES);
-  pushEnum(issues, value, "governance_state", GOVERNANCE_STATES);
+  pushEnum(issues, value, "governance_state", CANONICAL_MEMORY_GOVERNANCE_STATES);
   if (!isRecord(value.temporal_state)) {
     issues.push({ path: "temporal_state", message: "expected object" });
   }
