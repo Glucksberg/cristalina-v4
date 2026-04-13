@@ -61,6 +61,8 @@ Rules:
 - prefer lessons about contracts, layer boundaries, legality of transitions, validation depth, and sequencing
 - if a new sentence duplicates or supersedes an old one, rewrite or replace instead of growing noise
 - keep the list readable and high-signal
+- after any commit in this repository, the agent should explicitly remind the user to review whether the current session produced a new session phrase or a rewrite of an existing one
+- session phrases must be curated by the user; the agent may suggest candidates, but should not add, rewrite, or finalize a session phrase without explicit user approval
 
 Current session phrases:
 
