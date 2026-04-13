@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildConversationPreferenceDispositionRecord,
   buildConversationPreferenceIntake,
   executeCanonicalProposalWorkflow,
   executeOpenClawBootstrapWorkflow,
@@ -74,6 +75,44 @@ test("proposal validation rejects operations outside the executable baseline", (
   });
 
   assert.ok(issues.some((issue) => issue.path === "operation"));
+});
+
+test("conversation preference disposition can route to non-canonical outcomes", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const disposition = buildConversationPreferenceDispositionRecord({
+    now,
+    source_record: {
+      id: "src_test_disp_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session-test#turn-disp-001",
+      },
+      content_ref: "raw/sources/turn-disp-001.json",
+    },
+    observation_id: "obs_test_disp_001",
+    disposition_id: "disp_test_001",
+    strategy: {
+      runtime_only: true,
+      queued_review: true,
+      diagnostic_refs: ["diag_test_disp_001"],
+      world_update: false,
+      wiki_update: false,
+      proposal_for_canon: false,
+    },
+  });
+
+  assert.deepEqual(disposition.outcomes, ["runtime_only", "queued_review", "diagnostic_only"]);
+  assert.deepEqual(disposition.target_layers, ["runtime", "governance", "audits"]);
+  assert.equal(disposition.proposal_refs, undefined);
+  assert.deepEqual(disposition.diagnostic_refs, ["diag_test_disp_001"]);
 });
 
 test("canonical workflow rejects mismatched target_ref and existing_record", () => {
@@ -244,6 +283,31 @@ test("openclaw projection preserves visibility and renders reconciled statuses",
     world_claims: [reconciled.world_claim],
     wiki_pages: [reconciled.wiki_page],
     wiki_claims: [reconciled.wiki_claim],
+    diagnostics: [
+      {
+        id: "diag_test_004",
+        kind: "diagnostic",
+        layer: "audits",
+        authoritative_home: "governance",
+        created_at: now,
+        updated_at: now,
+        visibility_state,
+        provenance: {
+          source_type: "governance",
+          source_ref: "diag/test/004",
+        },
+        code: "projection_context_notice",
+        severity: "warning",
+        message: "Projection compiled without active canon.",
+        related_refs: [reconciled.world_claim.id],
+      },
+    ],
+    identity_context: {
+      actor_identity_ref: "actor_test_004",
+      runtime_instance_ref: "runtime_test_004",
+      runtime_session_ref: "session_test_004",
+      conversation_thread_ref: "thread_test_004",
+    },
     ids: {
       canon_artifact: "part_openclaw_canon_test_004",
       world_artifact: "part_openclaw_world_test_004",
@@ -253,6 +317,12 @@ test("openclaw projection preserves visibility and renders reconciled statuses",
   });
 
   assert.equal(projection.manifest.visibility_state.privacy_scope, "shareable");
+  assert.equal(projection.manifest.actor_identity_ref, "actor_test_004");
+  assert.equal(projection.manifest.runtime_instance_ref, "runtime_test_004");
+  assert.equal(projection.manifest.runtime_session_ref, "session_test_004");
+  assert.equal(projection.manifest.conversation_thread_ref, "thread_test_004");
+  assert.deepEqual(projection.manifest.diagnostic_refs, ["diag_test_004"]);
   assert.match(projection.markdown, /\(disputed; historical\)/);
   assert.match(projection.markdown, /\(editorial\)/);
+  assert.match(projection.markdown, /\[diag:diag_test_004\]/);
 });

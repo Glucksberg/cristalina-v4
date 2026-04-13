@@ -567,6 +567,15 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   }
   pushRequiredString(issues, value, "projection_profile");
   pushRequiredString(issues, value, "audience");
+  for (const optionalKey of ["actor_identity_ref", "runtime_instance_ref", "runtime_session_ref", "conversation_thread_ref"] as const) {
+    const optionalValue = value[optionalKey];
+    if (optionalValue !== undefined && optionalValue !== null && typeof optionalValue !== "string") {
+      issues.push({ path: optionalKey, message: "expected string or null" });
+    }
+  }
+  if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
+    issues.push({ path: "diagnostic_refs", message: "expected string array" });
+  }
   if (!isStringArray(value.upstream_refs) || value.upstream_refs.length === 0) {
     issues.push({ path: "upstream_refs", message: "expected non-empty string array" });
   }

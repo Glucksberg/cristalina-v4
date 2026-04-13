@@ -366,6 +366,11 @@ export interface ProjectionManifest extends RecordEnvelope {
   adapter: Exclude<RuntimeKind, "generic">;
   projection_profile: string;
   audience: string;
+  actor_identity_ref?: string | null;
+  runtime_instance_ref?: string | null;
+  runtime_session_ref?: string | null;
+  conversation_thread_ref?: string | null;
+  diagnostic_refs?: string[];
   upstream_refs: string[];
   artifact_refs: string[];
 }

@@ -1,6 +1,7 @@
 import { createProjectionArtifact, createProjectionManifest } from "../adapter-sdk/projection.js";
 import type {
   CanonicalMemoryObject,
+  Diagnostic,
   ProjectionArtifact,
   ProjectionManifest,
   VisibilityState,
@@ -41,6 +42,11 @@ function renderWikiSection(pages: WikiPage[], claims: WikiClaim[]): string[] {
   return lines;
 }
 
+function renderDiagnosticsSection(records: Diagnostic[]): string[] {
+  if (records.length === 0) return ["- (none)"];
+  return records.map((record) => `- [diag:${record.id}] (${record.severity}) ${record.code}: ${record.message}`);
+}
+
 export interface OpenClawBootstrapCompilationInput {
   now: string;
   visibility_state: VisibilityState;
@@ -49,6 +55,13 @@ export interface OpenClawBootstrapCompilationInput {
   world_claims: WorldClaim[];
   wiki_pages: WikiPage[];
   wiki_claims: WikiClaim[];
+  diagnostics?: Diagnostic[];
+  identity_context?: {
+    actor_identity_ref?: string | null;
+    runtime_instance_ref?: string | null;
+    runtime_session_ref?: string | null;
+    conversation_thread_ref?: string | null;
+  };
   ids: {
     canon_artifact: string;
     world_artifact: string;
@@ -68,6 +81,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const world_refs = input.world_claims.map((record) => record.id);
   const wiki_page_refs = input.wiki_pages.map((record) => record.id);
   const wiki_claim_refs = input.wiki_claims.map((record) => record.id);
+  const diagnostic_refs = (input.diagnostics ?? []).map((record) => record.id);
 
   const artifacts: ProjectionArtifact[] = [
     createProjectionArtifact({
@@ -119,8 +133,11 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     "## Wiki",
     ...renderWikiSection(input.wiki_pages, input.wiki_claims),
     "",
+    "## Diagnostics",
+    ...renderDiagnosticsSection(input.diagnostics ?? []),
+    "",
     "## Provenance",
-    ...uniqueRefs(canon_refs, world_refs, wiki_page_refs, wiki_claim_refs).map((ref) => `- ${ref}`),
+    ...uniqueRefs(canon_refs, world_refs, wiki_page_refs, wiki_claim_refs, diagnostic_refs).map((ref) => `- ${ref}`),
     "",
   ].join("\n");
 
@@ -129,8 +146,13 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     adapter: "openclaw",
     projection_profile: "bootstrap",
     audience: "runtime",
+    actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
+    runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,
+    runtime_session_ref: input.identity_context?.runtime_session_ref ?? null,
+    conversation_thread_ref: input.identity_context?.conversation_thread_ref ?? null,
+    diagnostic_refs: diagnostic_refs.length > 0 ? diagnostic_refs : undefined,
     artifact_refs: artifacts.map((artifact) => artifact.id),
-    upstream_refs: uniqueRefs(canon_refs, world_refs, wiki_page_refs, wiki_claim_refs),
+    upstream_refs: uniqueRefs(canon_refs, world_refs, wiki_page_refs, wiki_claim_refs, diagnostic_refs),
     now: input.now,
     visibility_state: input.visibility_state,
   });

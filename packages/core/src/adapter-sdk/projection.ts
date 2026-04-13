@@ -44,6 +44,11 @@ export interface ProjectionManifestInput {
   adapter: Exclude<RuntimeKind, "generic">;
   projection_profile: string;
   audience: string;
+  actor_identity_ref?: string | null;
+  runtime_instance_ref?: string | null;
+  runtime_session_ref?: string | null;
+  conversation_thread_ref?: string | null;
+  diagnostic_refs?: string[];
   artifact_refs: string[];
   upstream_refs: string[];
   now: string;
@@ -67,6 +72,11 @@ export function createProjectionManifest(input: ProjectionManifestInput): Projec
     adapter: input.adapter,
     projection_profile: input.projection_profile,
     audience: input.audience,
+    actor_identity_ref: input.actor_identity_ref ?? null,
+    runtime_instance_ref: input.runtime_instance_ref ?? null,
+    runtime_session_ref: input.runtime_session_ref ?? null,
+    conversation_thread_ref: input.conversation_thread_ref ?? null,
+    diagnostic_refs: input.diagnostic_refs,
     upstream_refs: input.upstream_refs,
     artifact_refs: input.artifact_refs,
   };

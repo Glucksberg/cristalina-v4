@@ -3,6 +3,7 @@ import { evaluateCanonicalProposal, type GovernanceEvaluationResult } from "../g
 import { compileOpenClawBootstrapProjection } from "../projection-engine/openclaw.js";
 import type {
   CanonicalMemoryObject,
+  Diagnostic,
   DispositionRecord,
   Observation,
   ProjectionArtifact,
@@ -30,6 +31,7 @@ export interface ConversationPreferenceIntakeInput {
   source_record: SourceRecord;
   statement: string;
   ids: ConversationPreferenceIntakeIds;
+  disposition_strategy?: ConversationPreferenceDispositionStrategy;
 }
 
 export interface ConversationPreferenceIntakeArtifacts {
@@ -39,6 +41,112 @@ export interface ConversationPreferenceIntakeArtifacts {
   wiki_claim: WikiClaim;
   proposal: Proposal;
   disposition_record: DispositionRecord;
+}
+
+export interface ConversationPreferenceDispositionStrategy {
+  world_update?: boolean;
+  wiki_update?: boolean;
+  proposal_for_canon?: boolean;
+  runtime_only?: boolean;
+  evidence_only?: boolean;
+  queued_review?: boolean;
+  diagnostic_refs?: string[];
+  reason_codes?: string[];
+}
+
+const DEFAULT_CONVERSATION_PREFERENCE_DISPOSITION: Required<
+  Pick<ConversationPreferenceDispositionStrategy, "world_update" | "wiki_update" | "proposal_for_canon">
+> = {
+  world_update: true,
+  wiki_update: true,
+  proposal_for_canon: true,
+};
+
+function defaultConversationPreferenceReasonCodes(strategy: ConversationPreferenceDispositionStrategy): string[] {
+  const codes: string[] = [];
+  if (strategy.evidence_only) codes.push("evidence_retained");
+  if (strategy.runtime_only) codes.push("runtime_local_signal");
+  if (strategy.world_update) codes.push("preference_signal");
+  if (strategy.wiki_update) codes.push("editorial_update");
+  if (strategy.proposal_for_canon) codes.push("durable_candidate");
+  if (strategy.queued_review) codes.push("review_required");
+  if ((strategy.diagnostic_refs?.length ?? 0) > 0) codes.push("diagnostic_emitted");
+  return codes;
+}
+
+export function buildConversationPreferenceDispositionRecord(input: {
+  now: string;
+  source_record: SourceRecord;
+  observation_id: string;
+  disposition_id: string;
+  proposal_id?: string;
+  strategy?: ConversationPreferenceDispositionStrategy;
+}): DispositionRecord {
+  const strategy = {
+    ...DEFAULT_CONVERSATION_PREFERENCE_DISPOSITION,
+    ...input.strategy,
+  };
+
+  const outcomes: DispositionRecord["outcomes"] = [];
+  const target_layers: DispositionRecord["target_layers"] = [];
+
+  if (strategy.evidence_only) outcomes.push("evidence_only");
+  if (strategy.evidence_only) target_layers.push("governance");
+  if (strategy.runtime_only) {
+    outcomes.push("runtime_only");
+    target_layers.push("runtime");
+  }
+  if (strategy.world_update) {
+    outcomes.push("world_update");
+    target_layers.push("world");
+  }
+  if (strategy.wiki_update) {
+    outcomes.push("wiki_update");
+    target_layers.push("wiki");
+  }
+  if (strategy.proposal_for_canon) {
+    outcomes.push("proposal_for_canon");
+    target_layers.push("canon");
+  }
+  if (strategy.queued_review) {
+    outcomes.push("queued_review");
+    target_layers.push("governance");
+  }
+  if ((strategy.diagnostic_refs?.length ?? 0) > 0) {
+    outcomes.push("diagnostic_only");
+    target_layers.push("audits");
+  }
+
+  if (outcomes.length === 0) {
+    throw new Error("Conversation preference disposition must emit at least one outcome");
+  }
+
+  if (strategy.proposal_for_canon && !input.proposal_id) {
+    throw new Error("Conversation preference disposition requires proposal_id when proposal_for_canon is emitted");
+  }
+
+  return {
+    id: input.disposition_id,
+    kind: "disposition_record",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: {
+      privacy_scope: input.source_record.visibility_state.privacy_scope,
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: input.source_record.provenance.source_ref,
+      evidence_refs: [input.observation_id],
+    },
+    input_refs: [input.observation_id],
+    outcomes: [...new Set(outcomes)],
+    target_layers: [...new Set(target_layers)],
+    proposal_refs: strategy.proposal_for_canon && input.proposal_id ? [input.proposal_id] : undefined,
+    diagnostic_refs: strategy.diagnostic_refs,
+    reason_codes: strategy.reason_codes ?? defaultConversationPreferenceReasonCodes(strategy),
+  };
 }
 
 export function buildConversationPreferenceIntake(input: ConversationPreferenceIntakeInput): ConversationPreferenceIntakeArtifacts {
@@ -163,26 +271,14 @@ export function buildConversationPreferenceIntake(input: ConversationPreferenceI
     governance_state: "proposed",
   };
 
-  const disposition_record: DispositionRecord = {
-    id: input.ids.disposition,
-    kind: "disposition_record",
-    layer: "governance",
-    authoritative_home: "governance",
-    created_at: input.now,
-    updated_at: input.now,
-    visibility_state: {
-      privacy_scope: input.source_record.visibility_state.privacy_scope,
-    },
-    provenance: {
-      ...provenance,
-      evidence_refs: [observation.id],
-    },
-    input_refs: [observation.id],
-    outcomes: ["world_update", "wiki_update", "proposal_for_canon"],
-    target_layers: ["world", "wiki", "canon"],
-    proposal_refs: [proposal.id],
-    reason_codes: ["preference_signal", "editorial_update", "durable_candidate"],
-  };
+  const disposition_record = buildConversationPreferenceDispositionRecord({
+    now: input.now,
+    source_record: input.source_record,
+    observation_id: observation.id,
+    disposition_id: input.ids.disposition,
+    proposal_id: proposal.id,
+    strategy: input.disposition_strategy,
+  });
 
   return {
     observation,
@@ -344,6 +440,13 @@ export interface OpenClawBootstrapWorkflowInput {
   world_claims: WorldClaim[];
   wiki_pages: WikiPage[];
   wiki_claims: WikiClaim[];
+  diagnostics?: Diagnostic[];
+  identity_context?: {
+    actor_identity_ref?: string | null;
+    runtime_instance_ref?: string | null;
+    runtime_session_ref?: string | null;
+    conversation_thread_ref?: string | null;
+  };
   ids: {
     canon_artifact: string;
     world_artifact: string;
@@ -367,6 +470,8 @@ export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflo
     world_claims: input.world_claims,
     wiki_pages: input.wiki_pages,
     wiki_claims: input.wiki_claims,
+    diagnostics: input.diagnostics,
+    identity_context: input.identity_context,
     ids: input.ids,
   });
 }
