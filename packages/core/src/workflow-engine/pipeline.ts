@@ -690,6 +690,25 @@ export interface AcceptedContradictionResolutionApplicationResult extends Contra
   resolution: ContradictionResolution;
 }
 
+export function acceptContradictionResolution(input: {
+  now: string;
+  resolution: ContradictionResolution;
+}): ContradictionResolution {
+  if (input.resolution.status === "rejected") {
+    throw new Error("Rejected contradiction resolutions cannot be accepted");
+  }
+
+  if (input.resolution.status === "applied") {
+    throw new Error("Applied contradiction resolutions cannot be accepted again");
+  }
+
+  return {
+    ...input.resolution,
+    updated_at: input.now,
+    status: "accepted",
+  };
+}
+
 export function detectWorldClaimContradiction(
   input: ContradictionDetectionInput,
 ): Contradiction | undefined {
@@ -837,8 +856,8 @@ export function applyAcceptedContradictionResolution(input: {
   existing_claim: WorldClaim;
   candidate_claim: WorldClaim;
 }): AcceptedContradictionResolutionApplicationResult {
-  if (input.resolution.status === "rejected") {
-    throw new Error("Rejected contradiction resolutions cannot be applied");
+  if (input.resolution.status !== "accepted") {
+    throw new Error("Only accepted contradiction resolutions can be applied");
   }
 
   const resolution: ContradictionResolution = {

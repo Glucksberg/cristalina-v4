@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  acceptContradictionResolution,
   applyAcceptedContradictionResolution,
   applyContradictionResolution,
   buildOpenClawPreferenceFeedbackIntake,
@@ -583,6 +584,86 @@ test("contradiction handling can propose and apply a richer resolution path", ()
   assert.equal(applied.existing_claim.temporal_state?.temporal_status, "historical");
 });
 
+test("accepted contradiction resolution requires an explicit acceptance transition", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers.",
+    source_record: {
+      id: "src_resolution_acceptance_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session#turn-resolution-acceptance-001",
+      },
+      content_ref: "raw/sources/turn-resolution-acceptance-001.json",
+    },
+    ids: buildIds("resolution_acceptance_001"),
+  });
+
+  const existing = {
+    ...intake.world_claim,
+    id: "wcl_existing_resolution_acceptance_001",
+    statement: "The user prefers exhaustive answers.",
+    temporal_state: {
+      temporal_status: "active" as const,
+      valid_from: "2026-04-01T00:00:00.000Z",
+      valid_to: null,
+    },
+  };
+  const contradiction = detectWorldClaimContradiction({
+    now,
+    contradiction_id: "contra_resolution_acceptance_001",
+    candidate_claim: intake.world_claim,
+    existing_world_claims: [existing],
+  });
+
+  assert.ok(contradiction);
+
+  const resolution = proposeContradictionResolution({
+    now,
+    resolution_id: "cres_resolution_acceptance_001",
+    contradiction: contradiction!,
+    existing_claim: existing,
+    candidate_claim: intake.world_claim,
+  });
+
+  assert.throws(
+    () =>
+      applyAcceptedContradictionResolution({
+        now,
+        contradiction: contradiction!,
+        resolution,
+        existing_claim: existing,
+        candidate_claim: intake.world_claim,
+      }),
+    /Only accepted contradiction resolutions can be applied/,
+  );
+
+  const accepted = acceptContradictionResolution({
+    now,
+    resolution,
+  });
+
+  const applied = applyAcceptedContradictionResolution({
+    now,
+    contradiction: contradiction!,
+    resolution: accepted,
+    existing_claim: existing,
+    candidate_claim: intake.world_claim,
+  });
+
+  assert.equal(accepted.status, "accepted");
+  assert.equal(applied.resolution.status, "applied");
+});
+
 test("accepted contradiction resolution compiles into projection with explicit historical trace", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const intake = buildConversationPreferenceIntake({
@@ -637,7 +718,10 @@ test("accepted contradiction resolution compiles into projection with explicit h
   const applied = applyAcceptedContradictionResolution({
     now,
     contradiction: contradiction!,
-    resolution,
+    resolution: acceptContradictionResolution({
+      now,
+      resolution,
+    }),
     existing_claim: existing,
     candidate_claim: intake.world_claim,
   });

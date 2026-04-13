@@ -48,6 +48,7 @@ import type {
 } from "../types.js";
 import { validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
+  acceptContradictionResolution,
   applyAcceptedContradictionResolution,
   buildOpenClawPreferenceFeedbackIntake,
   buildConversationPreferenceIntake,
@@ -545,6 +546,7 @@ async function buildProjectionFromStoreState(
   input: ConversationPreferenceStoreInput,
   canonicalRecord: CanonicalMemoryObject,
   intake: ConversationPreferenceIntakeArtifacts,
+  now = input.now,
 ) {
   const [
     canonical_records,
@@ -574,7 +576,7 @@ async function buildProjectionFromStoreState(
     canonical_records.length > 0 ? canonical_records : [canonicalRecord];
 
   return executeOpenClawBootstrapWorkflow({
-    now: canonicalRecord.updated_at ?? canonicalRecord.created_at,
+    now,
     visibility_state: canonicalRecord.visibility_state,
     canonical_records: effectiveCanonicalRecords,
     world_claims,
@@ -1004,7 +1006,10 @@ export async function applyConversationPreferenceResolutionToStore(
   const applied = applyAcceptedContradictionResolution({
     now: input.now,
     contradiction: records.contradiction,
-    resolution: records.contradiction_resolution,
+    resolution: acceptContradictionResolution({
+      now: input.now,
+      resolution: records.contradiction_resolution,
+    }),
     existing_claim: existing_world_claim,
     candidate_claim: records.intake.world_claim,
   });
@@ -1017,7 +1022,7 @@ export async function applyConversationPreferenceResolutionToStore(
   const projection = await buildProjectionFromStoreState(rootDir, input, records.canonical_record, {
     ...records.intake,
     world_claim: applied.candidate_claim,
-  });
+  }, input.now);
 
   await writeFile(paths.projection_markdown, projection.markdown, "utf8");
   for (const artifact of projection.artifacts) {

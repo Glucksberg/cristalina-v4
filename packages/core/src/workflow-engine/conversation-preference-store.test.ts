@@ -258,6 +258,7 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   assert.equal(applied.records.existing_world_claim.temporal_state?.temporal_status, "historical");
 
   const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /Compiled at: 2026-04-12T01:05:00.000Z/);
   assert.match(projectionMarkdown, /\[contradiction:contra_test_apply_002\] \(resolved\)/);
   assert.match(projectionMarkdown, /\[contradiction-resolution:cres_test_apply_002\] \(applied\) coexist_temporally/);
   assert.match(projectionMarkdown, /\[world:wcl_test_001\] \(disputed; historical\)/);
@@ -265,6 +266,8 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
 
   const reloaded = await readConversationPreferenceFlowResult(secondInput);
   assert.equal(reloaded?.records.contradiction_resolution?.status, "applied");
+  const projectionManifestSource = await readFile(applied.paths.projection_manifest, "utf8");
+  assert.match(projectionManifestSource, /"created_at": "2026-04-12T01:05:00.000Z"/);
 
   const appliedAgain = await applyConversationPreferenceResolutionToStore({
     ...secondInput,

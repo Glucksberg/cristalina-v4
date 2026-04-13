@@ -5,6 +5,7 @@ import { runCoreIntegrityEvals } from "./evals.js";
 import type { CanonicalMemoryObject } from "./types.js";
 import { validateCoreRecord } from "./validation.js";
 import {
+  acceptContradictionResolution,
   applyAcceptedContradictionResolution,
   buildConversationPreferenceIntake,
   detectWorldClaimContradiction,
@@ -210,7 +211,10 @@ test("core integrity eval harness passes an applied contradiction-resolution flo
   const applied = applyAcceptedContradictionResolution({
     now,
     contradiction: contradiction!,
-    resolution: proposed_resolution,
+    resolution: acceptContradictionResolution({
+      now,
+      resolution: proposed_resolution,
+    }),
     existing_claim: existing_world_claim,
     candidate_claim: intake.world_claim,
   });
