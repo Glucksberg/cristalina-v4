@@ -1,0 +1,59 @@
+import type { SourceIntakeKind } from "../types.js";
+
+export interface PreferenceSignalSemanticProfile {
+  observation_prefix?: string;
+  episode_summary: string;
+  wiki_title: string;
+  wiki_path: string;
+  proposal_reason: string;
+  subject_entity_kind: string;
+  subject_label: string;
+  preference_topic_label: string;
+  relation_type: string;
+}
+
+const DEFAULT_PREFERENCE_SIGNAL_PROFILE: Record<SourceIntakeKind, Omit<PreferenceSignalSemanticProfile, "subject_label">> = {
+  conversation_preference: {
+    episode_summary: "Conversation produced a bounded preference episode.",
+    wiki_title: "User Interaction Preferences",
+    wiki_path: "wiki/pages/user-interaction-preferences.md",
+    proposal_reason: "Conversation indicates a user interaction preference that should become governed memory.",
+    subject_entity_kind: "participant",
+    preference_topic_label: "User Interaction Preferences",
+    relation_type: "expressed_preference",
+  },
+  openclaw_projection_feedback: {
+    observation_prefix: "OpenClaw runtime feedback: ",
+    episode_summary: "Runtime feedback produced a bounded preference episode.",
+    wiki_title: "Runtime Preference Feedback",
+    wiki_path: "wiki/pages/runtime-preference-feedback.md",
+    proposal_reason: "OpenClaw runtime feedback indicates a user interaction preference that should become governed memory.",
+    subject_entity_kind: "participant",
+    preference_topic_label: "User Interaction Preferences",
+    relation_type: "expressed_preference",
+  },
+  structured_preference_signal: {
+    observation_prefix: "Structured preference signal: ",
+    episode_summary: "Structured source produced a bounded preference episode.",
+    wiki_title: "Structured Preference Signals",
+    wiki_path: "wiki/pages/structured-preference-signals.md",
+    proposal_reason: "Structured evidence indicates a user interaction preference that should become governed memory.",
+    subject_entity_kind: "participant",
+    preference_topic_label: "Preference Signal",
+    relation_type: "expressed_preference",
+  },
+};
+
+export function resolvePreferenceSignalSemanticProfile(input: {
+  kind: SourceIntakeKind;
+  owner_label?: string | null;
+  overrides?: Partial<PreferenceSignalSemanticProfile>;
+}): PreferenceSignalSemanticProfile {
+  const defaults = DEFAULT_PREFERENCE_SIGNAL_PROFILE[input.kind];
+
+  return {
+    ...defaults,
+    subject_label: input.owner_label ?? "Conversation Participant",
+    ...input.overrides,
+  };
+}

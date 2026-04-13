@@ -62,6 +62,7 @@ flowchart TD
 Interpretation:
 
 - `source-intake` emits evidence and operational observations
+- `source-intake` should be profile-driven so new sources extend contracts instead of cloning workflow code
 - `runtime-self`, `world-engine`, and `wiki-engine` can all produce governance candidates
 - only `governance-engine` can authorize transitions into `canon-engine`
 - `projection-engine` assembles outputs for runtimes without turning runtimes into truth owners

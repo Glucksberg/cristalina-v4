@@ -1,6 +1,7 @@
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
+  ContradictionResolution,
   ConversationThread,
   CoreRecord,
   DispositionRecord,
@@ -15,6 +16,8 @@ import {
   DISPOSITION_OUTCOME_REF_REQUIREMENTS,
   DISPOSITION_OUTCOME_TARGET_LAYER,
   DISPOSITION_OUTCOMES,
+  CONTRADICTION_RESOLUTION_STATUSES,
+  CONTRADICTION_RESOLUTION_STRATEGIES,
   EPISTEMIC_STATES,
   GOVERNANCE_STATES,
   LAYERS,
@@ -499,6 +502,28 @@ function validateContradiction(value: unknown): ValidationIssue[] {
   return issues;
 }
 
+function validateContradictionResolution(value: unknown): ValidationIssue[] {
+  const issues = validateEnvelope(value);
+  if (!isRecord(value)) return issues;
+  if (value.kind !== "contradiction_resolution") issues.push({ path: "kind", message: 'expected "contradiction_resolution"' });
+  if (value.layer !== "governance") issues.push({ path: "layer", message: 'expected "governance"' });
+  if (value.authoritative_home !== "governance") issues.push({ path: "authoritative_home", message: 'expected "governance"' });
+  pushRequiredString(issues, value, "contradiction_ref");
+  pushEnum(issues, value, "strategy", CONTRADICTION_RESOLUTION_STRATEGIES);
+  pushEnum(issues, value, "status", CONTRADICTION_RESOLUTION_STATUSES);
+  if (value.winning_ref !== undefined && value.winning_ref !== null) {
+    pushReference(issues, value.winning_ref, "winning_ref");
+  }
+  if (value.losing_ref !== undefined && value.losing_ref !== null) {
+    pushReference(issues, value.losing_ref, "losing_ref");
+  }
+  pushRequiredString(issues, value, "rationale");
+  if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
+    issues.push({ path: "diagnostic_refs", message: "expected string array" });
+  }
+  return issues;
+}
+
 function validateOntologyDefinition(value: unknown): ValidationIssue[] {
   const issues = validateEnvelope(value);
   if (!isRecord(value)) return issues;
@@ -756,6 +781,8 @@ export function validateCoreRecord(value: unknown): ValidationIssue[] {
       return validateRatificationRecord(value);
     case "contradiction":
       return validateContradiction(value);
+    case "contradiction_resolution":
+      return validateContradictionResolution(value);
     case "ontology_definition":
       return validateOntologyDefinition(value);
     case "policy_snapshot":

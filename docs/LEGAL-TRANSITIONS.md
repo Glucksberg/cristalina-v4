@@ -140,6 +140,7 @@ Some later operations may target:
 - world-model updates
 - wiki maintenance follow-ups
 - contradiction records
+- contradiction resolution records
 
 ---
 

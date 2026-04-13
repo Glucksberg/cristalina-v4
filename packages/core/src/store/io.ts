@@ -6,6 +6,7 @@ import { MEMORY_OBJECT_KINDS } from "../types.js";
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
+  ContradictionResolution,
   Contradiction,
   CoreRecord,
   Diagnostic,
@@ -76,6 +77,8 @@ function extensionlessRecordPath(record: CoreRecord): string {
       return join(STORAGE_LAYOUT.governance.curation, record.id);
     case "ratification":
       return join(STORAGE_LAYOUT.governance.ratifications, record.id);
+    case "contradiction_resolution":
+      return join(STORAGE_LAYOUT.governance.contradictionResolutions, record.id);
     case "contradiction":
       return join(STORAGE_LAYOUT.world.contradictions, record.id);
     case "ontology_definition":
@@ -176,6 +179,7 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
     STORAGE_LAYOUT.governance.root,
     STORAGE_LAYOUT.governance.proposals,
     STORAGE_LAYOUT.governance.dispositions,
+    STORAGE_LAYOUT.governance.contradictionResolutions,
     STORAGE_LAYOUT.governance.curation,
     STORAGE_LAYOUT.governance.ratifications,
     STORAGE_LAYOUT.governance.policy,
@@ -288,6 +292,11 @@ export async function loadWorldRelations(rootDir: string): Promise<Relation[]> {
 export async function loadWorldContradictions(rootDir: string): Promise<Contradiction[]> {
   const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.world.contradictions);
   return records.filter((record): record is Contradiction => record.kind === "contradiction");
+}
+
+export async function loadContradictionResolutions(rootDir: string): Promise<ContradictionResolution[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.governance.contradictionResolutions);
+  return records.filter((record): record is ContradictionResolution => record.kind === "contradiction_resolution");
 }
 
 export async function loadWikiPages(rootDir: string): Promise<WikiPage[]> {

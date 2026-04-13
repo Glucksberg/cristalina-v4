@@ -40,6 +40,25 @@ To the core, through legal paths:
 
 Adapters may not write canonical truth directly.
 
+### Intake profile rule
+
+Adapters should write back through registered intake profiles rather than ad hoc workflow branches.
+
+That means the adapter supplies:
+
+- source payload
+- provenance
+- runtime identity context
+- profile-specific semantic overrides when needed
+
+But the core still owns:
+
+- observation formation
+- world structure emission
+- disposition routing
+- proposal semantics
+- contradiction surfacing
+
 ---
 
 ## 4. What May Differ Between Adapters

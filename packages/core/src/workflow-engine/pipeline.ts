@@ -1,10 +1,12 @@
 import { applyApprovedCanonicalProposal } from "../canon/engine.js";
 import { evaluateCanonicalProposal, type GovernanceEvaluationResult } from "../governance/engine.js";
 import { compileOpenClawBootstrapProjection } from "../projection-engine/openclaw.js";
+import { resolvePreferenceSignalSemanticProfile, type PreferenceSignalSemanticProfile } from "./source-intake.js";
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
   Contradiction,
+  ContradictionResolution,
   Diagnostic,
   DispositionRecord,
   Entity,
@@ -67,6 +69,7 @@ export interface ConversationPreferenceIntakeInput {
   intake_kind?: SourceIntakeKind;
   ids: ConversationPreferenceIntakeIds;
   identity_context?: ConversationPreferenceRuntimeIdentityContext;
+  semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
   disposition_strategy?: ConversationPreferenceDispositionStrategy;
 }
 
@@ -336,6 +339,11 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
   const intake_kind = input.intake_kind ?? "conversation_preference";
   const runtimeIdentity = buildRuntimeIdentityArtifacts(input);
   const provenance = buildSharedProvenance(input);
+  const semanticProfile = resolvePreferenceSignalSemanticProfile({
+    kind: intake_kind,
+    owner_label: input.identity_context?.owner_label,
+    overrides: input.semantic_profile,
+  });
   const evidencePrefix = [
     runtimeIdentity.runtime_instance?.id,
     runtimeIdentity.runtime_session?.id,
@@ -343,8 +351,8 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
   ].filter((value): value is string => typeof value === "string");
 
   const observationSummary =
-    intake_kind === "openclaw_projection_feedback"
-      ? `OpenClaw runtime feedback: ${input.statement}`
+    semanticProfile.observation_prefix
+      ? `${semanticProfile.observation_prefix}${input.statement}`
       : input.statement;
 
   const observation: Observation = {
@@ -379,10 +387,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       ...provenance,
       evidence_refs: [...evidencePrefix, observation.id],
     },
-    summary:
-      intake_kind === "openclaw_projection_feedback"
-        ? "Runtime feedback produced a bounded preference episode."
-        : "Conversation produced a bounded preference episode.",
+    summary: semanticProfile.episode_summary,
     observation_refs: [observation.id],
     temporal_state: {
       temporal_status: "active",
@@ -405,8 +410,8 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       ...provenance,
       evidence_refs: [...evidencePrefix, observation.id, episode.id],
     },
-    entity_kind: input.identity_context?.owner_label ? "person" : "participant",
-    label: input.identity_context?.owner_label ?? "Conversation Participant",
+    entity_kind: semanticProfile.subject_entity_kind,
+    label: semanticProfile.subject_label,
     status: "active",
   };
 
@@ -425,7 +430,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       evidence_refs: [...evidencePrefix, observation.id, episode.id],
     },
     entity_kind: "topic",
-    label: "User Interaction Preferences",
+    label: semanticProfile.preference_topic_label,
     status: "active",
   };
 
@@ -453,7 +458,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       kind: preference_entity.kind,
       layer: preference_entity.layer,
     },
-    relation_type: "expressed_preference",
+    relation_type: semanticProfile.relation_type,
     temporal_state: {
       temporal_status: "active",
       valid_from: input.now,
@@ -485,15 +490,6 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     support_refs: [observation.id, episode.id, preference_relation.id],
   };
 
-  const wikiTitle =
-    intake_kind === "openclaw_projection_feedback"
-      ? "Runtime Preference Feedback"
-      : "User Interaction Preferences";
-  const wikiPath =
-    intake_kind === "openclaw_projection_feedback"
-      ? "wiki/pages/runtime-preference-feedback.md"
-      : "wiki/pages/user-interaction-preferences.md";
-
   const wiki_page: WikiPage = {
     id: input.ids.wiki_page,
     kind: "wiki_page",
@@ -509,8 +505,8 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       evidence_refs: [...evidencePrefix, observation.id, episode.id, world_claim.id],
     },
     page_kind: "entity",
-    title: wikiTitle,
-    path: wikiPath,
+    title: semanticProfile.wiki_title,
+    path: semanticProfile.wiki_path,
     source_refs: [input.source_record.id],
     canonical_refs: [],
     world_refs: [world_claim.id, episode.id, subject_entity.id, preference_entity.id, preference_relation.id],
@@ -535,11 +531,6 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     claim_status: "candidate_for_promotion",
     source_refs: [input.source_record.id],
   };
-
-  const proposalReason =
-    intake_kind === "openclaw_projection_feedback"
-      ? "OpenClaw runtime feedback indicates a user interaction preference that should become governed memory."
-      : "Conversation indicates a user interaction preference that should become governed memory.";
 
   const proposal: Proposal = {
     id: input.ids.proposal,
@@ -570,7 +561,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       epistemic_state: "confirmed",
       support_refs: [observation.id, episode.id, world_claim.id, wiki_claim.id, preference_relation.id],
     },
-    reason: proposalReason,
+    reason: semanticProfile.proposal_reason,
     evidence_refs: [observation.id, episode.id],
     governance_state: "proposed",
   };
@@ -619,6 +610,15 @@ export function buildOpenClawPreferenceFeedbackIntake(
   });
 }
 
+export function buildStructuredPreferenceSignalIntake(
+  input: Omit<ConversationPreferenceIntakeInput, "intake_kind">,
+): ConversationPreferenceIntakeArtifacts {
+  return buildPreferenceSignalIntake({
+    ...input,
+    intake_kind: "structured_preference_signal",
+  });
+}
+
 export interface CanonicalProposalWorkflowInput {
   proposal: Proposal;
   existing_canon_records?: CanonicalMemoryObject[];
@@ -659,16 +659,37 @@ export interface ContradictionDetectionInput {
   existing_world_claims: WorldClaim[];
 }
 
+export function findConflictingWorldClaim(
+  candidate_claim: WorldClaim,
+  existing_world_claims: WorldClaim[],
+): WorldClaim | undefined {
+  return existing_world_claims.find((record) => {
+    const isComparableKind = record.kind === candidate_claim.kind;
+    const isDifferentRecord = record.id !== candidate_claim.id;
+    const isActive = record.temporal_state?.temporal_status === "active";
+    const isDifferentStatement = record.statement !== candidate_claim.statement;
+    return isComparableKind && isDifferentRecord && isActive && isDifferentStatement;
+  });
+}
+
+export interface ContradictionResolutionProposalInput {
+  now: string;
+  resolution_id: string;
+  contradiction: Contradiction;
+  existing_claim: WorldClaim;
+  candidate_claim: WorldClaim;
+}
+
+export interface ContradictionResolutionApplicationResult {
+  contradiction: Contradiction;
+  existing_claim: WorldClaim;
+  candidate_claim: WorldClaim;
+}
+
 export function detectWorldClaimContradiction(
   input: ContradictionDetectionInput,
 ): Contradiction | undefined {
-  const conflictingClaim = input.existing_world_claims.find((record) => {
-    const isComparableKind = record.kind === input.candidate_claim.kind;
-    const isDifferentRecord = record.id !== input.candidate_claim.id;
-    const isActive = record.temporal_state?.temporal_status === "active";
-    const isDifferentStatement = record.statement !== input.candidate_claim.statement;
-    return isComparableKind && isDifferentRecord && isActive && isDifferentStatement;
-  });
+  const conflictingClaim = findConflictingWorldClaim(input.candidate_claim, input.existing_world_claims);
 
   if (!conflictingClaim) {
     return undefined;
@@ -699,6 +720,110 @@ export function detectWorldClaimContradiction(
     },
     status: "open",
   };
+}
+
+export function proposeContradictionResolution(
+  input: ContradictionResolutionProposalInput,
+): ContradictionResolution {
+  const canCoexistTemporally =
+    !!input.candidate_claim.temporal_state?.valid_from &&
+    !!input.existing_claim.temporal_state?.valid_from &&
+    input.candidate_claim.temporal_state.valid_from !== input.existing_claim.temporal_state.valid_from;
+
+  const strategy = canCoexistTemporally ? "coexist_temporally" : "manual_review";
+  const rationale = canCoexistTemporally
+    ? "Claims appear to describe different temporal windows; propose explicit temporal coexistence and closing of the older active claim."
+    : "Claims conflict without enough temporal structure for automatic resolution; require review.";
+
+  return {
+    id: input.resolution_id,
+    kind: "contradiction_resolution",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: input.candidate_claim.visibility_state,
+    provenance: {
+      ...input.candidate_claim.provenance,
+      source_type: "contradiction_resolution",
+      evidence_refs: [input.contradiction.id, input.existing_claim.id, input.candidate_claim.id],
+    },
+    contradiction_ref: input.contradiction.id,
+    strategy,
+    status: "proposed",
+    winning_ref: {
+      id: input.candidate_claim.id,
+      kind: input.candidate_claim.kind,
+      layer: input.candidate_claim.layer,
+    },
+    losing_ref: {
+      id: input.existing_claim.id,
+      kind: input.existing_claim.kind,
+      layer: input.existing_claim.layer,
+    },
+    rationale,
+  };
+}
+
+export function applyContradictionResolution(input: {
+  now: string;
+  contradiction: Contradiction;
+  resolution: ContradictionResolution;
+  existing_claim: WorldClaim;
+  candidate_claim: WorldClaim;
+}): ContradictionResolutionApplicationResult {
+  const contradictionBase: Contradiction = {
+    ...input.contradiction,
+    updated_at: input.now,
+  };
+
+  switch (input.resolution.strategy) {
+    case "dismiss_contradiction":
+      return {
+        contradiction: {
+          ...contradictionBase,
+          status: "dismissed",
+        },
+        existing_claim: input.existing_claim,
+        candidate_claim: input.candidate_claim,
+      };
+    case "supersede_candidate":
+      return {
+        contradiction: {
+          ...contradictionBase,
+          status: "resolved",
+        },
+        existing_claim: input.existing_claim,
+        candidate_claim: {
+          ...input.candidate_claim,
+          updated_at: input.now,
+          epistemic_state: "disputed",
+          temporal_state: closeWorldClaimTemporalState(input.candidate_claim, input.now),
+        },
+      };
+    case "coexist_temporally":
+    case "supersede_existing":
+      return {
+        contradiction: {
+          ...contradictionBase,
+          status: "resolved",
+        },
+        existing_claim: {
+          ...input.existing_claim,
+          updated_at: input.now,
+          epistemic_state: "disputed",
+          temporal_state: closeWorldClaimTemporalState(input.existing_claim, input.now),
+        },
+        candidate_claim: input.candidate_claim,
+      };
+    case "manual_review":
+    default:
+      return {
+        contradiction: contradictionBase,
+        existing_claim: input.existing_claim,
+        candidate_claim: input.candidate_claim,
+      };
+  }
 }
 
 function closeWorldClaimTemporalState(record: WorldClaim, now: string): WorldClaim["temporal_state"] {
@@ -820,6 +945,7 @@ export interface OpenClawBootstrapWorkflowInput {
   entities?: Entity[];
   relations?: Relation[];
   contradictions?: Contradiction[];
+  contradiction_resolutions?: ContradictionResolution[];
   wiki_pages: WikiPage[];
   wiki_claims: WikiClaim[];
   diagnostics?: Diagnostic[];
@@ -861,6 +987,7 @@ export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflo
     entities: input.entities ?? [],
     relations: input.relations ?? [],
     contradictions: input.contradictions ?? [],
+    contradiction_resolutions: input.contradiction_resolutions ?? [],
     wiki_pages: input.wiki_pages,
     wiki_claims: input.wiki_claims,
     diagnostics: input.diagnostics,

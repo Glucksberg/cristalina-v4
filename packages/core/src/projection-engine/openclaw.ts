@@ -2,6 +2,7 @@ import { createProjectionArtifact, createProjectionManifest } from "../adapter-s
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
+  ContradictionResolution,
   Contradiction,
   ConversationThread,
   Diagnostic,
@@ -81,6 +82,11 @@ function renderContradictionSection(records: Contradiction[]): string[] {
   return records.map((record) => `- [contradiction:${record.id}] (${record.status}) ${record.left_ref.id} <> ${record.right_ref.id}`);
 }
 
+function renderContradictionResolutionSection(records: ContradictionResolution[]): string[] {
+  if (records.length === 0) return ["- (none)"];
+  return records.map((record) => `- [contradiction-resolution:${record.id}] (${record.status}) ${record.strategy} for ${record.contradiction_ref}`);
+}
+
 function renderWikiSection(pages: WikiPage[], claims: WikiClaim[]): string[] {
   const lines: string[] = [];
   if (pages.length === 0 && claims.length === 0) return ["- (none)"];
@@ -108,6 +114,7 @@ export interface OpenClawBootstrapCompilationInput {
   entities?: Entity[];
   relations?: Relation[];
   contradictions?: Contradiction[];
+  contradiction_resolutions?: ContradictionResolution[];
   wiki_pages: WikiPage[];
   wiki_claims: WikiClaim[];
   diagnostics?: Diagnostic[];
@@ -143,6 +150,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const entities = input.entities ?? [];
   const relations = input.relations ?? [];
   const contradictions = input.contradictions ?? [];
+  const contradiction_resolutions = input.contradiction_resolutions ?? [];
   const runtime_refs = [
     input.runtime_identity?.actor_identity?.id,
     input.runtime_identity?.owner_identity?.id,
@@ -156,6 +164,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const entity_refs = entities.map((record) => record.id);
   const relation_refs = relations.map((record) => record.id);
   const contradiction_refs = contradictions.map((record) => record.id);
+  const contradiction_resolution_refs = contradiction_resolutions.map((record) => record.id);
   const wiki_page_refs = input.wiki_pages.map((record) => record.id);
   const wiki_claim_refs = input.wiki_claims.map((record) => record.id);
   const diagnostic_refs = (input.diagnostics ?? []).map((record) => record.id);
@@ -222,6 +231,9 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     "## Contradictions",
     ...renderContradictionSection(contradictions),
     "",
+    "## Contradiction Resolutions",
+    ...renderContradictionResolutionSection(contradiction_resolutions),
+    "",
     "## Wiki",
     ...renderWikiSection(input.wiki_pages, input.wiki_claims),
     "",
@@ -237,6 +249,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       entity_refs,
       relation_refs,
       contradiction_refs,
+      contradiction_resolution_refs,
       wiki_page_refs,
       wiki_claim_refs,
       diagnostic_refs,
@@ -263,6 +276,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       entity_refs,
       relation_refs,
       contradiction_refs,
+      contradiction_resolution_refs,
       wiki_page_refs,
       wiki_claim_refs,
       diagnostic_refs,

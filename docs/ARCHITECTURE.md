@@ -158,7 +158,17 @@ At minimum this layer should model:
 - episodes
 - temporal claims
 - contradictions
+- contradiction resolutions
 - ontology definitions
+
+Contradictions should not remain anonymous tensions.
+
+The executable core should be able to:
+
+- detect a contradiction candidate
+- persist the contradiction as an explicit object
+- attach a proposed resolution strategy
+- apply a legal resolution later without hiding the original conflict
 
 ### 4.3 Canonical and governance requirements
 
@@ -217,6 +227,19 @@ In architectural terms:
 This distinction matters because many systems confuse "good accumulated documentation" with "true governed memory".
 
 They are related, but not identical.
+
+## 5.1 Source Intake Contract
+
+The repository should converge on a profile-based source intake module.
+
+That module should let new runtimes and import sources register:
+
+- source kind
+- semantic profile
+- runtime identity context requirements
+- legal output shapes
+
+without forcing each new source to fork the core workflow.
 
 ## 6. Layer Authority Contrast
 

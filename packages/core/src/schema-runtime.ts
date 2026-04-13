@@ -2,11 +2,14 @@ import { readFileSync } from "node:fs";
 
 type JsonPrimitive = string | number | boolean | null;
 
-interface JsonSchema {
+export interface JsonSchema {
   $id?: string;
   $ref?: string;
+  $defs?: Record<string, JsonSchema>;
   allOf?: JsonSchema[];
+  anyOf?: JsonSchema[];
   oneOf?: JsonSchema[];
+  not?: JsonSchema;
   if?: JsonSchema;
   then?: JsonSchema;
   else?: JsonSchema;
@@ -15,12 +18,21 @@ interface JsonSchema {
   enum?: JsonPrimitive[];
   pattern?: string;
   format?: string;
+  minLength?: number;
+  maxLength?: number;
+  minimum?: number;
+  maximum?: number;
+  minProperties?: number;
+  maxProperties?: number;
   properties?: Record<string, JsonSchema>;
+  propertyNames?: JsonSchema;
   required?: string[];
+  dependentRequired?: Record<string, string[]>;
   items?: JsonSchema;
+  prefixItems?: JsonSchema[];
   minItems?: number;
   uniqueItems?: boolean;
-  additionalProperties?: boolean;
+  additionalProperties?: boolean | JsonSchema;
   contains?: JsonSchema;
 }
 
@@ -68,6 +80,8 @@ function isTypeMatch(value: unknown, expectedType: string): boolean {
       return Array.isArray(value);
     case "boolean":
       return typeof value === "boolean";
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
     case "null":
       return value === null;
     case "number":
@@ -81,6 +95,15 @@ function isTypeMatch(value: unknown, expectedType: string): boolean {
   }
 }
 
+function resolveRef(schema: JsonSchema, ref: string, registry: Map<string, JsonSchema>): JsonSchema | undefined {
+  if (ref.startsWith("#/$defs/")) {
+    const defKey = ref.slice("#/$defs/".length);
+    return schema.$defs?.[defKey];
+  }
+
+  return registry.get(ref);
+}
+
 function validateNode(
   value: unknown,
   schema: JsonSchema,
@@ -90,7 +113,7 @@ function validateNode(
   const issues: SchemaValidationIssue[] = [];
 
   if (schema.$ref) {
-    const referenced = registry.get(schema.$ref);
+    const referenced = resolveRef(schema, schema.$ref, registry);
     if (!referenced) {
       return [{ path, message: `unresolved schema ref: ${schema.$ref}` }];
     }
@@ -108,6 +131,17 @@ function validateNode(
     if (matchingBranches.length !== 1) {
       issues.push({ path, message: "expected value to match exactly one schema variant" });
     }
+  }
+
+  if (schema.anyOf) {
+    const anyMatch = schema.anyOf.some((branch) => validateNode(value, branch, path, registry).length === 0);
+    if (!anyMatch) {
+      issues.push({ path, message: "expected value to match at least one schema variant" });
+    }
+  }
+
+  if (schema.not && validateNode(value, schema.not, path, registry).length === 0) {
+    issues.push({ path, message: "value matched forbidden schema" });
   }
 
   if (schema.type) {
@@ -134,6 +168,24 @@ function validateNode(
     issues.push({ path, message: "expected date-time string" });
   }
 
+  if (typeof value === "string") {
+    if (schema.minLength !== undefined && value.length < schema.minLength) {
+      issues.push({ path, message: `expected minimum length ${schema.minLength}` });
+    }
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+      issues.push({ path, message: `expected maximum length ${schema.maxLength}` });
+    }
+  }
+
+  if (typeof value === "number") {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      issues.push({ path, message: `expected minimum ${schema.minimum}` });
+    }
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      issues.push({ path, message: `expected maximum ${schema.maximum}` });
+    }
+  }
+
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
       issues.push({ path, message: `expected at least ${schema.minItems} item(s)` });
@@ -157,6 +209,14 @@ function validateNode(
       });
     }
 
+    if (schema.prefixItems) {
+      schema.prefixItems.forEach((entrySchema, index) => {
+        if (index < value.length) {
+          issues.push(...validateNode(value[index], entrySchema, `${path}[${index}]`, registry));
+        }
+      });
+    }
+
     if (schema.contains) {
       const matchesContains = value.some((entry, index) => validateNode(entry, schema.contains as JsonSchema, `${path}[${index}]`, registry).length === 0);
       if (!matchesContains) {
@@ -166,6 +226,13 @@ function validateNode(
   }
 
   if (isRecord(value)) {
+    if (schema.minProperties !== undefined && Object.keys(value).length < schema.minProperties) {
+      issues.push({ path, message: `expected minimum properties ${schema.minProperties}` });
+    }
+    if (schema.maxProperties !== undefined && Object.keys(value).length > schema.maxProperties) {
+      issues.push({ path, message: `expected maximum properties ${schema.maxProperties}` });
+    }
+
     const properties = schema.properties ?? {};
     for (const key of schema.required ?? []) {
       if (!(key in value)) {
@@ -179,10 +246,42 @@ function validateNode(
       }
     }
 
+    if (schema.propertyNames) {
+      for (const key of Object.keys(value)) {
+        issues.push(...validateNode(key, schema.propertyNames, path === "$" ? key : `${path}.${key}`, registry));
+      }
+    }
+
+    for (const [key, requirements] of Object.entries(schema.dependentRequired ?? {})) {
+      if (key in value) {
+        for (const requiredKey of requirements) {
+          if (!(requiredKey in value)) {
+            issues.push({
+              path: path === "$" ? requiredKey : `${path}.${requiredKey}`,
+              message: `required because ${key} is present`,
+            });
+          }
+        }
+      }
+    }
+
     if (schema.additionalProperties === false) {
       for (const key of Object.keys(value)) {
         if (!(key in properties)) {
           issues.push({ path: path === "$" ? key : `${path}.${key}`, message: "unexpected property" });
+        }
+      }
+    } else if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+      for (const key of Object.keys(value)) {
+        if (!(key in properties)) {
+          issues.push(
+            ...validateNode(
+              value[key],
+              schema.additionalProperties,
+              path === "$" ? key : `${path}.${key}`,
+              registry,
+            ),
+          );
         }
       }
     }
@@ -208,4 +307,16 @@ export function validateAgainstSchema(value: unknown, schemaId: string): SchemaV
   }
 
   return validateNode(value, schema, "$", SCHEMA_REGISTRY);
+}
+
+export function validateValueAgainstJsonSchema(
+  value: unknown,
+  schema: JsonSchema,
+  extraRegistry?: Map<string, JsonSchema>,
+): SchemaValidationIssue[] {
+  const registry = extraRegistry ?? new Map<string, JsonSchema>();
+  if (schema.$id) {
+    registry.set(schema.$id, schema);
+  }
+  return validateNode(value, schema, "$", registry);
 }

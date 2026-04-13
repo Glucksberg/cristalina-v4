@@ -8,6 +8,7 @@ import {
   loadActorIdentities,
   loadCanonicalRecords,
   loadConversationThreads,
+  loadContradictionResolutions,
   loadDiagnostics,
   loadRuntimeInstances,
   loadRuntimeSessions,
@@ -24,6 +25,7 @@ import {
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
+  ContradictionResolution,
   Contradiction,
   DispositionRecord,
   Entity,
@@ -37,6 +39,7 @@ import type {
   RuntimeInstance,
   RuntimeKind,
   RuntimeSession,
+  SourceIntakeKind,
   SourceRecord,
   ConversationThread,
   WikiClaim,
@@ -47,12 +50,16 @@ import { validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
   buildOpenClawPreferenceFeedbackIntake,
   buildConversationPreferenceIntake,
+  buildStructuredPreferenceSignalIntake,
   detectWorldClaimContradiction,
+  findConflictingWorldClaim,
+  proposeContradictionResolution,
   executeCanonicalProposalWorkflow,
   executeOpenClawBootstrapWorkflow,
   type ConversationPreferenceIntakeArtifacts,
   type ConversationPreferenceRuntimeIdentityContext,
 } from "./pipeline.js";
+import type { PreferenceSignalSemanticProfile } from "./source-intake.js";
 
 export interface ConversationPreferenceStoreIds {
   observation: string;
@@ -62,6 +69,7 @@ export interface ConversationPreferenceStoreIds {
   preference_relation: string;
   world_claim: string;
   contradiction?: string;
+  contradiction_resolution?: string;
   wiki_page: string;
   wiki_claim: string;
   proposal: string;
@@ -80,8 +88,9 @@ export interface ConversationPreferenceStoreInput {
   now: string;
   actor: string;
   statement: string;
-  intake_kind?: "conversation_preference" | "openclaw_projection_feedback";
+  intake_kind?: SourceIntakeKind;
   identity_context?: ConversationPreferenceRuntimeIdentityContext;
+  semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
   source: {
     id: string;
     source_ref: string;
@@ -104,6 +113,7 @@ export interface ConversationPreferenceStorePaths {
   preference_relation: string;
   world_claim: string;
   contradiction?: string;
+  contradiction_resolution?: string;
   actor_identity?: string;
   owner_identity?: string;
   runtime_instance?: string;
@@ -129,6 +139,7 @@ export interface ConversationPreferenceStoreRecords {
   source_record: SourceRecord;
   intake: ConversationPreferenceIntakeArtifacts;
   contradiction?: Contradiction;
+  contradiction_resolution?: ContradictionResolution;
   ratification_record: RatificationRecord;
   canonical_record: CanonicalMemoryObject;
   projection_artifacts: ProjectionArtifact[];
@@ -178,6 +189,7 @@ function serializeSourcePayload(input: ConversationPreferenceStoreInput): string
   return `${JSON.stringify(
     {
       runtime: input.source.runtime,
+      source_type: input.source.source_type ?? "conversation",
       source_ref: input.source.source_ref,
       message: input.source.message,
     },
@@ -232,6 +244,16 @@ function buildPaths(
             kind: "contradiction",
             layer: "world",
           } as Contradiction,
+        )
+      : undefined,
+    contradiction_resolution: input.ids.contradiction_resolution
+      ? coreRecordPath(
+          rootDir,
+          {
+            id: input.ids.contradiction_resolution,
+            kind: "contradiction_resolution",
+            layer: "governance",
+          } as ContradictionResolution,
         )
       : undefined,
     actor_identity: intake.agent_identity ? coreRecordPath(rootDir, intake.agent_identity) : undefined,
@@ -322,10 +344,23 @@ async function loadExistingFlow(
     paths.ratification_record,
     paths.canonical_record,
   ];
+  const contradictionPair = [paths.contradiction, paths.contradiction_resolution].filter(
+    (filePath): filePath is string => typeof filePath === "string",
+  );
 
   const authoritativePresence = await Promise.all(authoritativePaths.map((filePath) => pathExists(filePath)));
   const hasAnyAuthoritativeState = authoritativePresence.some(Boolean);
   const hasCompleteAuthoritativeState = authoritativePresence.every(Boolean);
+
+  if (contradictionPair.length > 0) {
+    const contradictionPresence = await Promise.all(contradictionPair.map((filePath) => pathExists(filePath)));
+    const hasAnyContradictionState = contradictionPresence.some(Boolean);
+    const hasCompleteContradictionState = contradictionPresence.every(Boolean);
+
+    if (hasAnyContradictionState && !hasCompleteContradictionState) {
+      throw new Error("Existing conversation preference flow is partially materialized in authoritative storage");
+    }
+  }
 
   if (!hasAnyAuthoritativeState) {
     return undefined;
@@ -378,6 +413,10 @@ async function loadExistingFlow(
     paths.contradiction && (await pathExists(paths.contradiction))
       ? await readCoreRecord<Contradiction>(paths.contradiction)
       : undefined;
+  const contradiction_resolution =
+    paths.contradiction_resolution && (await pathExists(paths.contradiction_resolution))
+      ? await readCoreRecord<ContradictionResolution>(paths.contradiction_resolution)
+      : undefined;
 
   const validation_issues = [
     source_record,
@@ -399,6 +438,7 @@ async function loadExistingFlow(
     ratification_record,
     canonical_record,
     ...(contradiction ? [contradiction] : []),
+    ...(contradiction_resolution ? [contradiction_resolution] : []),
     ...projection_artifacts,
     projection_manifest,
   ].flatMap((record) => validateCoreRecord(record));
@@ -410,6 +450,7 @@ async function loadExistingFlow(
       source_record,
       intake,
       contradiction,
+      contradiction_resolution,
       ratification_record,
       canonical_record,
       projection_artifacts,
@@ -499,6 +540,7 @@ async function buildProjectionFromStoreState(
     entities,
     relations,
     contradictions,
+    contradiction_resolutions,
     wiki_pages,
     wiki_claims,
     diagnostics,
@@ -509,6 +551,7 @@ async function buildProjectionFromStoreState(
     loadWorldEntities(rootDir),
     loadWorldRelations(rootDir),
     loadWorldContradictions(rootDir),
+    loadContradictionResolutions(rootDir),
     loadWikiPages(rootDir),
     loadWikiClaims(rootDir),
     loadDiagnostics(rootDir),
@@ -526,6 +569,7 @@ async function buildProjectionFromStoreState(
     entities,
     relations,
     contradictions,
+    contradiction_resolutions,
     wiki_pages,
     wiki_claims,
     diagnostics,
@@ -620,14 +664,18 @@ export async function writeConversationPreferenceFlowToStore(
   await initializeStore(rootDir, input.now);
 
   const source_record = buildSourceRecord(input);
-  const intakeBuilder = input.intake_kind === "openclaw_projection_feedback"
-    ? buildOpenClawPreferenceFeedbackIntake
-    : buildConversationPreferenceIntake;
+  const intakeBuilder =
+    input.intake_kind === "openclaw_projection_feedback"
+      ? buildOpenClawPreferenceFeedbackIntake
+      : input.intake_kind === "structured_preference_signal"
+        ? buildStructuredPreferenceSignalIntake
+        : buildConversationPreferenceIntake;
   const intake = intakeBuilder({
     now: input.now,
     statement: input.statement,
     source_record,
     identity_context: input.identity_context,
+    semantic_profile: input.semantic_profile,
     ids: {
       observation: input.ids.observation,
       episode: input.ids.episode,
@@ -666,13 +714,24 @@ export async function writeConversationPreferenceFlowToStore(
     throw new Error("Conversation preference workflow must produce an approved canonical record");
   }
 
+  const conflicting_world_claim = findConflictingWorldClaim(intake.world_claim, existingWorldClaims);
   const contradiction =
-    input.ids.contradiction
+    input.ids.contradiction && conflicting_world_claim
       ? detectWorldClaimContradiction({
           now: input.now,
           contradiction_id: input.ids.contradiction,
           candidate_claim: intake.world_claim,
           existing_world_claims: existingWorldClaims,
+        })
+      : undefined;
+  const contradiction_resolution =
+    contradiction && conflicting_world_claim && input.ids.contradiction_resolution
+      ? proposeContradictionResolution({
+          now: input.now,
+          resolution_id: input.ids.contradiction_resolution,
+          contradiction,
+          existing_claim: conflicting_world_claim,
+          candidate_claim: intake.world_claim,
         })
       : undefined;
 
@@ -696,6 +755,9 @@ export async function writeConversationPreferenceFlowToStore(
   await writeCoreRecord(rootDir, intake.world_claim);
   if (contradiction) {
     await writeCoreRecord(rootDir, contradiction);
+  }
+  if (contradiction_resolution) {
+    await writeCoreRecord(rootDir, contradiction_resolution);
   }
   await writeCoreRecord(rootDir, intake.wiki_page);
   await writeCoreRecord(rootDir, intake.wiki_claim);
@@ -749,6 +811,7 @@ export async function writeConversationPreferenceFlowToStore(
     canonicalWorkflow.created_record,
     ...projection.artifacts,
     projection.manifest,
+    ...(contradiction_resolution ? [contradiction_resolution] : []),
   ].flatMap((record) => validateCoreRecord(record));
 
   await appendValidationLog(rootDir, {
@@ -804,6 +867,7 @@ export async function writeConversationPreferenceFlowToStore(
       source_record,
       intake,
       contradiction,
+      contradiction_resolution,
       ratification_record: canonicalWorkflow.ratification_record,
       canonical_record: canonicalWorkflow.created_record,
       projection_artifacts: projection.artifacts,
@@ -818,14 +882,18 @@ export async function readConversationPreferenceFlowResult(
 ): Promise<ConversationPreferenceStoreResult | undefined> {
   const rootDir = resolve(input.rootDir);
   const source_record = buildSourceRecord(input);
-  const intakeBuilder = input.intake_kind === "openclaw_projection_feedback"
-    ? buildOpenClawPreferenceFeedbackIntake
-    : buildConversationPreferenceIntake;
+  const intakeBuilder =
+    input.intake_kind === "openclaw_projection_feedback"
+      ? buildOpenClawPreferenceFeedbackIntake
+      : input.intake_kind === "structured_preference_signal"
+        ? buildStructuredPreferenceSignalIntake
+        : buildConversationPreferenceIntake;
   const intake = intakeBuilder({
     now: input.now,
     statement: input.statement,
     source_record,
     identity_context: input.identity_context,
+    semantic_profile: input.semantic_profile,
     ids: {
       observation: input.ids.observation,
       episode: input.ids.episode,
@@ -849,5 +917,14 @@ export async function writeOpenClawPreferenceFeedbackFlowToStore(
   return writeConversationPreferenceFlowToStore({
     ...input,
     intake_kind: "openclaw_projection_feedback",
+  });
+}
+
+export async function writeStructuredPreferenceSignalFlowToStore(
+  input: Omit<ConversationPreferenceStoreInput, "intake_kind">,
+): Promise<ConversationPreferenceStoreResult> {
+  return writeConversationPreferenceFlowToStore({
+    ...input,
+    intake_kind: "structured_preference_signal",
   });
 }

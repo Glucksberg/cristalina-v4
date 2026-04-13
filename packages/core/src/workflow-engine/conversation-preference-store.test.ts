@@ -8,6 +8,7 @@ import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
 import {
   writeConversationPreferenceFlowToStore,
   writeOpenClawPreferenceFeedbackFlowToStore,
+  writeStructuredPreferenceSignalFlowToStore,
   type ConversationPreferenceStoreInput,
 } from "./conversation-preference-store.js";
 
@@ -48,6 +49,7 @@ function buildInput(rootDir: string): ConversationPreferenceStoreInput {
       preference_relation: "rel_preference_test_001",
       world_claim: "wcl_test_001",
       contradiction: "contra_test_001",
+      contradiction_resolution: "cres_test_001",
       wiki_page: "wpg_test_001",
       wiki_claim: "wclm_test_001",
       proposal: "prop_test_001",
@@ -176,6 +178,7 @@ test("writeConversationPreferenceFlowToStore records contradictions against exis
       preference_relation: "rel_preference_test_002",
       world_claim: "wcl_test_002",
       contradiction: "contra_test_002",
+      contradiction_resolution: "cres_test_002",
       wiki_page: "wpg_test_002",
       wiki_claim: "wclm_test_002",
       proposal: "prop_test_002",
@@ -193,6 +196,7 @@ test("writeConversationPreferenceFlowToStore records contradictions against exis
   const second = await writeConversationPreferenceFlowToStore(secondInput);
   assert.equal(second.records.contradiction?.status, "open");
   assert.equal(second.records.contradiction?.right_ref.id, "wcl_test_002");
+  assert.equal(second.records.contradiction_resolution?.strategy, "coexist_temporally");
 });
 
 test("openclaw feedback round-trip preserves runtime identity and recompiles projection", async (t) => {
@@ -224,6 +228,7 @@ test("openclaw feedback round-trip preserves runtime identity and recompiles pro
       preference_relation: "rel_preference_feedback_test_001",
       world_claim: "wcl_feedback_test_001",
       contradiction: "contra_feedback_test_001",
+      contradiction_resolution: "cres_feedback_test_001",
       wiki_page: "wpg_feedback_test_001",
       wiki_claim: "wclm_feedback_test_001",
       proposal: "prop_feedback_test_001",
@@ -244,6 +249,60 @@ test("openclaw feedback round-trip preserves runtime identity and recompiles pro
   assert.equal(roundTrip.records.projection_manifest.runtime_instance_ref, seed.identity_context?.ids.runtime_instance);
   assert.match(projectionMarkdown, /\[runtime:runtime_test_001\]/);
   assert.match(projectionMarkdown, /\[wiki:wpg_feedback_test_001\]/);
+  assert.match(projectionMarkdown, /## Contradiction Resolutions/);
+});
+
+test("structured preference signal flow reuses the generic intake framework", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  const result = await writeStructuredPreferenceSignalFlowToStore({
+    ...input,
+    source: {
+      ...input.source,
+      id: "src_structured_store_001",
+      source_ref: "import/customer-001",
+      content_ref: "raw/imports/customer-001.json",
+      source_type: "structured_import",
+    },
+    statement: "The customer prefers executive summaries before implementation detail.",
+    semantic_profile: {
+      wiki_title: "Customer Delivery Preferences",
+      wiki_path: "wiki/pages/customer-delivery-preferences.md",
+      subject_entity_kind: "customer",
+      subject_label: "Customer 001",
+      preference_topic_label: "Delivery Preferences",
+      relation_type: "requests_delivery_style",
+      proposal_reason: "Structured import confirms a delivery preference worth governing.",
+    },
+    ids: {
+      observation: "obs_structured_store_001",
+      episode: "ep_structured_store_001",
+      subject_entity: "ent_subject_structured_store_001",
+      preference_entity: "ent_preference_structured_store_001",
+      preference_relation: "rel_preference_structured_store_001",
+      world_claim: "wcl_structured_store_001",
+      contradiction: "contra_structured_store_001",
+      contradiction_resolution: "cres_structured_store_001",
+      wiki_page: "wpg_structured_store_001",
+      wiki_claim: "wclm_structured_store_001",
+      proposal: "prop_structured_store_001",
+      disposition: "disp_structured_store_001",
+      ratification: "rat_structured_store_001",
+      diagnostic: "diag_structured_store_001",
+      canonical: "mem_structured_store_001",
+      canon_artifact: "part_openclaw_canon_structured_store_001",
+      world_artifact: "part_openclaw_world_structured_store_001",
+      wiki_artifact: "part_openclaw_wiki_structured_store_001",
+      projection_manifest: "pmf_openclaw_structured_store_001",
+    },
+  });
+
+  assert.equal(result.records.intake.subject_entity.entity_kind, "customer");
+  assert.equal(result.records.intake.wiki_page.title, "Customer Delivery Preferences");
 });
 
 test("loadCanonicalRecords excludes canonical identity records", async (t) => {

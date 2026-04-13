@@ -81,6 +81,7 @@ export const RUNTIMES = [
 export const SOURCE_INTAKE_KINDS = [
   "conversation_preference",
   "openclaw_projection_feedback",
+  "structured_preference_signal",
 ] as const;
 
 export const PROPOSAL_OPERATIONS = [
@@ -99,6 +100,21 @@ export const DISPOSITION_OUTCOMES = [
   "diagnostic_only",
 ] as const;
 
+export const CONTRADICTION_RESOLUTION_STRATEGIES = [
+  "manual_review",
+  "coexist_temporally",
+  "supersede_existing",
+  "supersede_candidate",
+  "dismiss_contradiction",
+] as const;
+
+export const CONTRADICTION_RESOLUTION_STATUSES = [
+  "proposed",
+  "accepted",
+  "rejected",
+  "applied",
+] as const;
+
 export type MemoryObjectKind = typeof MEMORY_OBJECT_KINDS[number];
 export type EpistemicState = typeof EPISTEMIC_STATES[number];
 export type GovernanceState = typeof GOVERNANCE_STATES[number];
@@ -112,6 +128,8 @@ export type SourceIntakeKind = typeof SOURCE_INTAKE_KINDS[number];
 export type ProposalOperation = typeof PROPOSAL_OPERATIONS[number];
 export type DispositionOutcome = typeof DISPOSITION_OUTCOMES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
+export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
+export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
 
 export const DISPOSITION_OUTCOME_TARGET_LAYER: Record<DispositionOutcome, DispositionTargetLayer> = {
   evidence_only: "governance",
@@ -333,6 +351,19 @@ export interface Contradiction extends RecordEnvelope {
   status: "open" | "resolved" | "dismissed";
 }
 
+export interface ContradictionResolution extends RecordEnvelope {
+  kind: "contradiction_resolution";
+  layer: "governance";
+  authoritative_home: "governance";
+  contradiction_ref: string;
+  strategy: ContradictionResolutionStrategy;
+  status: ContradictionResolutionStatus;
+  winning_ref?: Reference | null;
+  losing_ref?: Reference | null;
+  rationale: string;
+  diagnostic_refs?: string[];
+}
+
 export interface OntologyDefinition extends RecordEnvelope {
   kind: "ontology_definition";
   layer: "world";
@@ -438,6 +469,7 @@ export type CoreRecord =
   | CurationPacket
   | RatificationRecord
   | Contradiction
+  | ContradictionResolution
   | OntologyDefinition
   | PolicySnapshot
   | WikiPage

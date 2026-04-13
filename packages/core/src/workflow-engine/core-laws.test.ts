@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyContradictionResolution,
   buildOpenClawPreferenceFeedbackIntake,
   buildConversationPreferenceDispositionRecord,
   buildConversationPreferenceIntake,
+  buildStructuredPreferenceSignalIntake,
   detectWorldClaimContradiction,
   executeCanonicalProposalWorkflow,
   executeOpenClawBootstrapWorkflow,
+  proposeContradictionResolution,
   reconcileConversationPreferenceSupersede,
 } from "./pipeline.js";
 import { isLegalLayerTransition } from "../transitions.js";
@@ -423,6 +426,45 @@ test("openclaw feedback intake reuses the generic source intake without collapsi
   assert.equal(intake.wiki_page.path, "wiki/pages/runtime-preference-feedback.md");
 });
 
+test("structured preference intake can be shaped declaratively without adding a new workflow", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildStructuredPreferenceSignalIntake({
+    now,
+    statement: "The customer prefers change summaries before code excerpts.",
+    source_record: {
+      id: "src_structured_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "project_private",
+      },
+      provenance: {
+        source_type: "crm_import",
+        source_ref: "crm/customer-001",
+      },
+      content_ref: "raw/imports/customer-001.json",
+    },
+    semantic_profile: {
+      wiki_title: "Customer Delivery Preferences",
+      wiki_path: "wiki/pages/customer-delivery-preferences.md",
+      subject_entity_kind: "customer",
+      subject_label: "Customer 001",
+      preference_topic_label: "Delivery Preferences",
+      relation_type: "requests_delivery_style",
+      proposal_reason: "Structured CRM evidence indicates a stable delivery preference.",
+    },
+    ids: buildIds("structured_001"),
+  });
+
+  assert.match(intake.observation.summary, /^Structured preference signal:/);
+  assert.equal(intake.wiki_page.title, "Customer Delivery Preferences");
+  assert.equal(intake.subject_entity.entity_kind, "customer");
+  assert.equal(intake.preference_relation.relation_type, "requests_delivery_style");
+});
+
 test("contradiction baseline emits an explicit world contradiction object", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const intake = buildConversationPreferenceIntake({
@@ -463,6 +505,81 @@ test("contradiction baseline emits an explicit world contradiction object", () =
   assert.equal(contradiction?.status, "open");
   assert.equal(contradiction?.left_ref.id, "wcl_existing_001");
   assert.equal(contradiction?.right_ref.id, intake.world_claim.id);
+});
+
+test("contradiction handling can propose and apply a richer resolution path", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers.",
+    source_record: {
+      id: "src_resolution_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session#turn-resolution-001",
+      },
+      content_ref: "raw/sources/turn-resolution-001.json",
+    },
+    ids: buildIds("resolution_001"),
+  });
+
+  const existing = {
+    ...intake.world_claim,
+    id: "wcl_existing_resolution_001",
+    statement: "The user prefers exhaustive answers.",
+    temporal_state: {
+      temporal_status: "active" as const,
+      valid_from: "2026-04-01T00:00:00.000Z",
+      valid_to: null,
+    },
+  };
+  const contradiction = detectWorldClaimContradiction({
+    now,
+    contradiction_id: "contra_resolution_001",
+    candidate_claim: {
+      ...intake.world_claim,
+      temporal_state: {
+        temporal_status: "active",
+        valid_from: "2026-04-12T00:00:00.000Z",
+        valid_to: null,
+      },
+    },
+    existing_world_claims: [existing],
+  });
+
+  assert.ok(contradiction);
+
+  const resolution = proposeContradictionResolution({
+    now,
+    resolution_id: "cres_resolution_001",
+    contradiction: contradiction!,
+    existing_claim: existing,
+    candidate_claim: intake.world_claim,
+  });
+
+  const applied = applyContradictionResolution({
+    now,
+    contradiction: contradiction!,
+    resolution: {
+      ...resolution,
+      strategy: "coexist_temporally",
+      status: "accepted",
+    },
+    existing_claim: existing,
+    candidate_claim: intake.world_claim,
+  });
+
+  assert.equal(resolution.status, "proposed");
+  assert.equal(applied.contradiction.status, "resolved");
+  assert.equal(applied.existing_claim.temporal_state?.temporal_status, "historical");
 });
 
 test("validation rejects disposition refs without matching outcomes", () => {

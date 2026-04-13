@@ -48,6 +48,7 @@ export const STORAGE_LAYOUT = {
     root: "governance",
     proposals: "governance/proposals",
     dispositions: "governance/dispositions",
+    contradictionResolutions: "governance/contradiction-resolutions",
     curation: "governance/curation",
     ratifications: "governance/ratifications",
     policy: "governance/policy",
