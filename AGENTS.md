@@ -61,6 +61,9 @@ Rules:
 - prefer lessons about contracts, layer boundaries, legality of transitions, validation depth, and sequencing
 - if a new sentence duplicates or supersedes an old one, rewrite or replace instead of growing noise
 - keep the list readable and high-signal
+- before proposing or reviewing a new session phrase, the agent should read all existing session phrases to avoid semantic duplication
+- if a substantially similar phrase already exists and the session did not add a distinct new lesson, the correct outcome is to leave the session without a new phrase
+- if a similar phrase already exists but the current session adds a distinct durable lesson worth preserving, the agent may suggest a new phrase candidate and should explain what is new about it
 - after any commit in this repository, the agent should inspect this section for a phrase matching the current session, show it if it exists, or explicitly say that no phrase is registered for the current session yet
 - after any commit in this repository, the agent should also show the phrases from the 5 most recent sessions in the same message so the user can curate with recent context in view
 - session phrases must be curated by the user; the agent may suggest candidates, but should not add, rewrite, or finalize a session phrase without explicit user approval
