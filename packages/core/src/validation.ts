@@ -31,6 +31,7 @@ import {
   CONTRADICTION_RESOLUTION_SCHEMA_ID,
   DISPOSITION_RECORD_SCHEMA_ID,
   MEMORY_OBJECT_SCHEMA_ID,
+  PROJECTION_MANIFEST_SCHEMA_ID,
   RUNTIME_IDENTITY_SCHEMA_ID,
   STORE_MANIFEST_SCHEMA_ID,
   TEMPORAL_WORLD_RECORD_SCHEMA_ID,
@@ -276,6 +277,9 @@ function validateActorIdentity(value: unknown): ValidationIssue[] {
   if (value.authoritative_home !== "canon") issues.push({ path: "authoritative_home", message: 'expected "canon"' });
   pushEnum(issues, value, "actor_kind", ACTOR_KINDS);
   pushRequiredString(issues, value, "label");
+  if (isRecord(value.visibility_state) && value.visibility_state.privacy_scope === "runtime_private") {
+    issues.push({ path: "visibility_state.privacy_scope", message: 'actor identities cannot be "runtime_private"' });
+  }
   if (!isEnumValue(value.status, ["active", "inactive", "archived"] as const)) {
     issues.push({ path: "status", message: 'expected one of: active, inactive, archived' });
   }
@@ -619,19 +623,36 @@ function validateProjectionArtifact(value: unknown): ValidationIssue[] {
 }
 
 function validateProjectionManifest(value: unknown): ValidationIssue[] {
-  const issues = validateEnvelope(value);
+  const issues = validateAgainstSchema(value, PROJECTION_MANIFEST_SCHEMA_ID);
   if (!isRecord(value)) return issues;
-  if (value.kind !== "projection_manifest") issues.push({ path: "kind", message: 'expected "projection_manifest"' });
-  if (value.layer !== "derived") issues.push({ path: "layer", message: 'expected "derived"' });
-  if (!isEnumValue(value.adapter, ["openclaw", "hermes"] as const)) {
-    issues.push({ path: "adapter", message: 'expected one of: openclaw, hermes' });
-  }
-  pushRequiredString(issues, value, "projection_profile");
-  pushRequiredString(issues, value, "audience");
   for (const optionalKey of ["actor_identity_ref", "runtime_instance_ref", "runtime_session_ref", "conversation_thread_ref"] as const) {
     const optionalValue = value[optionalKey];
     if (optionalValue !== undefined && optionalValue !== null && typeof optionalValue !== "string") {
       issues.push({ path: optionalKey, message: "expected string or null" });
+    }
+  }
+  if (value.policy_snapshot_ref !== undefined && value.policy_snapshot_ref !== null && typeof value.policy_snapshot_ref !== "string") {
+    issues.push({ path: "policy_snapshot_ref", message: "expected string or null" });
+  }
+  if (!isStringArray(value.context_refs) || !hasUniqueEntries(value.context_refs)) {
+    issues.push({ path: "context_refs", message: "expected unique string array" });
+  }
+  if (value.suppressed_refs !== undefined && (!isStringArray(value.suppressed_refs) || !hasUniqueEntries(value.suppressed_refs))) {
+    issues.push({ path: "suppressed_refs", message: "expected unique string array" });
+  }
+  if (value.suppressed_records !== undefined) {
+    if (!Array.isArray(value.suppressed_records)) {
+      issues.push({ path: "suppressed_records", message: "expected array" });
+    } else {
+      for (const [index, entry] of value.suppressed_records.entries()) {
+        if (!isRecord(entry)) {
+          issues.push({ path: `suppressed_records[${index}]`, message: "expected object" });
+          continue;
+        }
+        pushRequiredString(issues, entry, "id", `suppressed_records[${index}].id`);
+        pushRequiredString(issues, entry, "kind", `suppressed_records[${index}].kind`);
+        pushRequiredString(issues, entry, "reason_code", `suppressed_records[${index}].reason_code`);
+      }
     }
   }
   if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
@@ -640,7 +661,9 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   if (!isStringArray(value.upstream_refs) || value.upstream_refs.length === 0) {
     issues.push({ path: "upstream_refs", message: "expected non-empty string array" });
   }
-  pushStringArray(issues, value, "artifact_refs");
+  if (!isStringArray(value.artifact_refs) || !hasUniqueEntries(value.artifact_refs)) {
+    issues.push({ path: "artifact_refs", message: "expected unique string array" });
+  }
   return issues;
 }
 
@@ -758,13 +781,17 @@ export function validateCoreRecord(value: unknown): ValidationIssue[] {
     return validateEnvelope(value);
   }
 
-  if (["actor_identity", "runtime_instance", "runtime_session", "conversation_thread"].includes(value.kind)) {
-    return validateRuntimeIdentityRecord(value);
-  }
-
   switch (value.kind) {
     case "source_record":
       return validateSourceRecord(value);
+    case "actor_identity":
+      return validateActorIdentity(value);
+    case "runtime_instance":
+      return validateRuntimeInstance(value);
+    case "runtime_session":
+      return validateRuntimeSession(value);
+    case "conversation_thread":
+      return validateConversationThread(value);
     case "observation":
       return validateObservation(value);
     case "runtime_memory_block":

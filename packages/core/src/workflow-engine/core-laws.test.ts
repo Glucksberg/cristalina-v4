@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { DEFAULT_PROJECTION_READ_POLICY_VERSION } from "../adapter-sdk/projection.js";
 import {
   acceptContradictionResolution,
   applyAcceptedContradictionResolution,
@@ -390,6 +391,19 @@ test("openclaw projection preserves visibility and renders reconciled statuses",
   assert.equal(projection.manifest.runtime_instance_ref, intake.runtime_instance?.id);
   assert.equal(projection.manifest.runtime_session_ref, intake.runtime_session?.id);
   assert.equal(projection.manifest.conversation_thread_ref, intake.conversation_thread?.id);
+  assert.equal(projection.manifest.read_policy_version, DEFAULT_PROJECTION_READ_POLICY_VERSION);
+  assert.deepEqual(
+    projection.manifest.context_refs,
+    [
+      intake.agent_identity?.id,
+      intake.owner_identity?.id,
+      intake.runtime_instance?.id,
+      intake.runtime_session?.id,
+      intake.conversation_thread?.id,
+    ].filter((value): value is string => typeof value === "string"),
+  );
+  assert.deepEqual(projection.manifest.suppressed_refs, []);
+  assert.deepEqual(projection.manifest.suppressed_records, []);
   assert.deepEqual(projection.manifest.diagnostic_refs, ["diag_test_004"]);
   assert.match(projection.markdown, /\(disputed; historical\)/);
   assert.match(projection.markdown, /\(editorial\)/);
@@ -426,6 +440,201 @@ test("openclaw feedback intake reuses the generic source intake without collapsi
   assert.match(intake.observation.summary, /^OpenClaw runtime feedback:/);
   assert.equal(intake.runtime_instance?.runtime, "openclaw");
   assert.equal(intake.wiki_page.path, "wiki/pages/runtime-preference-feedback.md");
+});
+
+test("openclaw projection suppresses runtime-private records outside the active thread context", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const visibility_state = {
+    privacy_scope: "runtime_private",
+  } as const;
+
+  const currentIntake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers in this thread.",
+    source_record: {
+      id: "src_runtime_private_current",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state,
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/current#turn-001",
+      },
+      content_ref: "raw/sources/current-runtime-private.json",
+    },
+    identity_context: buildIdentityContext("runtime_private_current"),
+    ids: buildIds("runtime_private_current"),
+  });
+
+  const foreignIntake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers verbose answers in another thread.",
+    source_record: {
+      id: "src_runtime_private_foreign",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state,
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/foreign#turn-001",
+      },
+      content_ref: "raw/sources/foreign-runtime-private.json",
+    },
+    identity_context: buildIdentityContext("runtime_private_foreign"),
+    ids: buildIds("runtime_private_foreign"),
+  });
+
+  const projection = executeOpenClawBootstrapWorkflow({
+    now,
+    visibility_state,
+    canonical_records: [],
+    world_claims: [currentIntake.world_claim, foreignIntake.world_claim],
+    wiki_pages: [],
+    wiki_claims: [],
+    runtime_identity: {
+      actor_identity: currentIntake.agent_identity,
+      owner_identity: currentIntake.owner_identity,
+      runtime_instance: currentIntake.runtime_instance,
+      runtime_session: currentIntake.runtime_session,
+      conversation_thread: currentIntake.conversation_thread,
+    },
+    identity_context: {
+      actor_identity_ref: currentIntake.agent_identity?.id ?? null,
+      runtime_instance_ref: currentIntake.runtime_instance?.id ?? null,
+      runtime_session_ref: currentIntake.runtime_session?.id ?? null,
+      conversation_thread_ref: currentIntake.conversation_thread?.id ?? null,
+    },
+    ids: {
+      canon_artifact: "part_openclaw_canon_runtime_private_001",
+      world_artifact: "part_openclaw_world_runtime_private_001",
+      wiki_artifact: "part_openclaw_wiki_runtime_private_001",
+      manifest: "pmf_openclaw_runtime_private_001",
+    },
+  });
+
+  assert.match(projection.markdown, /\[actor:actor_agent_runtime_private_current\]/);
+  assert.match(projection.markdown, /\[owner:actor_owner_runtime_private_current\]/);
+  assert.match(projection.markdown, /\[world:wcl_runtime_private_current\]/);
+  assert.doesNotMatch(projection.markdown, /\[world:wcl_runtime_private_foreign\]/);
+  assert.ok(projection.manifest.suppressed_refs?.includes("wcl_runtime_private_foreign"));
+  assert.ok(
+    projection.manifest.suppressed_records?.some(
+      (entry) => entry.id === "wcl_runtime_private_foreign" && entry.reason_code === "runtime_instance_mismatch",
+    ),
+  );
+});
+
+test("actor identities reject runtime-private visibility", () => {
+  const issues = validateCoreRecord({
+    id: "actor_invalid_runtime_private_001",
+    kind: "actor_identity",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "runtime_private",
+    },
+    provenance: {
+      source_type: "runtime_identity",
+      source_ref: "runtime/test#turn-001",
+    },
+    actor_kind: "agent",
+    label: "Invalid Runtime Private Actor",
+    status: "active",
+  });
+
+  assert.ok(
+    issues.some(
+      (issue) =>
+        issue.path === "visibility_state.privacy_scope" &&
+        issue.message === 'actor identities cannot be "runtime_private"',
+    ),
+  );
+});
+
+test("procedure claims can move from world through governance into canonical memory", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const worldClaim = {
+    id: "wcl_procedure_test_001",
+    kind: "procedure" as const,
+    layer: "world" as const,
+    authoritative_home: "world" as const,
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "owner_private" as const,
+    },
+    provenance: {
+      source_type: "workflow_observation",
+      source_ref: "runtime/session-procedure#turn-001",
+      evidence_refs: ["ep_procedure_test_001"],
+      runtime_ref: "runtime_procedure_test_001",
+      session_ref: "session_procedure_test_001",
+      thread_ref: "thread_procedure_test_001",
+    },
+    statement: "When processing structured preference signals, normalize subject_label, relation_type, and wiki_path before proposal emission.",
+    epistemic_state: "inferred" as const,
+    temporal_state: {
+      temporal_status: "active" as const,
+      valid_from: now,
+      valid_to: null,
+    },
+    support_refs: ["ep_procedure_test_001"],
+  };
+
+  const workflow = executeCanonicalProposalWorkflow({
+    now,
+    actor: "system:test",
+    ratification_id: "rat_procedure_test_001",
+    canonical_id: "mem_procedure_test_001",
+    proposal: {
+      id: "prop_procedure_test_001",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "world_promotion",
+        source_ref: worldClaim.id,
+        evidence_refs: [worldClaim.id, ...worldClaim.support_refs],
+        runtime_ref: worldClaim.provenance.runtime_ref,
+        session_ref: worldClaim.provenance.session_ref,
+        thread_ref: worldClaim.provenance.thread_ref,
+      },
+      operation: "create",
+      candidate_kind: "procedure",
+      target_layer: "canon",
+      target_ref: null,
+      candidate_payload: {
+        kind: "procedure",
+        statement: worldClaim.statement,
+        epistemic_state: "confirmed",
+        temporal_state: worldClaim.temporal_state,
+      },
+      reason: "Repeated workflow evidence supports governing this procedure.",
+      evidence_refs: [worldClaim.id, ...worldClaim.support_refs],
+      governance_state: "proposed",
+    },
+  });
+
+  assert.equal(workflow.accepted, true);
+  assert.equal(workflow.ratification_record.decision, "approved");
+  assert.equal(workflow.created_record?.kind, "procedure");
+  assert.equal(workflow.created_record?.statement, worldClaim.statement);
+  assert.equal(workflow.created_record?.governance_state, "ratified");
+  assert.equal(workflow.created_record?.temporal_state?.temporal_status, "active");
+  assert.deepEqual(workflow.updated_records, []);
 });
 
 test("structured preference intake can be shaped declaratively without adding a new workflow", () => {
@@ -748,8 +957,11 @@ test("accepted contradiction resolution compiles into projection with explicit h
 
   assert.match(projection.markdown, /\[contradiction:contra_resolution_projection_001\] \(resolved\)/);
   assert.match(projection.markdown, /\[contradiction-resolution:cres_resolution_projection_001\] \(applied\) coexist_temporally/);
+  assert.match(projection.markdown, /## World Trace/);
   assert.match(projection.markdown, /\[world:wcl_existing_resolution_projection_001\] \(disputed; historical\)/);
   assert.match(projection.markdown, /\[world:wcl_resolution_projection_001\] \(inferred; active\)/);
+  const activeWorldSection = projection.markdown.split("## World Trace")[0] ?? projection.markdown;
+  assert.ok(!activeWorldSection.includes("[world:wcl_existing_resolution_projection_001]"));
 });
 
 test("validation rejects disposition refs without matching outcomes", () => {

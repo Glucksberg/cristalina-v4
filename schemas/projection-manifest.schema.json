@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/projection-manifest.schema.json",
+  "title": "Cristalina v4 Projection Manifest",
+  "allOf": [
+    {
+      "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "layer",
+        "authoritative_home",
+        "adapter",
+        "projection_profile",
+        "audience",
+        "read_policy_version",
+        "context_refs",
+        "artifact_refs",
+        "upstream_refs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "projection_manifest"
+        },
+        "layer": {
+          "const": "derived"
+        },
+        "authoritative_home": {
+          "const": "governance"
+        },
+        "adapter": {
+          "type": "string",
+          "enum": [
+            "openclaw",
+            "hermes"
+          ]
+        },
+        "projection_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_identity_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_instance_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_session_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "conversation_thread_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "policy_snapshot_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "context_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "suppressed_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "suppressed_records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "reason_code"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "reason_code": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "diagnostic_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "upstream_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "dependentRequired": {
+        "suppressed_records": [
+          "suppressed_refs"
+        ]
+      },
+      "additionalProperties": true
+    }
+  ]
+}

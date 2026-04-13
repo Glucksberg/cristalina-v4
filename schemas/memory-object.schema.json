@@ -25,16 +25,17 @@
         },
         "kind": {
           "type": "string",
-          "enum": [
-            "fact",
-            "belief",
-            "preference",
-            "constraint",
-            "goal",
-            "value",
-            "identity_trait"
-          ]
-        },
+            "enum": [
+              "fact",
+              "belief",
+              "preference",
+              "constraint",
+              "goal",
+              "procedure",
+              "value",
+              "identity_trait"
+            ]
+          },
         "statement": {
           "type": "string"
         },

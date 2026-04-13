@@ -144,6 +144,7 @@ Expected contents:
 - ratified beliefs
 - preferences
 - constraints
+- procedures
 - values
 - identity traits
 - supersession chains
@@ -251,6 +252,7 @@ Expected contents:
     beliefs/
     preferences/
     constraints/
+    procedures/
     values/
     identity/
   wiki/

@@ -4,6 +4,7 @@ export const MEMORY_OBJECT_KINDS = [
   "preference",
   "constraint",
   "goal",
+  "procedure",
   "value",
   "identity_trait",
   "entity",
@@ -421,10 +422,19 @@ export interface ProjectionManifest extends RecordEnvelope {
   adapter: Exclude<RuntimeKind, "generic">;
   projection_profile: string;
   audience: string;
+  read_policy_version: string;
   actor_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
+  policy_snapshot_ref?: string | null;
+  context_refs: string[];
+  suppressed_refs?: string[];
+  suppressed_records?: Array<{
+    id: string;
+    kind: string;
+    reason_code: string;
+  }>;
   diagnostic_refs?: string[];
   upstream_refs: string[];
   artifact_refs: string[];

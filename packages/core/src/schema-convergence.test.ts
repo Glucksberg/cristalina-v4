@@ -125,3 +125,13 @@ test("source intake profile schema stays aligned with executable intake kinds", 
   assert.equal(typeof profile.wiki_path, "string");
   assert.equal(typeof profile.relation_type, "string");
 });
+
+test("projection manifest schema stays aligned with adapter and read-discipline contracts", async () => {
+  const schema = await readSchema("../../schemas/projection-manifest.schema.json");
+  const variant = schema.allOf?.[1];
+  const properties = variant?.properties ?? {};
+
+  assert.deepEqual(expectEnum(properties.adapter), ["openclaw", "hermes"]);
+  assert.equal((properties.read_policy_version as { type?: string } | undefined)?.type, "string");
+  assert.equal((properties.context_refs as { type?: string } | undefined)?.type, "array");
+});

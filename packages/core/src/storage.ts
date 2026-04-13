@@ -33,6 +33,7 @@ export const STORAGE_LAYOUT = {
     preferences: "canon/preferences",
     constraints: "canon/constraints",
     goals: "canon/goals",
+    procedures: "canon/procedures",
     values: "canon/values",
     identityTraits: "canon/identity-traits",
     identity: "canon/identity",

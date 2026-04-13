@@ -256,6 +256,7 @@
                 "preference",
                 "constraint",
                 "goal",
+                "procedure",
                 "value",
                 "identity_trait"
               ]

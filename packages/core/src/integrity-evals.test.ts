@@ -121,6 +121,7 @@ test("core integrity eval harness passes the baseline identity-aware preference 
       manifest: "pmf_openclaw_eval_001",
     },
   });
+  const projectionManifestSource = JSON.stringify(projection.manifest);
 
   const results = runCoreIntegrityEvals({
     observationIssues: validateCoreRecord(intake.observation),
@@ -138,9 +139,10 @@ test("core integrity eval harness passes the baseline identity-aware preference 
     canonIssues: validateCoreRecord(canonical_record),
     governanceIssues: [],
     projectionMarkdown: projection.markdown,
+    projectionManifestSource,
   });
 
-  assert.equal(results.length, 5);
+  assert.equal(results.length, 6);
   assert.ok(results.every((result) => result.passed), JSON.stringify(results, null, 2));
 });
 
@@ -265,6 +267,7 @@ test("core integrity eval harness passes an applied contradiction-resolution flo
       manifest: "pmf_openclaw_eval_002",
     },
   });
+  const projectionManifestSource = JSON.stringify(projection.manifest);
 
   const results = runCoreIntegrityEvals({
     observationIssues: validateCoreRecord(intake.observation),
@@ -284,9 +287,10 @@ test("core integrity eval harness passes an applied contradiction-resolution flo
     canonIssues: validateCoreRecord(canonical_record),
     governanceIssues: validateCoreRecord(applied.resolution),
     projectionMarkdown: projection.markdown,
+    projectionManifestSource,
   });
 
-  assert.equal(results.length, 5);
+  assert.equal(results.length, 6);
   assert.ok(results.every((result) => result.passed), JSON.stringify(results, null, 2));
   assert.match(projection.markdown, /\[contradiction-resolution:cres_eval_002\] \(applied\) coexist_temporally/);
   assert.match(projection.markdown, /\[world:wcl_eval_existing_002\] \(disputed; historical\)/);

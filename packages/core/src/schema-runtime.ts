@@ -48,6 +48,7 @@ export const CONTRADICTION_RESOLUTION_SCHEMA_ID = "https://cristalina-v4.local/s
 export const DISPOSITION_RECORD_SCHEMA_ID = "https://cristalina-v4.local/schemas/disposition-record.schema.json";
 export const RUNTIME_IDENTITY_SCHEMA_ID = "https://cristalina-v4.local/schemas/runtime-identity.schema.json";
 export const SOURCE_INTAKE_PROFILE_SCHEMA_ID = "https://cristalina-v4.local/schemas/source-intake-profile.schema.json";
+export const PROJECTION_MANIFEST_SCHEMA_ID = "https://cristalina-v4.local/schemas/projection-manifest.schema.json";
 export const STORE_MANIFEST_SCHEMA_ID = "https://cristalina-v4.local/schemas/store-manifest.schema.json";
 
 const SCHEMA_PATHS = [
@@ -58,6 +59,7 @@ const SCHEMA_PATHS = [
   "../../../schemas/disposition-record.schema.json",
   "../../../schemas/runtime-identity.schema.json",
   "../../../schemas/source-intake-profile.schema.json",
+  "../../../schemas/projection-manifest.schema.json",
   "../../../schemas/store-manifest.schema.json",
 ] as const;
 

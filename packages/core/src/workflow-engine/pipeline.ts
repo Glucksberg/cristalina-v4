@@ -110,6 +110,12 @@ const DEFAULT_CONVERSATION_PREFERENCE_DISPOSITION: Required<
   proposal_for_canon: true,
 };
 
+function normalizeCanonicalIdentityPrivacyScope(
+  scope: SourceRecord["visibility_state"]["privacy_scope"],
+): SourceRecord["visibility_state"]["privacy_scope"] {
+  return scope === "runtime_private" ? "owner_private" : scope;
+}
+
 function defaultConversationPreferenceReasonCodes(strategy: ConversationPreferenceDispositionStrategy): string[] {
   const codes: string[] = [];
   if (strategy.evidence_only) codes.push("evidence_retained");
@@ -143,7 +149,7 @@ function buildRuntimeIdentityArtifacts(
     created_at: input.now,
     updated_at: input.now,
     visibility_state: {
-      privacy_scope: input.source_record.visibility_state.privacy_scope,
+      privacy_scope: normalizeCanonicalIdentityPrivacyScope(input.source_record.visibility_state.privacy_scope),
     },
     provenance: {
       source_type: "runtime_identity",
@@ -163,7 +169,7 @@ function buildRuntimeIdentityArtifacts(
         created_at: input.now,
         updated_at: input.now,
         visibility_state: {
-          privacy_scope: input.source_record.visibility_state.privacy_scope,
+          privacy_scope: normalizeCanonicalIdentityPrivacyScope(input.source_record.visibility_state.privacy_scope),
         },
         provenance: {
           source_type: "runtime_identity",

@@ -30,6 +30,7 @@ const CANON_KIND_DIRECTORIES = {
   preference: STORAGE_LAYOUT.canon.preferences,
   constraint: STORAGE_LAYOUT.canon.constraints,
   goal: STORAGE_LAYOUT.canon.goals,
+  procedure: STORAGE_LAYOUT.canon.procedures,
   value: STORAGE_LAYOUT.canon.values,
   identity_trait: STORAGE_LAYOUT.canon.identityTraits,
 } as const;
@@ -171,6 +172,7 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
     STORAGE_LAYOUT.canon.constraints,
     STORAGE_LAYOUT.canon.values,
     STORAGE_LAYOUT.canon.goals,
+    STORAGE_LAYOUT.canon.procedures,
     STORAGE_LAYOUT.canon.identityTraits,
     STORAGE_LAYOUT.canon.identity,
     STORAGE_LAYOUT.wiki.root,

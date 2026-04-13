@@ -51,6 +51,7 @@ Does the system actually accumulate useful knowledge over time, or just more art
 - provenance preservation
 - contradiction behavior
 - wiki authority discipline
+- projection read discipline
 - OpenClaw projection fidelity
 - Hermes projection fidelity
 - end-to-end MVP flow correctness
@@ -68,6 +69,7 @@ The current core test harness now covers:
 - OpenClaw round-trip recompilation
 - projection separation of `world`, `wiki`, and `canon`
 - temporal closure of losing world claims after applied resolution
+- manifest-level audit of read policy, context refs, and structured suppression traces
 
 ---
 
@@ -96,6 +98,7 @@ The system should be considered underperforming if:
 
 - wiki content quietly becomes canon
 - runtime projections become hidden truth sources
+- projection suppression becomes silent or unauditable
 - world state and canon are frequently indistinguishable
 - provenance breaks
 - contradictions accumulate without usable handling

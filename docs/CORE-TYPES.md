@@ -67,6 +67,7 @@ The core should begin with:
 - `preference`
 - `constraint`
 - `goal`
+- `procedure`
 - `value`
 - `identity_trait`
 - `entity`
@@ -571,7 +572,11 @@ Minimum fields:
 - `adapter`
 - `projection_profile`
 - `audience`
+- `read_policy_version`
 - `created_at`
+- `context_refs`
+- `suppressed_refs`
+- `policy_snapshot_ref`
 - `upstream_refs`
 - `artifact_refs`
 

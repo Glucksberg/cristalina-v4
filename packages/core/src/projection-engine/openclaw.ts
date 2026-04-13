@@ -1,4 +1,10 @@
-import { createProjectionArtifact, createProjectionManifest } from "../adapter-sdk/projection.js";
+import {
+  DEFAULT_PROJECTION_READ_POLICY_VERSION,
+  filterProjectionRecords,
+  partitionProjectionClaimsForRuntime,
+  createProjectionArtifact,
+  createProjectionManifest,
+} from "../adapter-sdk/projection.js";
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
@@ -32,6 +38,14 @@ function renderCanonSection(records: CanonicalMemoryObject[]): string[] {
 }
 
 function renderWorldSection(records: WorldClaim[]): string[] {
+  if (records.length === 0) return ["- (none)"];
+  return records.map((record) => {
+    const temporal = record.temporal_state?.temporal_status ?? "unresolved";
+    return `- [world:${record.id}] (${record.epistemic_state}; ${temporal}) ${record.statement}`;
+  });
+}
+
+function renderWorldTraceSection(records: WorldClaim[]): string[] {
   if (records.length === 0) return ["- (none)"];
   return records.map((record) => {
     const temporal = record.temporal_state?.temporal_status ?? "unresolved";
@@ -146,28 +160,104 @@ export interface OpenClawBootstrapCompilation {
 }
 
 export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompilationInput): OpenClawBootstrapCompilation {
-  const episodes = input.episodes ?? [];
-  const entities = input.entities ?? [];
-  const relations = input.relations ?? [];
-  const contradictions = input.contradictions ?? [];
-  const contradiction_resolutions = input.contradiction_resolutions ?? [];
+  const projectionContext = {
+    adapter: "openclaw" as const,
+    audience: "runtime",
+    actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
+    runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,
+    runtime_session_ref: input.identity_context?.runtime_session_ref ?? null,
+    conversation_thread_ref: input.identity_context?.conversation_thread_ref ?? null,
+  };
+
+  const actorIdentityFilter = input.runtime_identity?.actor_identity
+    ? filterProjectionRecords([input.runtime_identity.actor_identity], projectionContext)
+    : undefined;
+  const ownerIdentityFilter = input.runtime_identity?.owner_identity
+    ? filterProjectionRecords([input.runtime_identity.owner_identity], projectionContext)
+    : undefined;
+  const runtimeInstanceFilter = input.runtime_identity?.runtime_instance
+    ? filterProjectionRecords([input.runtime_identity.runtime_instance], projectionContext)
+    : undefined;
+  const runtimeSessionFilter = input.runtime_identity?.runtime_session
+    ? filterProjectionRecords([input.runtime_identity.runtime_session], projectionContext)
+    : undefined;
+  const conversationThreadFilter = input.runtime_identity?.conversation_thread
+    ? filterProjectionRecords([input.runtime_identity.conversation_thread], projectionContext)
+    : undefined;
+
+  const actor_identity = actorIdentityFilter?.included[0];
+  const owner_identity = ownerIdentityFilter?.included[0];
+  const runtime_instance = runtimeInstanceFilter?.included[0];
+  const runtime_session = runtimeSessionFilter?.included[0];
+  const conversation_thread = conversationThreadFilter?.included[0];
+
+  const episodesFilter = filterProjectionRecords(input.episodes ?? [], projectionContext);
+  const entitiesFilter = filterProjectionRecords(input.entities ?? [], projectionContext);
+  const relationsFilter = filterProjectionRecords(input.relations ?? [], projectionContext);
+  const worldClaimsFilter = filterProjectionRecords(input.world_claims, projectionContext);
+  const contradictionsFilter = filterProjectionRecords(input.contradictions ?? [], projectionContext);
+  const contradictionResolutionsFilter = filterProjectionRecords(input.contradiction_resolutions ?? [], projectionContext);
+  const wikiPagesFilter = filterProjectionRecords(input.wiki_pages, projectionContext);
+  const wikiClaimsFilter = filterProjectionRecords(input.wiki_claims, projectionContext);
+  const diagnosticsFilter = filterProjectionRecords(input.diagnostics ?? [], projectionContext);
+  const canonicalFilter = filterProjectionRecords(input.canonical_records, projectionContext);
+
+  const runtimeSuppressed = [
+    ...(actorIdentityFilter?.suppressed ?? []),
+    ...(ownerIdentityFilter?.suppressed ?? []),
+    ...(runtimeInstanceFilter?.suppressed ?? []),
+    ...(runtimeSessionFilter?.suppressed ?? []),
+    ...(conversationThreadFilter?.suppressed ?? []),
+  ];
+
+  const episodes = episodesFilter.included;
+  const entities = entitiesFilter.included;
+  const relations = relationsFilter.included;
+  const contradictions = contradictionsFilter.included;
+  const contradiction_resolutions = contradictionResolutionsFilter.included;
+  const world_claims = worldClaimsFilter.included;
+  const wiki_pages = wikiPagesFilter.included;
+  const wiki_claims = wikiClaimsFilter.included;
+  const diagnostics = diagnosticsFilter.included;
+  const canonical_records = canonicalFilter.included;
+
+  const suppressed_refs = [
+    ...runtimeSuppressed,
+    ...episodesFilter.suppressed,
+    ...entitiesFilter.suppressed,
+    ...relationsFilter.suppressed,
+    ...worldClaimsFilter.suppressed,
+    ...contradictionsFilter.suppressed,
+    ...contradictionResolutionsFilter.suppressed,
+    ...wikiPagesFilter.suppressed,
+    ...wikiClaimsFilter.suppressed,
+    ...diagnosticsFilter.suppressed,
+    ...canonicalFilter.suppressed,
+  ];
+  const suppressed_records = suppressed_refs;
+  const suppressed_ref_ids = suppressed_records.map((entry) => entry.id);
+
+  const worldClaimPartitions = partitionProjectionClaimsForRuntime(world_claims, projectionContext);
+  const active_world_claims = worldClaimPartitions.active;
+  const traced_world_claims = worldClaimPartitions.trace;
+
   const runtime_refs = [
-    input.runtime_identity?.actor_identity?.id,
-    input.runtime_identity?.owner_identity?.id,
-    input.runtime_identity?.runtime_instance?.id,
-    input.runtime_identity?.runtime_session?.id,
-    input.runtime_identity?.conversation_thread?.id,
+    actor_identity?.id ?? input.identity_context?.actor_identity_ref ?? null,
+    owner_identity?.id,
+    runtime_instance?.id ?? input.identity_context?.runtime_instance_ref ?? null,
+    runtime_session?.id ?? input.identity_context?.runtime_session_ref ?? null,
+    conversation_thread?.id ?? input.identity_context?.conversation_thread_ref ?? null,
   ].filter((value): value is string => typeof value === "string");
-  const canon_refs = input.canonical_records.map((record) => record.id);
-  const world_refs = input.world_claims.map((record) => record.id);
+  const canon_refs = canonical_records.map((record) => record.id);
+  const world_refs = world_claims.map((record) => record.id);
   const episode_refs = episodes.map((record) => record.id);
   const entity_refs = entities.map((record) => record.id);
   const relation_refs = relations.map((record) => record.id);
   const contradiction_refs = contradictions.map((record) => record.id);
   const contradiction_resolution_refs = contradiction_resolutions.map((record) => record.id);
-  const wiki_page_refs = input.wiki_pages.map((record) => record.id);
-  const wiki_claim_refs = input.wiki_claims.map((record) => record.id);
-  const diagnostic_refs = (input.diagnostics ?? []).map((record) => record.id);
+  const wiki_page_refs = wiki_pages.map((record) => record.id);
+  const wiki_claim_refs = wiki_claims.map((record) => record.id);
+  const diagnostic_refs = diagnostics.map((record) => record.id);
 
   const artifacts: ProjectionArtifact[] = [
     createProjectionArtifact({
@@ -205,19 +295,32 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     }),
   ];
 
+  const runtime_identity = actor_identity || owner_identity || runtime_instance || runtime_session || conversation_thread
+    ? {
+        actor_identity,
+        owner_identity,
+        runtime_instance,
+        runtime_session,
+        conversation_thread,
+      }
+    : undefined;
+
   const markdown = [
     "# OpenClaw Bootstrap Memory",
     "",
     `Compiled at: ${input.now}`,
     "",
     "## Runtime",
-    ...renderRuntimeSection(input.runtime_identity),
+    ...renderRuntimeSection(runtime_identity),
     "",
     "## Canon",
-    ...renderCanonSection(input.canonical_records),
+    ...renderCanonSection(canonical_records),
     "",
     "## World Claims",
-    ...renderWorldSection(input.world_claims),
+    ...renderWorldSection(active_world_claims),
+    "",
+    "## World Trace",
+    ...renderWorldTraceSection(traced_world_claims),
     "",
     "## Episodes",
     ...renderEpisodeSection(episodes),
@@ -235,10 +338,10 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     ...renderContradictionResolutionSection(contradiction_resolutions),
     "",
     "## Wiki",
-    ...renderWikiSection(input.wiki_pages, input.wiki_claims),
+    ...renderWikiSection(wiki_pages, wiki_claims),
     "",
     "## Diagnostics",
-    ...renderDiagnosticsSection(input.diagnostics ?? []),
+    ...renderDiagnosticsSection(diagnostics),
     "",
     "## Provenance",
     ...uniqueRefs(
@@ -262,10 +365,14 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     adapter: "openclaw",
     projection_profile: "bootstrap",
     audience: "runtime",
+    read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
     runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,
     runtime_session_ref: input.identity_context?.runtime_session_ref ?? null,
     conversation_thread_ref: input.identity_context?.conversation_thread_ref ?? null,
+    context_refs: runtime_refs,
+    suppressed_refs: suppressed_ref_ids,
+    suppressed_records,
     diagnostic_refs: diagnostic_refs.length > 0 ? diagnostic_refs : undefined,
     artifact_refs: artifacts.map((artifact) => artifact.id),
     upstream_refs: uniqueRefs(

@@ -13,11 +13,13 @@ export interface IntegrityEvalInput {
   canonIssues: ValidationIssue[];
   governanceIssues?: ValidationIssue[];
   projectionMarkdown: string;
+  projectionManifestSource?: string;
 }
 
 export function runCoreIntegrityEvals(input: IntegrityEvalInput): EvalResult[] {
   const governanceIssues = input.governanceIssues ?? [];
   const hasAppliedResolution = input.projectionMarkdown.includes("[contradiction-resolution:") && input.projectionMarkdown.includes("(applied)");
+  const manifestSource = input.projectionManifestSource ?? "";
 
   return [
     {
@@ -53,6 +55,17 @@ export function runCoreIntegrityEvals(input: IntegrityEvalInput): EvalResult[] {
       name: "resolution_effect",
       passed: !hasAppliedResolution || /\[world:[^\]]+\] \(disputed; historical\)/.test(input.projectionMarkdown),
       detail: "Applied contradiction resolution should leave a historical world trace instead of silently overwriting the losing claim.",
+    },
+    {
+      name: "read_path_traceability",
+      passed:
+        !manifestSource ||
+        (
+          manifestSource.includes("\"read_policy_version\"") &&
+          manifestSource.includes("\"context_refs\"") &&
+          (!manifestSource.includes("\"suppressed_refs\"") || manifestSource.includes("\"suppressed_records\""))
+        ),
+      detail: "Projection manifests should preserve policy version, context refs, and structured suppression audit when suppression occurs.",
     },
   ];
 }
