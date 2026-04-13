@@ -49,3 +49,19 @@ If a new change makes the project more impressive at the surface but weaker in:
 - runtime validation
 
 then the change is probably early or mis-layered.
+
+## Session Phrases
+
+This section is a cumulative memory of durable lessons from each work session in this repository.
+
+Rules:
+
+- each session should end with exactly one short sentence added here
+- each sentence should capture a durable engineering lesson, not a status update
+- prefer lessons about contracts, layer boundaries, legality of transitions, validation depth, and sequencing
+- if a new sentence duplicates or supersedes an old one, rewrite or replace instead of growing noise
+- keep the list readable and high-signal
+
+Current session phrases:
+
+- 2026-04-13: Hardening should first eliminate drift between docs, schemas, and executable core before expanding proposal operations, adapters, or projection surfaces.
