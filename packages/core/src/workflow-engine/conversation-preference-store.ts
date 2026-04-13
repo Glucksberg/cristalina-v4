@@ -1,4 +1,4 @@
-import { access, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { appendAuditChange, appendValidationLog } from "../audit/log.js";
@@ -94,6 +94,13 @@ export interface ConversationPreferenceStoreResult {
   validation_issues: ValidationIssue[];
 }
 
+interface LoadedAuthoritativeFlow {
+  source_record: SourceRecord;
+  intake: ConversationPreferenceIntakeArtifacts;
+  ratification_record: RatificationRecord;
+  canonical_record: CanonicalMemoryObject;
+}
+
 function resolveStorePath(rootDir: string, relativePath: string): string {
   const rootPath = resolve(rootDir);
   const targetPath = resolve(rootPath, relativePath);
@@ -117,6 +124,18 @@ async function pathExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function serializeSourcePayload(input: ConversationPreferenceStoreInput): string {
+  return `${JSON.stringify(
+    {
+      runtime: input.source.runtime,
+      source_ref: input.source.source_ref,
+      message: input.source.message,
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecord {
@@ -213,8 +232,39 @@ function buildPaths(
 }
 
 async function loadExistingFlow(
+  input: ConversationPreferenceStoreInput,
   paths: ConversationPreferenceStorePaths,
 ): Promise<ConversationPreferenceStoreResult | undefined> {
+  const authoritativePaths = [
+    paths.raw_source,
+    paths.source_record,
+    paths.observation,
+    paths.world_claim,
+    paths.wiki_page_record,
+    paths.wiki_claim,
+    paths.proposal,
+    paths.disposition_record,
+    paths.ratification_record,
+    paths.canonical_record,
+  ];
+
+  const authoritativePresence = await Promise.all(authoritativePaths.map((filePath) => pathExists(filePath)));
+  const hasAnyAuthoritativeState = authoritativePresence.some(Boolean);
+  const hasCompleteAuthoritativeState = authoritativePresence.every(Boolean);
+
+  if (!hasAnyAuthoritativeState) {
+    return undefined;
+  }
+
+  if (!hasCompleteAuthoritativeState) {
+    throw new Error("Existing conversation preference flow is partially materialized in authoritative storage");
+  }
+
+  const loaded = await loadAuthoritativeFlow(paths);
+  assertLoadedFlowMatchesInput(loaded, input);
+
+  await ensureReplayableArtifacts(input, paths, loaded);
+
   const requiredPaths = [
     paths.raw_source,
     paths.source_record,
@@ -235,20 +285,10 @@ async function loadExistingFlow(
   ];
 
   if (!(await Promise.all(requiredPaths.map((filePath) => pathExists(filePath)))).every(Boolean)) {
-    return undefined;
+    throw new Error("Conversation preference flow repair did not restore all expected artifacts");
   }
 
-  const source_record = await readCoreRecord<SourceRecord>(paths.source_record);
-  const intake = {
-    observation: await readCoreRecord<Observation>(paths.observation),
-    world_claim: await readCoreRecord<WorldClaim>(paths.world_claim),
-    wiki_page: await readCoreRecord<WikiPage>(paths.wiki_page_record),
-    wiki_claim: await readCoreRecord<WikiClaim>(paths.wiki_claim),
-    proposal: await readCoreRecord<Proposal>(paths.proposal),
-    disposition_record: await readCoreRecord<DispositionRecord>(paths.disposition_record),
-  };
-  const ratification_record = await readCoreRecord<RatificationRecord>(paths.ratification_record);
-  const canonical_record = await readCoreRecord<CanonicalMemoryObject>(paths.canonical_record);
+  const { source_record, intake, ratification_record, canonical_record } = loaded;
   const projection_artifacts = await Promise.all([
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.canon),
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.world),
@@ -283,6 +323,101 @@ async function loadExistingFlow(
     },
     validation_issues,
   };
+}
+
+async function loadAuthoritativeFlow(paths: ConversationPreferenceStorePaths): Promise<LoadedAuthoritativeFlow> {
+  return {
+    source_record: await readCoreRecord<SourceRecord>(paths.source_record),
+    intake: {
+      observation: await readCoreRecord<Observation>(paths.observation),
+      world_claim: await readCoreRecord<WorldClaim>(paths.world_claim),
+      wiki_page: await readCoreRecord<WikiPage>(paths.wiki_page_record),
+      wiki_claim: await readCoreRecord<WikiClaim>(paths.wiki_claim),
+      proposal: await readCoreRecord<Proposal>(paths.proposal),
+      disposition_record: await readCoreRecord<DispositionRecord>(paths.disposition_record),
+    },
+    ratification_record: await readCoreRecord<RatificationRecord>(paths.ratification_record),
+    canonical_record: await readCoreRecord<CanonicalMemoryObject>(paths.canonical_record),
+  };
+}
+
+function assertLoadedFlowMatchesInput(
+  loaded: LoadedAuthoritativeFlow,
+  input: ConversationPreferenceStoreInput,
+): void {
+  const mismatches: string[] = [];
+  const proposalStatement =
+    typeof loaded.intake.proposal.candidate_payload.statement === "string"
+      ? loaded.intake.proposal.candidate_payload.statement
+      : undefined;
+
+  if (loaded.source_record.id !== input.source.id) mismatches.push("source.id");
+  if (loaded.source_record.content_ref !== input.source.content_ref) mismatches.push("source.content_ref");
+  if (loaded.source_record.provenance.source_ref !== input.source.source_ref) mismatches.push("source.source_ref");
+  if (loaded.intake.observation.summary !== input.statement) mismatches.push("observation.summary");
+  if (loaded.intake.world_claim.statement !== input.statement) mismatches.push("world_claim.statement");
+  if (loaded.intake.wiki_claim.statement !== input.statement) mismatches.push("wiki_claim.statement");
+  if (proposalStatement !== input.statement) mismatches.push("proposal.candidate_payload.statement");
+  if (loaded.canonical_record.statement !== input.statement) mismatches.push("canonical_record.statement");
+
+  if (mismatches.length > 0) {
+    throw new Error(`Existing conversation preference flow does not match input: ${mismatches.join(", ")}`);
+  }
+}
+
+async function ensureReplayableArtifacts(
+  input: ConversationPreferenceStoreInput,
+  paths: ConversationPreferenceStorePaths,
+  loaded: LoadedAuthoritativeFlow,
+): Promise<void> {
+  const persistedSource = await readFile(paths.raw_source, "utf8");
+  if (persistedSource !== serializeSourcePayload(input)) {
+    throw new Error("Existing conversation preference source payload does not match input");
+  }
+
+  if (!(await pathExists(paths.wiki_page_markdown))) {
+    await writeFile(
+      paths.wiki_page_markdown,
+      renderWikiMarkdown(
+        loaded.intake.wiki_page,
+        loaded.source_record,
+        loaded.intake.world_claim.id,
+        loaded.canonical_record.statement,
+        loaded.canonical_record.id,
+      ),
+      "utf8",
+    );
+  }
+
+  const projection = executeOpenClawBootstrapWorkflow({
+    now: loaded.canonical_record.updated_at ?? loaded.canonical_record.created_at,
+    canonical_records: [loaded.canonical_record],
+    world_claims: [loaded.intake.world_claim],
+    wiki_pages: [loaded.intake.wiki_page],
+    wiki_claims: [loaded.intake.wiki_claim],
+    ids: {
+      canon_artifact: input.ids.canon_artifact,
+      world_artifact: input.ids.world_artifact,
+      wiki_artifact: input.ids.wiki_artifact,
+      manifest: input.ids.projection_manifest,
+    },
+  });
+
+  if (!(await pathExists(paths.projection_markdown))) {
+    await writeFile(paths.projection_markdown, projection.markdown, "utf8");
+  }
+  if (!(await pathExists(paths.projection_artifacts.canon))) {
+    await writeCoreRecord(resolve(input.rootDir), projection.artifacts[0]!);
+  }
+  if (!(await pathExists(paths.projection_artifacts.world))) {
+    await writeCoreRecord(resolve(input.rootDir), projection.artifacts[1]!);
+  }
+  if (!(await pathExists(paths.projection_artifacts.wiki))) {
+    await writeCoreRecord(resolve(input.rootDir), projection.artifacts[2]!);
+  }
+  if (!(await pathExists(paths.projection_manifest))) {
+    await writeCoreRecord(resolve(input.rootDir), projection.manifest);
+  }
 }
 
 function renderWikiMarkdown(wikiPage: WikiPage, sourceRecord: SourceRecord, worldClaimId: string, statement: string, canonicalId: string): string {
@@ -326,7 +461,7 @@ export async function writeConversationPreferenceFlowToStore(
   });
   const paths = buildPaths(rootDir, source_record, intake, input);
 
-  const existingFlow = await loadExistingFlow(paths);
+  const existingFlow = await loadExistingFlow(input, paths);
   if (existingFlow) {
     return existingFlow;
   }
@@ -348,15 +483,7 @@ export async function writeConversationPreferenceFlowToStore(
 
   await writeFile(
     paths.raw_source,
-    `${JSON.stringify(
-      {
-        runtime: input.source.runtime,
-        source_ref: input.source.source_ref,
-        message: input.source.message,
-      },
-      null,
-      2,
-    )}\n`,
+    serializeSourcePayload(input),
     "utf8",
   );
 
@@ -499,5 +626,5 @@ export async function readConversationPreferenceFlowResult(
     },
   });
 
-  return loadExistingFlow(buildPaths(rootDir, source_record, intake, input));
+  return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input));
 }

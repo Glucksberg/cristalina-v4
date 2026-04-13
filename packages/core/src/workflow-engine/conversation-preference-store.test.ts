@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, mkdtemp, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -70,5 +70,50 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
 
   assert.equal(second.reused, true);
   assert.equal(second.records.canonical_record.id, first.records.canonical_record.id);
+  assert.equal(auditLogAfter, auditLogBefore);
+});
+
+test("writeConversationPreferenceFlowToStore rejects reuse with mismatched input", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(input);
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...input,
+        statement: "The user now prefers exhaustive answers by default.",
+        source: {
+          ...input.source,
+          message: "The user now wants exhaustive answers by default.",
+        },
+      }),
+    /does not match input/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore repairs missing derived artifacts on rerun", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  const first = await writeConversationPreferenceFlowToStore(input);
+  const auditLogBefore = await readFile(join(rootDir, "audits/changes.log"), "utf8");
+
+  await unlink(first.paths.wiki_page_markdown);
+  await unlink(first.paths.projection_artifacts.wiki);
+
+  const repaired = await writeConversationPreferenceFlowToStore(input);
+  const auditLogAfter = await readFile(join(rootDir, "audits/changes.log"), "utf8");
+  const repairedWikiMarkdown = await readFile(first.paths.wiki_page_markdown, "utf8");
+
+  assert.equal(repaired.reused, true);
+  assert.match(repairedWikiMarkdown, /User Interaction Preferences/);
   assert.equal(auditLogAfter, auditLogBefore);
 });
