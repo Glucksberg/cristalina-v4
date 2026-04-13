@@ -55,6 +55,56 @@
             "superseded",
             "archived"
           ]
+        },
+        "temporal_state": {
+          "type": "object",
+          "required": [
+            "temporal_status"
+          ],
+          "properties": {
+            "temporal_status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "bounded",
+                "historical",
+                "unresolved"
+              ]
+            },
+            "valid_from": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "valid_to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "temporal_confidence": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "supersedes_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "superseded_by_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": true

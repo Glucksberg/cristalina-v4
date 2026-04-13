@@ -44,6 +44,38 @@ test("runtime cannot transition directly into canon", () => {
   assert.equal(isLegalLayerTransition("runtime", "canon"), false);
 });
 
+test("proposal validation rejects operations outside the executable baseline", () => {
+  const issues = validateCoreRecord({
+    id: "prop_test_future_op",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_test_future_op",
+      evidence_refs: ["obs_test_future_op"],
+    },
+    operation: "confirm",
+    candidate_kind: "preference",
+    target_layer: "canon",
+    target_ref: null,
+    candidate_payload: {
+      kind: "preference",
+      statement: "Future operations must stay out of the baseline contract.",
+    },
+    reason: "Attempt to use a non-baseline operation.",
+    evidence_refs: ["obs_test_future_op"],
+    governance_state: "proposed",
+  });
+
+  assert.ok(issues.some((issue) => issue.path === "operation"));
+});
+
 test("canonical workflow rejects mismatched target_ref and existing_record", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const targetRecord = {

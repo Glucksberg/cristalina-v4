@@ -81,11 +81,7 @@ export const RUNTIMES = [
 export const PROPOSAL_OPERATIONS = [
   "create",
   "revise",
-  "confirm",
   "supersede",
-  "deprecate",
-  "link",
-  "contradict",
 ] as const;
 
 export const DISPOSITION_OUTCOMES = [

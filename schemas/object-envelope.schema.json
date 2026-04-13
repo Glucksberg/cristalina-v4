@@ -45,19 +45,36 @@
       ]
     },
     "created_at": {
-      "type": "string"
+      "type": "string",
+      "format": "date-time"
     },
     "updated_at": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "format": "date-time"
     },
     "epistemic_state": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "observed",
+        "inferred",
+        "hypothesized",
+        "confirmed",
+        "disputed"
+      ]
     },
     "governance_state": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "draft",
+        "proposed",
+        "ratified",
+        "superseded",
+        "archived",
+        "rejected"
+      ]
     },
     "visibility_state": {
       "type": "object",
@@ -66,7 +83,21 @@
       ],
       "properties": {
         "privacy_scope": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "runtime_private",
+            "owner_private",
+            "agent_operational",
+            "project_private",
+            "shareable",
+            "public_safe"
+          ]
+        },
+        "audience_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": true
@@ -127,21 +158,35 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "format": "date-time"
         },
         "valid_to": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "format": "date-time"
         },
         "temporal_confidence": {
           "type": [
             "number",
             "null"
           ]
+        },
+        "temporal_status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "bounded",
+            "historical",
+            "unresolved"
+          ]
         }
       },
+      "required": [
+        "temporal_status"
+      ],
       "additionalProperties": true
     },
     "upstream_refs": {
