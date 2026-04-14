@@ -398,6 +398,7 @@ function validateWorldClaim(value: unknown): ValidationIssue[] {
     issues.push({ path: "kind", message: "expected world-claim kind" });
   }
   pushRequiredString(issues, value, "statement");
+  pushRequiredString(issues, value, "semantic_slot");
   pushEnum(issues, value, "epistemic_state", EPISTEMIC_STATES);
   if (!isRecord(value.temporal_state)) {
     issues.push({ path: "temporal_state", message: "expected object" });
@@ -414,6 +415,7 @@ function validateWorldClaim(value: unknown): ValidationIssue[] {
 function validateCanonicalMemoryObject(value: unknown): ValidationIssue[] {
   const issues = validateAgainstSchema(value, MEMORY_OBJECT_SCHEMA_ID);
   if (!isRecord(value)) return issues;
+  pushRequiredString(issues, value, "semantic_slot");
   if (
     value.governance_state === "superseded" &&
     isRecord(value.temporal_state)
@@ -450,6 +452,8 @@ function validateProposal(value: unknown): ValidationIssue[] {
   }
   if (!isRecord(value.candidate_payload)) {
     issues.push({ path: "candidate_payload", message: "expected object" });
+  } else if (value.target_layer === "canon") {
+    pushRequiredString(issues, value.candidate_payload, "semantic_slot", "candidate_payload.semantic_slot");
   }
   pushRequiredString(issues, value, "reason");
   if (!isStringArray(value.evidence_refs)) {

@@ -243,6 +243,7 @@
             "layer",
             "authoritative_home",
             "statement",
+            "semantic_slot",
             "epistemic_state",
             "temporal_state",
             "support_refs"
@@ -268,6 +269,9 @@
               "const": "world"
             },
             "statement": {
+              "type": "string"
+            },
+            "semantic_slot": {
               "type": "string"
             },
             "epistemic_state": {

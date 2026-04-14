@@ -67,6 +67,10 @@ async function main(): Promise<void> {
   const canonicalRecord = flow.records.canonical_record;
   const ratificationRecord = flow.records.ratification_record;
 
+  if (!canonicalRecord) {
+    throw new Error("Expected MVP flow 001 to materialize canonical state");
+  }
+
   const existingCanon = await loadCanonicalRecords(outputRoot);
   const duplicateProposal: Proposal = {
     ...intake.proposal,

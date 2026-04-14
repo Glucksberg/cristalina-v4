@@ -80,6 +80,7 @@ test("core integrity eval harness passes the baseline identity-aware preference 
       evidence_refs: [intake.observation.id, intake.world_claim.id],
     },
     statement: intake.world_claim.statement,
+    semantic_slot: intake.world_claim.semantic_slot,
     epistemic_state: "confirmed",
     governance_state: "ratified",
     temporal_state: {
@@ -237,6 +238,7 @@ test("core integrity eval harness passes an applied contradiction-resolution flo
       evidence_refs: [intake.observation.id, intake.world_claim.id],
     },
     statement: intake.world_claim.statement,
+    semantic_slot: intake.world_claim.semantic_slot,
     epistemic_state: "confirmed",
     governance_state: "ratified",
     temporal_state: {

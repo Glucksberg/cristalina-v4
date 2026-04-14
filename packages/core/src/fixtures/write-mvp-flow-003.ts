@@ -113,7 +113,7 @@ async function main(): Promise<void> {
   });
 
   const snapshotId = "snap-mvp-003-001";
-  const snapshotRecords = await writeSnapshotRecordCopies(outputRoot, snapshotId, [
+  const snapshotSourceRecords = [
     secondFlow.records.source_record,
     secondFlow.records.intake.observation,
     secondFlow.records.intake.episode,
@@ -127,7 +127,8 @@ async function main(): Promise<void> {
     applied.records.canonical_record,
     ...applied.records.projection_artifacts,
     applied.records.projection_manifest,
-  ]);
+  ].filter((record): record is NonNullable<typeof record> => record !== undefined);
+  const snapshotRecords = await writeSnapshotRecordCopies(outputRoot, snapshotId, snapshotSourceRecords);
 
   const snapshotPath = await writeSnapshotManifest(outputRoot, {
     snapshot_id: snapshotId,

@@ -69,6 +69,7 @@ test("canon records reject pre-ratification governance states", () => {
       source_ref: "src_test_001",
     },
     statement: "Draft canon records must be rejected.",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
     epistemic_state: "confirmed",
     governance_state: "draft",
     temporal_state: {
@@ -110,6 +111,7 @@ test("proposal validation rejects operations outside the executable baseline", (
     candidate_payload: {
       kind: "preference",
       statement: "Future operations must stay out of the baseline contract.",
+      semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
     },
     reason: "Attempt to use a non-baseline operation.",
     evidence_refs: ["obs_test_future_op"],
@@ -174,6 +176,7 @@ test("canonical workflow rejects mismatched target_ref and existing_record", () 
       source_ref: "src_target_001",
     },
     statement: "Target record",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
     epistemic_state: "confirmed",
     governance_state: "ratified",
     temporal_state: {
@@ -222,6 +225,7 @@ test("canonical workflow rejects mismatched target_ref and existing_record", () 
           },
           candidate_payload: {
             kind: "preference",
+            semantic_slot: targetRecord.semantic_slot,
             reason: "Supersede the target.",
           },
           reason: "Supersede target",
@@ -266,11 +270,51 @@ test("conversation preference intake preserves the raw source_ref in provenance"
   });
 
   assert.equal(intake.observation.provenance.source_ref, "runtime/session-test#turn-003");
+  assert.equal(intake.observation.provenance.source_type, "conversation");
   assert.equal(intake.observation.runtime_instance_ref, "runtime_test_003");
   assert.equal(intake.episode.observation_refs[0], intake.observation.id);
   assert.equal(intake.preference_relation.subject_ref.id, intake.subject_entity.id);
   assert.equal(intake.world_claim.provenance.source_ref, "runtime/session-test#turn-003");
   assert.equal(intake.proposal.provenance.source_ref, "runtime/session-test#turn-003");
+});
+
+test("structured preference intake preserves the source_type across emitted artifacts", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildStructuredPreferenceSignalIntake({
+    now,
+    statement: "The customer prefers change summaries before code excerpts.",
+    source_record: {
+      id: "src_structured_source_type_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "project_private",
+      },
+      provenance: {
+        source_type: "crm_import",
+        source_ref: "crm/customer-001",
+      },
+      content_ref: "raw/imports/customer-001.json",
+    },
+    semantic_profile: {
+      wiki_title: "Customer Delivery Preferences",
+      wiki_path: "wiki/pages/customer-delivery-preferences.md",
+      subject_entity_kind: "customer",
+      subject_label: "Customer 001",
+      preference_topic_label: "Delivery Preferences",
+      relation_type: "requests_delivery_style",
+      proposal_reason: "Structured import confirms a customer delivery preference worth governing.",
+    },
+    ids: buildIds("structured_source_type_001"),
+  });
+
+  assert.equal(intake.observation.provenance.source_type, "crm_import");
+  assert.equal(intake.episode.provenance.source_type, "crm_import");
+  assert.equal(intake.proposal.provenance.source_type, "crm_import");
+  assert.equal(intake.disposition_record.provenance.source_type, "crm_import");
 });
 
 test("openclaw projection preserves visibility and renders reconciled statuses", () => {
@@ -580,6 +624,7 @@ test("procedure claims can move from world through governance into canonical mem
       thread_ref: "thread_procedure_test_001",
     },
     statement: "When processing structured preference signals, normalize subject_label, relation_type, and wiki_path before proposal emission.",
+    semantic_slot: "procedure:workflow:structured-preference-signal",
     epistemic_state: "inferred" as const,
     temporal_state: {
       temporal_status: "active" as const,
@@ -619,6 +664,7 @@ test("procedure claims can move from world through governance into canonical mem
       candidate_payload: {
         kind: "procedure",
         statement: worldClaim.statement,
+        semantic_slot: worldClaim.semantic_slot,
         epistemic_state: "confirmed",
         temporal_state: worldClaim.temporal_state,
       },

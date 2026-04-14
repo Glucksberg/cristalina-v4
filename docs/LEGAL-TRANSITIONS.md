@@ -172,6 +172,7 @@ Does it:
 
 - contradict existing world state
 - contradict canonical memory
+- target the same `semantic_slot` rather than merely the same broad kind
 - require explicit contradiction handling
 
 ### 6.4 Policy gate

@@ -3,8 +3,8 @@
   "kind": "preference",
   "layer": "canon",
   "authoritative_home": "canon",
-  "created_at": "2026-04-13T04:42:53.827Z",
-  "updated_at": "2026-04-13T04:42:53.827Z",
+  "created_at": "2026-04-14T01:31:15.969Z",
+  "updated_at": "2026-04-14T01:31:15.969Z",
   "visibility_state": {
     "privacy_scope": "owner_private"
   },
@@ -19,12 +19,13 @@
     ]
   },
   "statement": "The user prefers concise answers by default, but wants more explicit detail when they ask for implementation depth.",
+  "semantic_slot": "preference:participant:user:expressed-preference:user-interaction-preferences",
   "epistemic_state": "confirmed",
   "governance_state": "superseded",
   "temporal_state": {
     "temporal_status": "historical",
-    "valid_from": "2026-04-13T04:42:53.827Z",
-    "valid_to": "2026-04-13T04:42:53.827Z",
+    "valid_from": "2026-04-14T01:31:15.969Z",
+    "valid_to": "2026-04-14T01:31:15.969Z",
     "temporal_confidence": null
   },
   "upstream_refs": [

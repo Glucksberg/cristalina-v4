@@ -329,9 +329,12 @@ Minimum fields:
 - `authoritative_home`
 - `kind`
 - `statement`
+- `semantic_slot`
 - `epistemic_state`
 - `temporal_state`
 - `support_refs`
+
+`semantic_slot` should preserve the normalized "same claim domain" key that lets the core compare active world claims without collapsing all claims of the same kind together.
 
 ### 4.10 `CanonicalMemoryObject`
 
@@ -344,6 +347,7 @@ Minimum fields:
 - `authoritative_home`
 - `kind`
 - `statement`
+- `semantic_slot`
 - `epistemic_state`
 - `governance_state`
 - `created_at`
@@ -401,6 +405,8 @@ Minimum fields:
 - `reason`
 - `evidence_refs`
 - `governance_state`
+
+For claim-like promotion into canon, `candidate_payload` should preserve the same `semantic_slot` used by the upstream world claim so governance can apply conflict gates against the right active memory slot.
 
 ### 4.14 `CurationPacket`
 

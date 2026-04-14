@@ -55,6 +55,7 @@ function buildFailureDiagnostic(input: {
 export function evaluateCanonicalProposal(input: {
   proposal: Proposal;
   existing_canon_records?: CanonicalMemoryObject[];
+  blocking_world_conflict_ref?: string | null;
   now: string;
   actor: string;
   ratification_id: string;
@@ -63,6 +64,7 @@ export function evaluateCanonicalProposal(input: {
   const { proposal } = input;
   const payload = proposal.candidate_payload;
   const existingRecords = input.existing_canon_records ?? [];
+  const payloadSemanticSlot = typeof payload.semantic_slot === "string" ? payload.semantic_slot : null;
   const targetRecord = findCanonicalTarget(
     existingRecords,
     proposal.target_ref && typeof proposal.target_ref.id === "string" ? proposal.target_ref.id : null,
@@ -96,19 +98,39 @@ export function evaluateCanonicalProposal(input: {
         };
       case "conflict":
         if (proposal.operation === "create") {
-          const duplicate = payloadStatement
+          const conflictingActiveRecord = payloadSemanticSlot
             ? existingRecords.find(
                 (record) =>
                   record.kind === proposal.candidate_kind &&
                   record.governance_state === "ratified" &&
-                  normalizeStatement(record.statement) === normalizeStatement(payloadStatement),
+                  record.semantic_slot === payloadSemanticSlot,
               )
             : undefined;
 
+          if (input.blocking_world_conflict_ref) {
+            return {
+              gate,
+              passed: false,
+              reason_code: "active_world_conflict",
+            };
+          }
+
+          const duplicate =
+            conflictingActiveRecord &&
+            payloadStatement &&
+            normalizeStatement(conflictingActiveRecord.statement) === normalizeStatement(payloadStatement)
+              ? conflictingActiveRecord
+              : undefined;
+
           return {
             gate,
-            passed: duplicate === undefined,
-            reason_code: duplicate ? "duplicate_active_canonical_claim" : "no_duplicate_canonical_claim",
+            passed: conflictingActiveRecord === undefined,
+            reason_code:
+              duplicate
+                ? "duplicate_active_canonical_claim"
+                : conflictingActiveRecord
+                  ? "conflicting_active_canonical_claim"
+                  : "no_duplicate_canonical_claim",
           };
         }
 
@@ -117,16 +139,23 @@ export function evaluateCanonicalProposal(input: {
             targetRecord !== undefined &&
             payloadStatement !== null &&
             normalizeStatement(targetRecord.statement) === normalizeStatement(payloadStatement);
+          const sameSemanticSlot =
+            targetRecord !== undefined &&
+            payloadSemanticSlot !== null &&
+            targetRecord.semantic_slot === payloadSemanticSlot;
 
           return {
             gate,
             passed:
               targetRecord !== undefined &&
               targetRecord.governance_state === "ratified" &&
+              sameSemanticSlot &&
               !sameStatement,
             reason_code:
               targetRecord === undefined
                 ? "missing_target_record"
+                : !sameSemanticSlot
+                  ? "revision_semantic_slot_mismatch"
                 : sameStatement
                   ? "revision_statement_unchanged"
                   : "target_record_revisable",
@@ -202,6 +231,7 @@ export function evaluateCanonicalProposal(input: {
 export function evaluateCanonCreateProposal(input: {
   proposal: Proposal;
   existing_canon_records?: CanonicalMemoryObject[];
+  blocking_world_conflict_ref?: string | null;
   now: string;
   actor: string;
   ratification_id: string;

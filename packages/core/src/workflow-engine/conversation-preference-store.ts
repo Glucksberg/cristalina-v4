@@ -27,6 +27,7 @@ import type {
   CanonicalMemoryObject,
   ContradictionResolution,
   Contradiction,
+  Diagnostic,
   DispositionRecord,
   Entity,
   Episode,
@@ -50,6 +51,7 @@ import { validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
   acceptContradictionResolution,
   applyAcceptedContradictionResolution,
+  buildConversationPreferenceDispositionRecord,
   buildOpenClawPreferenceFeedbackIntake,
   buildConversationPreferenceIntake,
   buildStructuredPreferenceSignalIntake,
@@ -127,6 +129,7 @@ export interface ConversationPreferenceStorePaths {
   proposal: string;
   disposition_record: string;
   ratification_record: string;
+  diagnostic_record?: string;
   canonical_record: string;
   projection_markdown: string;
   projection_manifest: string;
@@ -143,7 +146,8 @@ export interface ConversationPreferenceStoreRecords {
   contradiction?: Contradiction;
   contradiction_resolution?: ContradictionResolution;
   ratification_record: RatificationRecord;
-  canonical_record: CanonicalMemoryObject;
+  diagnostic?: Diagnostic;
+  canonical_record?: CanonicalMemoryObject;
   projection_artifacts: ProjectionArtifact[];
   projection_manifest: ProjectionManifest;
 }
@@ -171,7 +175,8 @@ interface LoadedAuthoritativeFlow {
   source_record: SourceRecord;
   intake: ConversationPreferenceIntakeArtifacts;
   ratification_record: RatificationRecord;
-  canonical_record: CanonicalMemoryObject;
+  diagnostic?: Diagnostic;
+  canonical_record?: CanonicalMemoryObject;
 }
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
@@ -288,6 +293,17 @@ function buildPaths(
         layer: "governance",
       } as RatificationRecord,
     ),
+    diagnostic_record: input.ids.diagnostic
+      ? coreRecordPath(
+          rootDir,
+          {
+            id: input.ids.diagnostic,
+            kind: "diagnostic",
+            layer: "audits",
+            authoritative_home: "governance",
+          } as Diagnostic,
+        )
+      : undefined,
     canonical_record: coreRecordPath(
       rootDir,
       {
@@ -341,6 +357,8 @@ function buildPaths(
 async function loadExistingFlow(
   input: ConversationPreferenceStoreInput,
   paths: ConversationPreferenceStorePaths,
+  expectedSourceRecord: SourceRecord,
+  expectedIntake: ConversationPreferenceIntakeArtifacts,
 ): Promise<ConversationPreferenceStoreResult | undefined> {
   const authoritativePaths = [
     paths.raw_source,
@@ -356,7 +374,6 @@ async function loadExistingFlow(
     paths.proposal,
     paths.disposition_record,
     paths.ratification_record,
-    paths.canonical_record,
   ];
   const contradictionPair = [paths.contradiction, paths.contradiction_resolution].filter(
     (filePath): filePath is string => typeof filePath === "string",
@@ -385,7 +402,29 @@ async function loadExistingFlow(
   }
 
   const loaded = await loadAuthoritativeFlow(paths);
-  assertLoadedFlowMatchesInput(loaded, input);
+  if (
+    loaded.ratification_record.decision === "approved" &&
+    !(await pathExists(paths.canonical_record))
+  ) {
+    throw new Error("Existing conversation preference flow is missing approved canonical state");
+  }
+
+  if (
+    loaded.ratification_record.decision !== "approved" &&
+    await pathExists(paths.canonical_record)
+  ) {
+    throw new Error("Existing conversation preference flow contains canonical state after rejected governance");
+  }
+
+  if (
+    loaded.ratification_record.decision === "rejected" &&
+    paths.diagnostic_record &&
+    !(await pathExists(paths.diagnostic_record))
+  ) {
+    throw new Error("Existing conversation preference flow is missing rejection diagnostic state");
+  }
+
+  assertLoadedFlowMatchesInput(loaded, expectedSourceRecord, expectedIntake);
 
   await ensureReplayableArtifacts(input, paths, loaded);
 
@@ -404,7 +443,6 @@ async function loadExistingFlow(
     paths.proposal,
     paths.disposition_record,
     paths.ratification_record,
-    paths.canonical_record,
     paths.projection_markdown,
     paths.projection_manifest,
     paths.projection_artifacts.canon,
@@ -412,11 +450,19 @@ async function loadExistingFlow(
     paths.projection_artifacts.wiki,
   ];
 
+  if (loaded.ratification_record.decision === "approved") {
+    requiredPaths.push(paths.canonical_record);
+  }
+
+  if (loaded.ratification_record.decision === "rejected" && paths.diagnostic_record) {
+    requiredPaths.push(paths.diagnostic_record);
+  }
+
   if (!(await Promise.all(requiredPaths.map((filePath) => pathExists(filePath)))).every(Boolean)) {
     throw new Error("Conversation preference flow repair did not restore all expected artifacts");
   }
 
-  const { source_record, intake, ratification_record, canonical_record } = loaded;
+  const { source_record, intake, ratification_record, diagnostic, canonical_record } = loaded;
   const projection_artifacts = await Promise.all([
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.canon),
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.world),
@@ -450,7 +496,8 @@ async function loadExistingFlow(
     intake.proposal,
     intake.disposition_record,
     ratification_record,
-    canonical_record,
+    ...(diagnostic ? [diagnostic] : []),
+    ...(canonical_record ? [canonical_record] : []),
     ...(contradiction ? [contradiction] : []),
     ...(contradiction_resolution ? [contradiction_resolution] : []),
     ...projection_artifacts,
@@ -466,6 +513,7 @@ async function loadExistingFlow(
       contradiction,
       contradiction_resolution,
       ratification_record,
+      diagnostic,
       canonical_record,
       projection_artifacts,
       projection_manifest,
@@ -495,44 +543,58 @@ async function loadAuthoritativeFlow(paths: ConversationPreferenceStorePaths): P
       disposition_record: await readCoreRecord<DispositionRecord>(paths.disposition_record),
     },
     ratification_record: await readCoreRecord<RatificationRecord>(paths.ratification_record),
-    canonical_record: await readCoreRecord<CanonicalMemoryObject>(paths.canonical_record),
+    diagnostic:
+      paths.diagnostic_record && (await pathExists(paths.diagnostic_record))
+        ? await readCoreRecord<Diagnostic>(paths.diagnostic_record)
+        : undefined,
+    canonical_record:
+      await pathExists(paths.canonical_record)
+        ? await readCoreRecord<CanonicalMemoryObject>(paths.canonical_record)
+        : undefined,
   };
 }
 
 function assertLoadedFlowMatchesInput(
   loaded: LoadedAuthoritativeFlow,
-  input: ConversationPreferenceStoreInput,
+  expectedSourceRecord: SourceRecord,
+  expectedIntake: ConversationPreferenceIntakeArtifacts,
 ): void {
   const mismatches: string[] = [];
-  const proposalStatement =
-    typeof loaded.intake.proposal.candidate_payload.statement === "string"
-      ? loaded.intake.proposal.candidate_payload.statement
+  const expectedProposalStatement =
+    typeof expectedIntake.proposal.candidate_payload.statement === "string"
+      ? expectedIntake.proposal.candidate_payload.statement
       : undefined;
 
-  if (loaded.source_record.id !== input.source.id) mismatches.push("source.id");
-  if (loaded.source_record.content_ref !== input.source.content_ref) mismatches.push("source.content_ref");
-  if (loaded.source_record.provenance.source_ref !== input.source.source_ref) mismatches.push("source.source_ref");
-  if (loaded.intake.observation.provenance.source_ref !== input.source.source_ref) mismatches.push("observation.provenance.source_ref");
-  if (loaded.intake.observation.summary !== input.statement) mismatches.push("observation.summary");
-  if (loaded.intake.episode.provenance.source_ref !== input.source.source_ref) mismatches.push("episode.provenance.source_ref");
-  if (loaded.intake.world_claim.provenance.source_ref !== input.source.source_ref) mismatches.push("world_claim.provenance.source_ref");
-  if (loaded.intake.world_claim.statement !== input.statement) mismatches.push("world_claim.statement");
-  if (loaded.intake.wiki_page.provenance.source_ref !== input.source.source_ref) mismatches.push("wiki_page.provenance.source_ref");
-  if (loaded.intake.wiki_claim.provenance.source_ref !== input.source.source_ref) mismatches.push("wiki_claim.provenance.source_ref");
-  if (loaded.intake.wiki_claim.statement !== input.statement) mismatches.push("wiki_claim.statement");
-  if (loaded.intake.proposal.provenance.source_ref !== input.source.source_ref) mismatches.push("proposal.provenance.source_ref");
-  if (proposalStatement !== input.statement) mismatches.push("proposal.candidate_payload.statement");
-  if (loaded.intake.disposition_record.provenance.source_ref !== input.source.source_ref) mismatches.push("disposition_record.provenance.source_ref");
-  if (loaded.ratification_record.provenance.source_ref !== input.source.source_ref) mismatches.push("ratification_record.provenance.source_ref");
-  if (loaded.canonical_record.provenance.source_ref !== input.source.source_ref) mismatches.push("canonical_record.provenance.source_ref");
-  if (loaded.canonical_record.statement !== input.statement) mismatches.push("canonical_record.statement");
-  if (input.identity_context?.ids.runtime_instance && loaded.intake.runtime_instance?.id !== input.identity_context.ids.runtime_instance) {
+  if (loaded.source_record.id !== expectedSourceRecord.id) mismatches.push("source.id");
+  if (loaded.source_record.content_ref !== expectedSourceRecord.content_ref) mismatches.push("source.content_ref");
+  if (loaded.source_record.provenance.source_ref !== expectedSourceRecord.provenance.source_ref) mismatches.push("source.source_ref");
+  if (loaded.intake.observation.provenance.source_ref !== expectedIntake.observation.provenance.source_ref) mismatches.push("observation.provenance.source_ref");
+  if (loaded.intake.observation.summary !== expectedIntake.observation.summary) mismatches.push("observation.summary");
+  if (loaded.intake.episode.provenance.source_ref !== expectedIntake.episode.provenance.source_ref) mismatches.push("episode.provenance.source_ref");
+  if (loaded.intake.world_claim.provenance.source_ref !== expectedIntake.world_claim.provenance.source_ref) mismatches.push("world_claim.provenance.source_ref");
+  if (loaded.intake.world_claim.statement !== expectedIntake.world_claim.statement) mismatches.push("world_claim.statement");
+  if (loaded.intake.world_claim.semantic_slot !== expectedIntake.world_claim.semantic_slot) mismatches.push("world_claim.semantic_slot");
+  if (loaded.intake.wiki_page.provenance.source_ref !== expectedIntake.wiki_page.provenance.source_ref) mismatches.push("wiki_page.provenance.source_ref");
+  if (loaded.intake.wiki_claim.provenance.source_ref !== expectedIntake.wiki_claim.provenance.source_ref) mismatches.push("wiki_claim.provenance.source_ref");
+  if (loaded.intake.wiki_claim.statement !== expectedIntake.wiki_claim.statement) mismatches.push("wiki_claim.statement");
+  if (loaded.intake.proposal.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref) mismatches.push("proposal.provenance.source_ref");
+  if (loaded.intake.proposal.candidate_payload.semantic_slot !== expectedIntake.proposal.candidate_payload.semantic_slot) mismatches.push("proposal.candidate_payload.semantic_slot");
+  if (loaded.intake.proposal.candidate_payload.statement !== expectedProposalStatement) mismatches.push("proposal.candidate_payload.statement");
+  if (loaded.intake.disposition_record.provenance.source_ref !== expectedIntake.disposition_record.provenance.source_ref) mismatches.push("disposition_record.provenance.source_ref");
+  if (loaded.ratification_record.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref) mismatches.push("ratification_record.provenance.source_ref");
+  if (
+    loaded.canonical_record &&
+    loaded.canonical_record.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref
+  ) mismatches.push("canonical_record.provenance.source_ref");
+  if (loaded.canonical_record && loaded.canonical_record.statement !== expectedProposalStatement) mismatches.push("canonical_record.statement");
+  if (loaded.canonical_record && loaded.canonical_record.semantic_slot !== expectedIntake.world_claim.semantic_slot) mismatches.push("canonical_record.semantic_slot");
+  if (expectedIntake.runtime_instance?.id && loaded.intake.runtime_instance?.id !== expectedIntake.runtime_instance.id) {
     mismatches.push("runtime_instance.id");
   }
-  if (input.identity_context?.ids.runtime_session && loaded.intake.runtime_session?.id !== input.identity_context.ids.runtime_session) {
+  if (expectedIntake.runtime_session?.id && loaded.intake.runtime_session?.id !== expectedIntake.runtime_session.id) {
     mismatches.push("runtime_session.id");
   }
-  if (input.identity_context?.ids.conversation_thread && loaded.intake.conversation_thread?.id !== input.identity_context.ids.conversation_thread) {
+  if (expectedIntake.conversation_thread?.id && loaded.intake.conversation_thread?.id !== expectedIntake.conversation_thread.id) {
     mismatches.push("conversation_thread.id");
   }
 
@@ -544,7 +606,7 @@ function assertLoadedFlowMatchesInput(
 async function buildProjectionFromStoreState(
   rootDir: string,
   input: ConversationPreferenceStoreInput,
-  canonicalRecord: CanonicalMemoryObject,
+  canonicalRecord: CanonicalMemoryObject | undefined,
   intake: ConversationPreferenceIntakeArtifacts,
   now = input.now,
 ) {
@@ -573,11 +635,11 @@ async function buildProjectionFromStoreState(
   ]);
 
   const effectiveCanonicalRecords =
-    canonical_records.length > 0 ? canonical_records : [canonicalRecord];
+    canonical_records.length > 0 ? canonical_records : canonicalRecord ? [canonicalRecord] : [];
 
   return executeOpenClawBootstrapWorkflow({
     now,
-    visibility_state: canonicalRecord.visibility_state,
+    visibility_state: canonicalRecord?.visibility_state ?? intake.world_claim.visibility_state,
     canonical_records: effectiveCanonicalRecords,
     world_claims,
     episodes,
@@ -635,8 +697,8 @@ async function ensureReplayableArtifacts(
         loaded.intake.wiki_page,
         loaded.source_record,
         loaded.intake.world_claim.id,
-        loaded.canonical_record.statement,
-        loaded.canonical_record.id,
+        loaded.intake.world_claim.statement,
+        loaded.canonical_record?.id,
       ),
       "utf8",
     );
@@ -661,7 +723,13 @@ async function ensureReplayableArtifacts(
   }
 }
 
-function renderWikiMarkdown(wikiPage: WikiPage, sourceRecord: SourceRecord, worldClaimId: string, statement: string, canonicalId: string): string {
+function renderWikiMarkdown(
+  wikiPage: WikiPage,
+  sourceRecord: SourceRecord,
+  worldClaimId: string,
+  statement: string,
+  canonicalId?: string,
+): string {
   return [
     "---",
     `page_id: ${wikiPage.id}`,
@@ -675,25 +743,42 @@ function renderWikiMarkdown(wikiPage: WikiPage, sourceRecord: SourceRecord, worl
     "",
     `- ${statement}`,
     "",
-    `Canonical candidate: ${canonicalId}`,
+    canonicalId ? `Canonical candidate: ${canonicalId}` : "Canonical candidate: pending review",
     "",
   ].join("\n");
 }
 
-export async function writeConversationPreferenceFlowToStore(
+async function buildExpectedIntakeForStore(
+  rootDir: string,
   input: ConversationPreferenceStoreInput,
-): Promise<ConversationPreferenceStoreResult> {
-  const rootDir = resolve(input.rootDir);
-  await initializeStore(rootDir, input.now);
+  source_record: SourceRecord,
+  intakeBuilder: (
+    input: {
+      now: string;
+      statement: string;
+      source_record: SourceRecord;
+      identity_context?: ConversationPreferenceRuntimeIdentityContext;
+      semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
+      ids: ConversationPreferenceStoreInput["ids"] & {
+        wiki_page: string;
+        wiki_claim: string;
+        proposal: string;
+        disposition: string;
+      };
+    },
+  ) => ConversationPreferenceIntakeArtifacts,
+): Promise<{
+  intake: ConversationPreferenceIntakeArtifacts;
+  existingCanonicalRecords: CanonicalMemoryObject[];
+  existingWorldClaims: WorldClaim[];
+  conflicting_world_claim?: WorldClaim;
+}> {
+  const [existingCanonicalRecords, existingWorldClaims] = await Promise.all([
+    loadCanonicalRecords(rootDir),
+    loadWorldClaims(rootDir),
+  ]);
 
-  const source_record = buildSourceRecord(input);
-  const intakeBuilder =
-    input.intake_kind === "openclaw_projection_feedback"
-      ? buildOpenClawPreferenceFeedbackIntake
-      : input.intake_kind === "structured_preference_signal"
-        ? buildStructuredPreferenceSignalIntake
-        : buildConversationPreferenceIntake;
-  const intake = intakeBuilder({
+  const previewIntake = intakeBuilder({
     now: input.now,
     statement: input.statement,
     source_record,
@@ -710,22 +795,91 @@ export async function writeConversationPreferenceFlowToStore(
       wiki_claim: input.ids.wiki_claim,
       proposal: input.ids.proposal,
       disposition: input.ids.disposition,
+      contradiction: input.ids.contradiction,
+      contradiction_resolution: input.ids.contradiction_resolution,
+      ratification: input.ids.ratification,
+      diagnostic: input.ids.diagnostic,
+      canonical: input.ids.canonical,
+      canon_artifact: input.ids.canon_artifact,
+      world_artifact: input.ids.world_artifact,
+      wiki_artifact: input.ids.wiki_artifact,
+      projection_manifest: input.ids.projection_manifest,
     },
   });
+
+  const conflicting_world_claim = findConflictingWorldClaim(previewIntake.world_claim, existingWorldClaims);
+
+  if (!conflicting_world_claim) {
+    return {
+      intake: previewIntake,
+      existingCanonicalRecords,
+      existingWorldClaims,
+    };
+  }
+
+  return {
+    intake: {
+      ...previewIntake,
+      disposition_record: buildConversationPreferenceDispositionRecord({
+        now: input.now,
+        source_record: {
+          ...source_record,
+          provenance: previewIntake.observation.provenance,
+        },
+        observation_id: previewIntake.observation.id,
+        episode_id: previewIntake.episode.id,
+        disposition_id: input.ids.disposition,
+        proposal_id: previewIntake.proposal.id,
+        strategy: {
+          world_update: true,
+          wiki_update: true,
+          proposal_for_canon: false,
+          queued_review: true,
+          reason_codes: [
+            "preference_signal",
+            "editorial_update",
+            "review_required",
+            "active_world_conflict",
+          ],
+        },
+      }),
+    },
+    existingCanonicalRecords,
+    existingWorldClaims,
+    conflicting_world_claim,
+  };
+}
+
+export async function writeConversationPreferenceFlowToStore(
+  input: ConversationPreferenceStoreInput,
+): Promise<ConversationPreferenceStoreResult> {
+  const rootDir = resolve(input.rootDir);
+  await initializeStore(rootDir, input.now);
+
+  const source_record = buildSourceRecord(input);
+  const intakeBuilder =
+    input.intake_kind === "openclaw_projection_feedback"
+      ? buildOpenClawPreferenceFeedbackIntake
+      : input.intake_kind === "structured_preference_signal"
+        ? buildStructuredPreferenceSignalIntake
+        : buildConversationPreferenceIntake;
+  const {
+    intake,
+    existingCanonicalRecords,
+    existingWorldClaims,
+    conflicting_world_claim,
+  } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
   const paths = buildPaths(rootDir, source_record, intake, input);
 
-  const existingFlow = await loadExistingFlow(input, paths);
+  const existingFlow = await loadExistingFlow(input, paths, source_record, intake);
   if (existingFlow) {
     return existingFlow;
   }
 
-  const [existingCanonicalRecords, existingWorldClaims] = await Promise.all([
-    loadCanonicalRecords(rootDir),
-    loadWorldClaims(rootDir),
-  ]);
   const canonicalWorkflow = executeCanonicalProposalWorkflow({
     proposal: intake.proposal,
     existing_canon_records: existingCanonicalRecords,
+    blocking_world_conflict_ref: conflicting_world_claim?.id ?? null,
     now: input.now,
     actor: input.actor,
     ratification_id: input.ids.ratification,
@@ -733,11 +887,10 @@ export async function writeConversationPreferenceFlowToStore(
     canonical_id: input.ids.canonical,
   });
 
-  if (!canonicalWorkflow.accepted || !canonicalWorkflow.created_record) {
-    throw new Error("Conversation preference workflow must produce an approved canonical record");
+  if (canonicalWorkflow.accepted && !canonicalWorkflow.created_record) {
+    throw new Error("Conversation preference workflow produced an accepted proposal without canonical state");
   }
 
-  const conflicting_world_claim = findConflictingWorldClaim(intake.world_claim, existingWorldClaims);
   const contradiction =
     input.ids.contradiction && conflicting_world_claim
       ? detectWorldClaimContradiction({
@@ -787,7 +940,9 @@ export async function writeConversationPreferenceFlowToStore(
   await writeCoreRecord(rootDir, intake.proposal);
   await writeCoreRecord(rootDir, intake.disposition_record);
   await writeCoreRecord(rootDir, canonicalWorkflow.ratification_record);
-  await writeCoreRecord(rootDir, canonicalWorkflow.created_record);
+  if (canonicalWorkflow.created_record) {
+    await writeCoreRecord(rootDir, canonicalWorkflow.created_record);
+  }
   if (canonicalWorkflow.diagnostic) {
     await writeCoreRecord(rootDir, canonicalWorkflow.diagnostic);
   }
@@ -799,7 +954,7 @@ export async function writeConversationPreferenceFlowToStore(
       source_record,
       intake.world_claim.id,
       input.statement,
-      canonicalWorkflow.created_record.id,
+      canonicalWorkflow.created_record?.id,
     ),
     "utf8",
   );
@@ -831,7 +986,8 @@ export async function writeConversationPreferenceFlowToStore(
     intake.proposal,
     intake.disposition_record,
     canonicalWorkflow.ratification_record,
-    canonicalWorkflow.created_record,
+    ...(canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : []),
+    ...(canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : []),
     ...projection.artifacts,
     projection.manifest,
     ...(contradiction_resolution ? [contradiction_resolution] : []),
@@ -853,25 +1009,37 @@ export async function writeConversationPreferenceFlowToStore(
     related_refs: [source_record.id],
   });
 
-  await appendAuditChange(rootDir, {
-    at: input.now,
-    operation: "governance_accept",
-    record_id: canonicalWorkflow.ratification_record.id,
-    record_kind: canonicalWorkflow.ratification_record.kind,
-    record_layer: canonicalWorkflow.ratification_record.layer,
-    detail: "Baseline governance approved create proposal into canon.",
-    related_refs: [intake.proposal.id],
-  });
+  if (canonicalWorkflow.accepted && canonicalWorkflow.created_record) {
+    await appendAuditChange(rootDir, {
+      at: input.now,
+      operation: "governance_accept",
+      record_id: canonicalWorkflow.ratification_record.id,
+      record_kind: canonicalWorkflow.ratification_record.kind,
+      record_layer: canonicalWorkflow.ratification_record.layer,
+      detail: "Baseline governance approved create proposal into canon.",
+      related_refs: [intake.proposal.id],
+    });
 
-  await appendAuditChange(rootDir, {
-    at: input.now,
-    operation: "canon_apply_create",
-    record_id: canonicalWorkflow.created_record.id,
-    record_kind: canonicalWorkflow.created_record.kind,
-    record_layer: canonicalWorkflow.created_record.layer,
-    detail: "Applied approved create proposal into canonical memory.",
-    related_refs: [intake.proposal.id, canonicalWorkflow.ratification_record.id],
-  });
+    await appendAuditChange(rootDir, {
+      at: input.now,
+      operation: "canon_apply_create",
+      record_id: canonicalWorkflow.created_record.id,
+      record_kind: canonicalWorkflow.created_record.kind,
+      record_layer: canonicalWorkflow.created_record.layer,
+      detail: "Applied approved create proposal into canonical memory.",
+      related_refs: [intake.proposal.id, canonicalWorkflow.ratification_record.id],
+    });
+  } else {
+    await appendAuditChange(rootDir, {
+      at: input.now,
+      operation: "governance_reject",
+      record_id: canonicalWorkflow.ratification_record.id,
+      record_kind: canonicalWorkflow.ratification_record.kind,
+      record_layer: canonicalWorkflow.ratification_record.layer,
+      detail: "Governance rejected canonical promotion and left the signal queued for review.",
+      related_refs: [intake.proposal.id, ...(conflicting_world_claim ? [conflicting_world_claim.id] : [])],
+    });
+  }
 
   await appendAuditChange(rootDir, {
     at: input.now,
@@ -892,6 +1060,7 @@ export async function writeConversationPreferenceFlowToStore(
       contradiction,
       contradiction_resolution,
       ratification_record: canonicalWorkflow.ratification_record,
+      diagnostic: canonicalWorkflow.diagnostic,
       canonical_record: canonicalWorkflow.created_record,
       projection_artifacts: projection.artifacts,
       projection_manifest: projection.manifest,
@@ -911,27 +1080,9 @@ export async function readConversationPreferenceFlowResult(
       : input.intake_kind === "structured_preference_signal"
         ? buildStructuredPreferenceSignalIntake
         : buildConversationPreferenceIntake;
-  const intake = intakeBuilder({
-    now: input.now,
-    statement: input.statement,
-    source_record,
-    identity_context: input.identity_context,
-    semantic_profile: input.semantic_profile,
-    ids: {
-      observation: input.ids.observation,
-      episode: input.ids.episode,
-      subject_entity: input.ids.subject_entity,
-      preference_entity: input.ids.preference_entity,
-      preference_relation: input.ids.preference_relation,
-      world_claim: input.ids.world_claim,
-      wiki_page: input.ids.wiki_page,
-      wiki_claim: input.ids.wiki_claim,
-      proposal: input.ids.proposal,
-      disposition: input.ids.disposition,
-    },
-  });
+  const { intake } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
 
-  return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input));
+  return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input), source_record, intake);
 }
 
 export async function writeOpenClawPreferenceFeedbackFlowToStore(

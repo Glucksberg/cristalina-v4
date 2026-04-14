@@ -50,6 +50,11 @@ export function applyApprovedCanonicalCreate(input: {
     throw new Error(`Proposal ${input.proposal.id} is missing candidate_payload.statement`);
   }
 
+  const semantic_slot = input.proposal.candidate_payload.semantic_slot;
+  if (typeof semantic_slot !== "string" || semantic_slot.length === 0) {
+    throw new Error(`Proposal ${input.proposal.id} is missing candidate_payload.semantic_slot`);
+  }
+
   return {
     id: input.canonical_id,
     kind: input.proposal.candidate_kind as CanonicalMemoryObject["kind"],
@@ -65,6 +70,7 @@ export function applyApprovedCanonicalCreate(input: {
       evidence_refs: [...new Set([...(input.proposal.provenance.evidence_refs ?? []), input.proposal.id, input.ratification_record.id])],
     },
     statement,
+    semantic_slot,
     epistemic_state:
       input.proposal.candidate_payload.epistemic_state === "observed" ||
       input.proposal.candidate_payload.epistemic_state === "inferred" ||

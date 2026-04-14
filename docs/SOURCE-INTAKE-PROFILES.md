@@ -67,6 +67,8 @@ The profile may change:
 - wiki placement
 - proposal explanation
 
+Those profile choices may feed the normalized `semantic_slot` used by world and canon comparison.
+
 The profile must not change:
 
 - layer ownership

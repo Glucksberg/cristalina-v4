@@ -3,16 +3,24 @@
   "kind": "proposal",
   "layer": "governance",
   "authoritative_home": "governance",
-  "created_at": "2026-04-13T04:43:40.993Z",
-  "updated_at": "2026-04-13T04:43:40.993Z",
+  "created_at": "2026-04-14T01:31:10.020Z",
+  "updated_at": "2026-04-14T01:31:10.020Z",
   "visibility_state": {
     "privacy_scope": "owner_private"
   },
   "provenance": {
     "source_type": "conversation",
     "source_ref": "runtime/session-001#turn-001",
+    "actor_ref": "actor-agent-mvp-001",
+    "runtime_ref": "runtime-mvp-001",
+    "session_ref": "session-mvp-001",
+    "thread_ref": "thread-mvp-001",
     "evidence_refs": [
+      "runtime-mvp-001",
+      "session-mvp-001",
+      "thread-mvp-001",
       "obs-mvp-001",
+      "ep-mvp-001",
       "wcl-mvp-001",
       "wclm-mvp-001"
     ]
@@ -24,21 +32,25 @@
   "candidate_payload": {
     "kind": "preference",
     "statement": "The user prefers concise answers unless they explicitly ask for depth.",
+    "semantic_slot": "preference:participant:mvp-owner:expressed-preference:user-interaction-preferences",
     "temporal_state": {
       "temporal_status": "active",
-      "valid_from": "2026-04-13T04:43:40.993Z",
+      "valid_from": "2026-04-14T01:31:10.020Z",
       "valid_to": null
     },
     "epistemic_state": "confirmed",
     "support_refs": [
       "obs-mvp-001",
+      "ep-mvp-001",
       "wcl-mvp-001",
-      "wclm-mvp-001"
+      "wclm-mvp-001",
+      "rel-preference-mvp-001"
     ]
   },
   "reason": "Conversation indicates a user interaction preference that should become governed memory.",
   "evidence_refs": [
-    "obs-mvp-001"
+    "obs-mvp-001",
+    "ep-mvp-001"
   ],
   "governance_state": "proposed"
 }

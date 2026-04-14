@@ -1,5 +1,6 @@
 {
   "runtime": "openclaw",
+  "source_type": "conversation",
   "source_ref": "runtime/session-001#turn-001",
   "message": "The user says they prefer concise answers unless they explicitly ask for depth."
 }

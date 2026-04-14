@@ -3,8 +3,8 @@
   "kind": "projection_artifact",
   "layer": "derived",
   "authoritative_home": "world",
-  "created_at": "2026-04-13T04:43:40.993Z",
-  "updated_at": "2026-04-13T04:43:40.993Z",
+  "created_at": "2026-04-14T01:31:10.020Z",
+  "updated_at": "2026-04-14T01:31:10.020Z",
   "visibility_state": {
     "privacy_scope": "owner_private"
   },
@@ -12,7 +12,11 @@
     "source_type": "projection_compiler",
     "source_ref": "derived/openclaw/bootstrap-memory.md#world",
     "evidence_refs": [
-      "wcl-mvp-001"
+      "wcl-mvp-001",
+      "ep-mvp-001",
+      "ent-preference-mvp-001",
+      "ent-subject-mvp-001",
+      "rel-preference-mvp-001"
     ]
   },
   "adapter": "openclaw",
@@ -20,6 +24,10 @@
   "path": "derived/openclaw/bootstrap-memory.md#world",
   "source_layer": "world",
   "upstream_refs": [
-    "wcl-mvp-001"
+    "wcl-mvp-001",
+    "ep-mvp-001",
+    "ent-preference-mvp-001",
+    "ent-subject-mvp-001",
+    "rel-preference-mvp-001"
   ]
 }

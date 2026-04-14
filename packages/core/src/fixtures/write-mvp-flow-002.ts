@@ -125,6 +125,7 @@ async function main(): Promise<void> {
       evidence_refs: [observation1.id],
     },
     statement: "The user prefers concise answers unless they explicitly ask for depth.",
+    semantic_slot: "preference:participant:user:expressed-preference:user-interaction-preferences",
     epistemic_state: "inferred",
     temporal_state: {
       temporal_status: "active",
@@ -200,6 +201,7 @@ async function main(): Promise<void> {
     candidate_payload: {
       kind: "preference",
       statement: "The user prefers concise answers unless they explicitly ask for depth.",
+      semantic_slot: worldClaim1.semantic_slot,
       temporal_state: {
         temporal_status: "active",
         valid_from: now,
@@ -241,6 +243,7 @@ async function main(): Promise<void> {
     candidate_payload: {
       kind: "preference",
       statement: "The user prefers concise answers by default, but wants more explicit detail when they ask for implementation depth.",
+      semantic_slot: worldClaim1.semantic_slot,
       temporal_state: {
         temporal_status: "active",
         valid_from: now,
@@ -282,6 +285,7 @@ async function main(): Promise<void> {
     },
     candidate_payload: {
       kind: "preference",
+      semantic_slot: revisedCanon.semantic_slot,
       reason: "Temporarily inactive pending future confirmation.",
     },
     reason: "Withdraw currently active preference from canon pending confirmation.",

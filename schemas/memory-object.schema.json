@@ -12,6 +12,7 @@
         "layer",
         "authoritative_home",
         "statement",
+        "semantic_slot",
         "epistemic_state",
         "governance_state",
         "temporal_state"
@@ -37,6 +38,9 @@
             ]
           },
         "statement": {
+          "type": "string"
+        },
+        "semantic_slot": {
           "type": "string"
         },
         "epistemic_state": {

@@ -128,6 +128,25 @@ function defaultConversationPreferenceReasonCodes(strategy: ConversationPreferen
   return codes;
 }
 
+function normalizeSemanticSlotPart(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function buildPreferenceSemanticSlot(input: {
+  subject_entity_kind: string;
+  subject_label: string;
+  relation_type: string;
+  preference_topic_label: string;
+}): string {
+  return [
+    "preference",
+    normalizeSemanticSlotPart(input.subject_entity_kind),
+    normalizeSemanticSlotPart(input.subject_label),
+    normalizeSemanticSlotPart(input.relation_type),
+    normalizeSemanticSlotPart(input.preference_topic_label),
+  ].join(":");
+}
+
 function buildRuntimeIdentityArtifacts(
   input: Pick<ConversationPreferenceIntakeInput, "now" | "source_record"> & {
     identity_context?: ConversationPreferenceRuntimeIdentityContext;
@@ -261,9 +280,7 @@ function buildSharedProvenance(
   input: Pick<ConversationPreferenceIntakeInput, "source_record" | "identity_context">,
 ): SourceRecord["provenance"] {
   return {
-    source_type: input.identity_context?.runtime === "openclaw" && input.source_record.provenance.source_type !== "conversation"
-      ? "openclaw_runtime_feedback"
-      : "conversation",
+    source_type: input.source_record.provenance.source_type,
     source_ref: input.source_record.provenance.source_ref,
     actor_ref: input.identity_context?.ids.agent_identity,
     runtime_ref: input.identity_context?.ids.runtime_instance,
@@ -349,6 +366,12 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     kind: intake_kind,
     owner_label: input.identity_context?.owner_label,
     overrides: input.semantic_profile,
+  });
+  const semanticSlot = buildPreferenceSemanticSlot({
+    subject_entity_kind: semanticProfile.subject_entity_kind,
+    subject_label: semanticProfile.subject_label,
+    relation_type: semanticProfile.relation_type,
+    preference_topic_label: semanticProfile.preference_topic_label,
   });
   const evidencePrefix = [
     runtimeIdentity.runtime_instance?.id,
@@ -487,6 +510,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       evidence_refs: [...evidencePrefix, observation.id, episode.id, preference_relation.id],
     },
     statement: input.statement,
+    semantic_slot: semanticSlot,
     epistemic_state: "inferred",
     temporal_state: {
       temporal_status: "active",
@@ -559,6 +583,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     candidate_payload: {
       kind: "preference",
       statement: input.statement,
+      semantic_slot: semanticSlot,
       temporal_state: {
         temporal_status: "active",
         valid_from: input.now,
@@ -629,6 +654,7 @@ export interface CanonicalProposalWorkflowInput {
   proposal: Proposal;
   existing_canon_records?: CanonicalMemoryObject[];
   existing_record?: CanonicalMemoryObject;
+  blocking_world_conflict_ref?: string | null;
   now: string;
   actor: string;
   ratification_id: string;
@@ -671,10 +697,11 @@ export function findConflictingWorldClaim(
 ): WorldClaim | undefined {
   return existing_world_claims.find((record) => {
     const isComparableKind = record.kind === candidate_claim.kind;
+    const isSameSemanticSlot = record.semantic_slot === candidate_claim.semantic_slot;
     const isDifferentRecord = record.id !== candidate_claim.id;
     const isActive = record.temporal_state?.temporal_status === "active";
     const isDifferentStatement = record.statement !== candidate_claim.statement;
-    return isComparableKind && isDifferentRecord && isActive && isDifferentStatement;
+    return isComparableKind && isSameSemanticSlot && isDifferentRecord && isActive && isDifferentStatement;
   });
 }
 
@@ -965,6 +992,7 @@ export function executeCanonicalProposalWorkflow(input: CanonicalProposalWorkflo
   const governance = evaluateCanonicalProposal({
     proposal: input.proposal,
     existing_canon_records: existingRecords,
+    blocking_world_conflict_ref: input.blocking_world_conflict_ref,
     now: input.now,
     actor: input.actor,
     ratification_id: input.ratification_id,

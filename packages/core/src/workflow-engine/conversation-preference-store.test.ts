@@ -79,8 +79,8 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
 
   assert.equal(first.reused, false);
   assert.equal(first.validation_issues.length, 0);
-  assert.equal(first.records.canonical_record.id, input.ids.canonical);
-  assert.equal(first.records.canonical_record.governance_state, "ratified");
+  assert.equal(first.records.canonical_record?.id, input.ids.canonical);
+  assert.equal(first.records.canonical_record?.governance_state, "ratified");
   assert.equal(first.records.intake.runtime_instance?.id, input.identity_context?.ids.runtime_instance);
   assert.equal(first.records.intake.episode.id, input.ids.episode);
   assert.equal(first.records.intake.preference_relation.object_ref.id, input.ids.preference_entity);
@@ -103,7 +103,7 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
   const auditLogAfter = await readFile(join(rootDir, "audits/changes.log"), "utf8");
 
   assert.equal(second.reused, true);
-  assert.equal(second.records.canonical_record.id, first.records.canonical_record.id);
+  assert.equal(second.records.canonical_record?.id, first.records.canonical_record?.id);
   assert.equal(auditLogAfter, auditLogBefore);
 });
 
@@ -199,6 +199,14 @@ test("writeConversationPreferenceFlowToStore records contradictions against exis
   assert.equal(second.records.contradiction?.status, "open");
   assert.equal(second.records.contradiction?.right_ref.id, "wcl_test_002");
   assert.equal(second.records.contradiction_resolution?.strategy, "coexist_temporally");
+  assert.equal(second.records.ratification_record.decision, "rejected");
+  assert.equal(second.records.canonical_record, undefined);
+  assert.equal(second.records.diagnostic?.code, "proposal_rejected");
+  assert.deepEqual(second.records.intake.disposition_record.outcomes, ["world_update", "wiki_update", "queued_review"]);
+
+  const projectionMarkdown = await readFile(second.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /\[canon:mem_test_001\] \(ratified; active\)/);
+  assert.doesNotMatch(projectionMarkdown, /\[canon:mem_test_002\]/);
 });
 
 test("applyConversationPreferenceResolutionToStore persists applied resolution and recompiles projection", async (t) => {
@@ -256,6 +264,7 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   assert.equal(applied.records.contradiction.status, "resolved");
   assert.equal(applied.records.contradiction_resolution.status, "applied");
   assert.equal(applied.records.existing_world_claim.temporal_state?.temporal_status, "historical");
+  assert.equal(applied.records.canonical_record, undefined);
 
   const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
   assert.match(projectionMarkdown, /Compiled at: 2026-04-12T01:05:00.000Z/);
@@ -326,9 +335,47 @@ test("openclaw feedback round-trip preserves runtime identity and recompiles pro
   const projectionMarkdown = await readFile(roundTrip.paths.projection_markdown, "utf8");
   assert.equal(roundTrip.records.intake.runtime_instance?.id, seed.identity_context?.ids.runtime_instance);
   assert.equal(roundTrip.records.projection_manifest.runtime_instance_ref, seed.identity_context?.ids.runtime_instance);
+  assert.equal(roundTrip.records.intake.observation.provenance.source_type, "openclaw_runtime_feedback");
   assert.match(projectionMarkdown, /\[runtime:runtime_test_001\]/);
   assert.match(projectionMarkdown, /\[wiki:wpg_feedback_test_001\]/);
   assert.match(projectionMarkdown, /## Contradiction Resolutions/);
+
+  const replayed = await writeOpenClawPreferenceFeedbackFlowToStore({
+    ...seed,
+    now: "2026-04-12T02:00:00.000Z",
+    statement: "OpenClaw confirms the concise-answer preference is still active.",
+    source: {
+      id: "src_feedback_test_001",
+      source_ref: "openclaw/runtime-001#thread-001",
+      content_ref: "raw/imports/openclaw-feedback-test-001.json",
+      runtime: "openclaw",
+      message: "Runtime feedback confirms the concise-answer preference.",
+      source_type: "openclaw_runtime_feedback",
+    },
+    ids: {
+      observation: "obs_feedback_test_001",
+      episode: "ep_feedback_test_001",
+      subject_entity: "ent_subject_feedback_test_001",
+      preference_entity: "ent_preference_feedback_test_001",
+      preference_relation: "rel_preference_feedback_test_001",
+      world_claim: "wcl_feedback_test_001",
+      contradiction: "contra_feedback_test_001",
+      contradiction_resolution: "cres_feedback_test_001",
+      wiki_page: "wpg_feedback_test_001",
+      wiki_claim: "wclm_feedback_test_001",
+      proposal: "prop_feedback_test_001",
+      disposition: "disp_feedback_test_001",
+      ratification: "rat_feedback_test_001",
+      diagnostic: "diag_feedback_test_001",
+      canonical: "mem_feedback_test_001",
+      canon_artifact: "part_openclaw_canon_feedback_test_001",
+      world_artifact: "part_openclaw_world_feedback_test_001",
+      wiki_artifact: "part_openclaw_wiki_feedback_test_001",
+      projection_manifest: "pmf_openclaw_feedback_test_001",
+    },
+    validation_scope: "test:openclaw-roundtrip",
+  });
+  assert.equal(replayed.reused, true);
 });
 
 test("structured preference signal flow reuses the generic intake framework", async (t) => {
@@ -338,6 +385,8 @@ test("structured preference signal flow reuses the generic intake framework", as
   });
 
   const input = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(input);
+
   const result = await writeStructuredPreferenceSignalFlowToStore({
     ...input,
     source: {
@@ -382,6 +431,52 @@ test("structured preference signal flow reuses the generic intake framework", as
 
   assert.equal(result.records.intake.subject_entity.entity_kind, "customer");
   assert.equal(result.records.intake.wiki_page.title, "Customer Delivery Preferences");
+  assert.equal(result.records.intake.observation.provenance.source_type, "structured_import");
+  assert.equal(result.records.contradiction, undefined);
+  assert.equal(result.records.canonical_record?.id, "mem_structured_store_001");
+
+  const replayed = await writeStructuredPreferenceSignalFlowToStore({
+    ...input,
+    source: {
+      ...input.source,
+      id: "src_structured_store_001",
+      source_ref: "import/customer-001",
+      content_ref: "raw/imports/customer-001.json",
+      source_type: "structured_import",
+    },
+    statement: "The customer prefers executive summaries before implementation detail.",
+    semantic_profile: {
+      wiki_title: "Customer Delivery Preferences",
+      wiki_path: "wiki/pages/customer-delivery-preferences.md",
+      subject_entity_kind: "customer",
+      subject_label: "Customer 001",
+      preference_topic_label: "Delivery Preferences",
+      relation_type: "requests_delivery_style",
+      proposal_reason: "Structured import confirms a delivery preference worth governing.",
+    },
+    ids: {
+      observation: "obs_structured_store_001",
+      episode: "ep_structured_store_001",
+      subject_entity: "ent_subject_structured_store_001",
+      preference_entity: "ent_preference_structured_store_001",
+      preference_relation: "rel_preference_structured_store_001",
+      world_claim: "wcl_structured_store_001",
+      contradiction: "contra_structured_store_001",
+      contradiction_resolution: "cres_structured_store_001",
+      wiki_page: "wpg_structured_store_001",
+      wiki_claim: "wclm_structured_store_001",
+      proposal: "prop_structured_store_001",
+      disposition: "disp_structured_store_001",
+      ratification: "rat_structured_store_001",
+      diagnostic: "diag_structured_store_001",
+      canonical: "mem_structured_store_001",
+      canon_artifact: "part_openclaw_canon_structured_store_001",
+      world_artifact: "part_openclaw_world_structured_store_001",
+      wiki_artifact: "part_openclaw_wiki_structured_store_001",
+      projection_manifest: "pmf_openclaw_structured_store_001",
+    },
+  });
+  assert.equal(replayed.reused, true);
 });
 
 test("loadCanonicalRecords excludes canonical identity records", async (t) => {

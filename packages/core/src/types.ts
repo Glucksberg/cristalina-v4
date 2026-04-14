@@ -192,6 +192,7 @@ export interface RecordEnvelope {
 
 export interface ClaimEnvelope extends RecordEnvelope {
   statement: string;
+  semantic_slot: string;
   epistemic_state: EpistemicState;
   governance_state?: GovernanceState;
   temporal_state?: TemporalState;
