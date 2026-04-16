@@ -1,5 +1,56 @@
 import type { CanonicalMemoryObject, Proposal, RatificationRecord, TemporalState } from "../types.js";
 
+function referenceMatchesCanonicalRecord(
+  reference: Proposal["target_ref"],
+  record: CanonicalMemoryObject,
+): boolean {
+  if (!reference) return false;
+  return (
+    reference.id === record.id &&
+    (reference.kind === undefined || reference.kind === record.kind) &&
+    (reference.layer === undefined || reference.layer === record.layer)
+  );
+}
+
+function assertApprovedRatificationMatchesProposal(
+  proposal: Proposal,
+  ratification_record: RatificationRecord,
+): void {
+  if (proposal.target_layer !== "canon") {
+    throw new Error(`Proposal ${proposal.id} does not target canon`);
+  }
+
+  if (ratification_record.decision !== "approved") {
+    throw new Error(`Ratification ${ratification_record.id} is not approved`);
+  }
+
+  if (ratification_record.proposal_ref !== proposal.id) {
+    throw new Error(`Ratification ${ratification_record.id} does not belong to proposal ${proposal.id}`);
+  }
+}
+
+function assertCanonicalTargetCompatibility(input: {
+  proposal: Proposal;
+  existing_record: CanonicalMemoryObject;
+}): void {
+  if (input.proposal.candidate_kind !== input.existing_record.kind) {
+    throw new Error(
+      `Proposal ${input.proposal.id} candidate_kind ${input.proposal.candidate_kind} does not match existing canonical kind ${input.existing_record.kind}`,
+    );
+  }
+
+  const payloadKind = input.proposal.candidate_payload.kind;
+  if (payloadKind !== undefined && payloadKind !== input.existing_record.kind) {
+    throw new Error(
+      `Proposal ${input.proposal.id} candidate_payload.kind ${String(payloadKind)} does not match existing canonical kind ${input.existing_record.kind}`,
+    );
+  }
+
+  if (input.proposal.target_ref && !referenceMatchesCanonicalRecord(input.proposal.target_ref, input.existing_record)) {
+    throw new Error(`Proposal ${input.proposal.id} target_ref does not match existing canonical record ${input.existing_record.id}`);
+  }
+}
+
 function payloadTemporalState(payload: Record<string, unknown>, now: string): TemporalState {
   const temporal = payload.temporal_state;
   if (
@@ -33,17 +84,11 @@ export function applyApprovedCanonicalCreate(input: {
   canonical_id: string;
   now: string;
 }): CanonicalMemoryObject {
-  if (input.proposal.target_layer !== "canon") {
-    throw new Error(`Proposal ${input.proposal.id} does not target canon`);
-  }
-
   if (input.proposal.operation !== "create") {
     throw new Error(`Proposal ${input.proposal.id} is not a create operation`);
   }
 
-  if (input.ratification_record.decision !== "approved") {
-    throw new Error(`Ratification ${input.ratification_record.id} is not approved`);
-  }
+  assertApprovedRatificationMatchesProposal(input.proposal, input.ratification_record);
 
   const statement = input.proposal.candidate_payload.statement;
   if (typeof statement !== "string" || statement.length === 0) {
@@ -97,9 +142,16 @@ export function applyApprovedCanonicalRevise(input: {
   revised_record: CanonicalMemoryObject;
   superseded_record: CanonicalMemoryObject;
 } {
+  assertApprovedRatificationMatchesProposal(input.proposal, input.ratification_record);
+
   if (input.proposal.operation !== "revise") {
     throw new Error(`Proposal ${input.proposal.id} is not a revise operation`);
   }
+
+  assertCanonicalTargetCompatibility({
+    proposal: input.proposal,
+    existing_record: input.existing_record,
+  });
 
   const revised_record = applyApprovedCanonicalCreate({
     proposal: {
@@ -140,9 +192,16 @@ export function applyApprovedCanonicalSupersede(input: {
   existing_record: CanonicalMemoryObject;
   now: string;
 }): CanonicalMemoryObject {
+  assertApprovedRatificationMatchesProposal(input.proposal, input.ratification_record);
+
   if (input.proposal.operation !== "supersede") {
     throw new Error(`Proposal ${input.proposal.id} is not a supersede operation`);
   }
+
+  assertCanonicalTargetCompatibility({
+    proposal: input.proposal,
+    existing_record: input.existing_record,
+  });
 
   return {
     ...input.existing_record,

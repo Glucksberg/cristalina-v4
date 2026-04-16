@@ -727,6 +727,83 @@ export interface AcceptedContradictionResolutionApplicationResult extends Contra
   resolution: ContradictionResolution;
 }
 
+function referenceMatchesWorldClaim(reference: Reference, claim: WorldClaim): boolean {
+  return (
+    reference.id === claim.id &&
+    (reference.kind === undefined || reference.kind === claim.kind) &&
+    (reference.layer === undefined || reference.layer === claim.layer)
+  );
+}
+
+function contradictionMatchesClaims(
+  contradiction: Contradiction,
+  existing_claim: WorldClaim,
+  candidate_claim: WorldClaim,
+): boolean {
+  return (
+    referenceMatchesWorldClaim(contradiction.left_ref, existing_claim) &&
+    referenceMatchesWorldClaim(contradiction.right_ref, candidate_claim)
+  );
+}
+
+function assertResolutionRefMatches(
+  ref: Reference | null | undefined,
+  claim: WorldClaim,
+  label: "winning_ref" | "losing_ref",
+): void {
+  if (!ref) {
+    throw new Error(`Resolution is missing ${label}`);
+  }
+  if (!referenceMatchesWorldClaim(ref, claim)) {
+    throw new Error(`Resolution ${label} does not match claim ${claim.id}`);
+  }
+}
+
+function assertContradictionResolutionApplicability(input: {
+  contradiction: Contradiction;
+  resolution: ContradictionResolution;
+  existing_claim: WorldClaim;
+  candidate_claim: WorldClaim;
+}): void {
+  if (input.resolution.contradiction_ref !== input.contradiction.id) {
+    throw new Error(`Resolution ${input.resolution.id} does not match contradiction ${input.contradiction.id}`);
+  }
+
+  if (!contradictionMatchesClaims(input.contradiction, input.existing_claim, input.candidate_claim)) {
+    throw new Error("Contradiction refs do not match the provided existing_claim and candidate_claim");
+  }
+
+  switch (input.resolution.strategy) {
+    case "coexist_temporally":
+    case "supersede_existing":
+      assertResolutionRefMatches(input.resolution.winning_ref, input.candidate_claim, "winning_ref");
+      assertResolutionRefMatches(input.resolution.losing_ref, input.existing_claim, "losing_ref");
+      break;
+    case "supersede_candidate":
+      assertResolutionRefMatches(input.resolution.winning_ref, input.existing_claim, "winning_ref");
+      assertResolutionRefMatches(input.resolution.losing_ref, input.candidate_claim, "losing_ref");
+      break;
+    case "dismiss_contradiction":
+      if (
+        input.resolution.winning_ref &&
+        !referenceMatchesWorldClaim(input.resolution.winning_ref, input.existing_claim) &&
+        !referenceMatchesWorldClaim(input.resolution.winning_ref, input.candidate_claim)
+      ) {
+        throw new Error(`Resolution winning_ref does not match contradiction participants`);
+      }
+      if (
+        input.resolution.losing_ref &&
+        !referenceMatchesWorldClaim(input.resolution.losing_ref, input.existing_claim) &&
+        !referenceMatchesWorldClaim(input.resolution.losing_ref, input.candidate_claim)
+      ) {
+        throw new Error(`Resolution losing_ref does not match contradiction participants`);
+      }
+      break;
+    case "manual_review":
+      break;
+  }
+}
+
 export function acceptContradictionResolution(input: {
   now: string;
   resolution: ContradictionResolution;
@@ -741,6 +818,23 @@ export function acceptContradictionResolution(input: {
 
   if (input.resolution.status === "applied") {
     throw new Error("Applied contradiction resolutions cannot be accepted again");
+  }
+
+  if (
+    (input.resolution.strategy === "coexist_temporally" ||
+      input.resolution.strategy === "supersede_existing" ||
+      input.resolution.strategy === "supersede_candidate") &&
+    (!input.resolution.winning_ref || !input.resolution.losing_ref)
+  ) {
+    throw new Error(`Strategy ${input.resolution.strategy} requires both winning_ref and losing_ref`);
+  }
+
+  if (
+    input.resolution.winning_ref &&
+    input.resolution.losing_ref &&
+    input.resolution.winning_ref.id === input.resolution.losing_ref.id
+  ) {
+    throw new Error("winning_ref and losing_ref must point to different records");
   }
 
   return {
@@ -903,6 +997,11 @@ export function applyAcceptedContradictionResolution(input: {
   if (input.resolution.strategy === "manual_review") {
     throw new Error("Manual-review contradiction resolutions cannot be applied directly");
   }
+  if (input.contradiction.status !== "open") {
+    throw new Error("Only open contradictions can receive an applied resolution");
+  }
+
+  assertContradictionResolutionApplicability(input);
 
   const resolution: ContradictionResolution = {
     ...input.resolution,

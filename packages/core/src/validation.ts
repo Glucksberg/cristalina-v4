@@ -527,6 +527,15 @@ function validateContradictionResolution(value: unknown): ValidationIssue[] {
   if (value.losing_ref !== undefined && value.losing_ref !== null) {
     pushReference(issues, value.losing_ref, "losing_ref");
   }
+  if (isRecord(value.winning_ref) && isRecord(value.losing_ref) && value.winning_ref.id === value.losing_ref.id) {
+    issues.push({ path: "losing_ref.id", message: "winning_ref and losing_ref must point to different records" });
+  }
+  if (
+    (value.strategy === "coexist_temporally" || value.strategy === "supersede_existing" || value.strategy === "supersede_candidate") &&
+    (value.winning_ref === undefined || value.winning_ref === null || value.losing_ref === undefined || value.losing_ref === null)
+  ) {
+    issues.push({ path: "winning_ref", message: "selected strategy requires both winning_ref and losing_ref" });
+  }
   pushRequiredString(issues, value, "rationale");
   if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
     issues.push({ path: "diagnostic_refs", message: "expected string array" });

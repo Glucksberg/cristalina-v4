@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DEFAULT_PROJECTION_READ_POLICY_VERSION } from "../adapter-sdk/projection.js";
+import { applyApprovedCanonicalProposal } from "../canon/engine.js";
+import type { CanonicalMemoryObject } from "../types.js";
 import {
   acceptContradictionResolution,
   applyAcceptedContradictionResolution,
@@ -355,6 +357,155 @@ test("canonical workflow rejects target_ref kind mismatches even when the id exi
   assert.equal(workflow.accepted, false);
   assert.equal(workflow.ratification_record.decision, "rejected");
   assert.equal(workflow.updated_records.length, 0);
+});
+
+test("canonical application rejects ratifications that do not belong to the proposal", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+
+  assert.throws(
+    () =>
+      applyApprovedCanonicalProposal({
+        proposal: {
+          id: "prop_test_wrong_ratification",
+          kind: "proposal",
+          layer: "governance",
+          authoritative_home: "governance",
+          created_at: now,
+          updated_at: now,
+          visibility_state: {
+            privacy_scope: "owner_private",
+          },
+          provenance: {
+            source_type: "conversation",
+            source_ref: "src_prop_wrong_ratification",
+            evidence_refs: ["obs_test_wrong_ratification"],
+          },
+          operation: "create",
+          candidate_kind: "preference",
+          target_layer: "canon",
+          target_ref: null,
+          candidate_payload: {
+            kind: "preference",
+            statement: "The user prefers concise answers.",
+            semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+          },
+          reason: "Promote preference to canon.",
+          evidence_refs: ["obs_test_wrong_ratification"],
+          governance_state: "proposed",
+        },
+        ratification_record: {
+          id: "rat_test_wrong_ratification",
+          kind: "ratification",
+          layer: "governance",
+          authoritative_home: "governance",
+          created_at: now,
+          updated_at: now,
+          visibility_state: {
+            privacy_scope: "owner_private",
+          },
+          provenance: {
+            source_type: "governance",
+            source_ref: "ratification/test/wrong",
+          },
+          proposal_ref: "prop_other",
+          decision: "approved",
+          actor: "system:test",
+        },
+        canonical_id: "mem_test_wrong_ratification",
+        now,
+      }),
+    /does not belong to proposal/,
+  );
+});
+
+test("canonical revise application rejects mismatched canonical target contracts", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const existingRecord: CanonicalMemoryObject = {
+    id: "mem_existing_target_contract",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_existing_target_contract",
+    },
+    statement: "The user prefers detailed answers.",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: now,
+      valid_to: null,
+    },
+    supersedes_ref: null,
+    superseded_by_ref: null,
+  };
+
+  assert.throws(
+    () =>
+      applyApprovedCanonicalProposal({
+        proposal: {
+          id: "prop_test_target_contract_mismatch",
+          kind: "proposal",
+          layer: "governance",
+          authoritative_home: "governance",
+          created_at: now,
+          updated_at: now,
+          visibility_state: {
+            privacy_scope: "owner_private",
+          },
+          provenance: {
+            source_type: "conversation",
+            source_ref: "src_prop_target_contract_mismatch",
+            evidence_refs: ["obs_test_target_contract_mismatch"],
+          },
+          operation: "revise",
+          candidate_kind: "fact",
+          target_layer: "canon",
+          target_ref: {
+            id: "mem_other_target_contract",
+            kind: "fact",
+            layer: "canon",
+          },
+          candidate_payload: {
+            kind: "fact",
+            statement: "The user prefers concise answers.",
+            semantic_slot: existingRecord.semantic_slot,
+          },
+          reason: "Attempt to revise canonical memory with a mismatched target contract.",
+          evidence_refs: ["obs_test_target_contract_mismatch"],
+          governance_state: "proposed",
+        },
+        ratification_record: {
+          id: "rat_test_target_contract_mismatch",
+          kind: "ratification",
+          layer: "governance",
+          authoritative_home: "governance",
+          created_at: now,
+          updated_at: now,
+          visibility_state: {
+            privacy_scope: "owner_private",
+          },
+          provenance: {
+            source_type: "governance",
+            source_ref: "ratification/test/target-contract-mismatch",
+          },
+          proposal_ref: "prop_test_target_contract_mismatch",
+          decision: "approved",
+          actor: "system:test",
+        },
+        existing_record: existingRecord,
+        canonical_id: "mem_revised_target_contract_mismatch",
+        now,
+      }),
+    /candidate_kind .* does not match existing canonical kind|target_ref does not match existing canonical record/,
+  );
 });
 
 test("conversation preference intake preserves the raw source_ref in provenance", () => {
@@ -1070,6 +1221,155 @@ test("accepted contradiction resolution requires an explicit acceptance transiti
 
   assert.equal(accepted.status, "accepted");
   assert.equal(applied.resolution.status, "applied");
+});
+
+test("accepted contradiction resolution rejects mismatched contradiction participants", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers.",
+    source_record: {
+      id: "src_resolution_mismatch_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session#turn-resolution-mismatch-001",
+      },
+      content_ref: "raw/sources/turn-resolution-mismatch-001.json",
+    },
+    ids: buildIds("resolution_mismatch_001"),
+  });
+
+  const existing = {
+    ...intake.world_claim,
+    id: "wcl_existing_resolution_mismatch_001",
+    statement: "The user prefers exhaustive answers.",
+    temporal_state: {
+      temporal_status: "active" as const,
+      valid_from: "2026-04-01T00:00:00.000Z",
+      valid_to: null,
+    },
+  };
+  const contradiction = detectWorldClaimContradiction({
+    now,
+    contradiction_id: "contra_resolution_mismatch_001",
+    candidate_claim: intake.world_claim,
+    existing_world_claims: [existing],
+  });
+
+  assert.ok(contradiction);
+
+  const accepted = acceptContradictionResolution({
+    now,
+    resolution: proposeContradictionResolution({
+      now,
+      resolution_id: "cres_resolution_mismatch_001",
+      contradiction: contradiction!,
+      existing_claim: existing,
+      candidate_claim: intake.world_claim,
+    }),
+  });
+
+  assert.throws(
+    () =>
+      applyAcceptedContradictionResolution({
+        now,
+        contradiction: contradiction!,
+        resolution: accepted,
+        existing_claim: {
+          ...existing,
+          id: "wcl_existing_resolution_mismatch_other",
+        },
+        candidate_claim: intake.world_claim,
+      }),
+    /Contradiction refs do not match the provided existing_claim and candidate_claim/,
+  );
+});
+
+test("accepted contradiction resolution rejects winning and losing refs that do not match the selected strategy", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers.",
+    source_record: {
+      id: "src_resolution_strategy_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session#turn-resolution-strategy-001",
+      },
+      content_ref: "raw/sources/turn-resolution-strategy-001.json",
+    },
+    ids: buildIds("resolution_strategy_001"),
+  });
+
+  const existing = {
+    ...intake.world_claim,
+    id: "wcl_existing_resolution_strategy_001",
+    statement: "The user prefers exhaustive answers.",
+    temporal_state: {
+      temporal_status: "active" as const,
+      valid_from: "2026-04-01T00:00:00.000Z",
+      valid_to: null,
+    },
+  };
+  const contradiction = detectWorldClaimContradiction({
+    now,
+    contradiction_id: "contra_resolution_strategy_001",
+    candidate_claim: intake.world_claim,
+    existing_world_claims: [existing],
+  });
+
+  assert.ok(contradiction);
+
+  const accepted = acceptContradictionResolution({
+    now,
+    resolution: {
+      ...proposeContradictionResolution({
+        now,
+        resolution_id: "cres_resolution_strategy_001",
+        contradiction: contradiction!,
+        existing_claim: existing,
+        candidate_claim: intake.world_claim,
+      }),
+      winning_ref: {
+        id: existing.id,
+        kind: existing.kind,
+        layer: existing.layer,
+      },
+      losing_ref: {
+        id: intake.world_claim.id,
+        kind: intake.world_claim.kind,
+        layer: intake.world_claim.layer,
+      },
+    },
+  });
+
+  assert.throws(
+    () =>
+      applyAcceptedContradictionResolution({
+        now,
+        contradiction: contradiction!,
+        resolution: accepted,
+        existing_claim: existing,
+        candidate_claim: intake.world_claim,
+      }),
+    /Resolution winning_ref does not match claim/,
+  );
 });
 
 test("accepted contradiction resolution compiles into projection with explicit historical trace", () => {
