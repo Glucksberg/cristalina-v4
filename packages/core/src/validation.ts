@@ -447,8 +447,8 @@ function validateProposal(value: unknown): ValidationIssue[] {
   if (!isEnumValue(value.target_layer, ["world", "canon", "wiki", "governance"] as const)) {
     issues.push({ path: "target_layer", message: "expected one of: world, canon, wiki, governance" });
   }
-  if (value.target_ref !== null && value.target_ref !== undefined && !isRecord(value.target_ref)) {
-    issues.push({ path: "target_ref", message: "expected object or null" });
+  if (value.target_ref !== null && value.target_ref !== undefined) {
+    pushReference(issues, value.target_ref, "target_ref");
   }
   if (!isRecord(value.candidate_payload)) {
     issues.push({ path: "candidate_payload", message: "expected object" });

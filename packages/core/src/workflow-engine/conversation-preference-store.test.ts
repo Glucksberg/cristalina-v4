@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -196,6 +196,61 @@ test("writeConversationPreferenceFlowToStore recovers from partial authoritative
   assert.match(projectionMarkdown, /\[canon:mem_test_001\]/);
 });
 
+test("writeConversationPreferenceFlowToStore keeps projection markdown isolated per manifest", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  const first = await writeConversationPreferenceFlowToStore(firstInput);
+  const firstProjectionBefore = await readFile(first.paths.projection_markdown, "utf8");
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: "2026-04-12T01:00:00.000Z",
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_projection_002",
+      source_ref: "runtime/session-test#turn-projection-002",
+      content_ref: "raw/sources/conversation-turn-test-projection-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_projection_002",
+      episode: "ep_test_projection_002",
+      subject_entity: "ent_subject_test_projection_002",
+      preference_entity: "ent_preference_test_projection_002",
+      preference_relation: "rel_preference_test_projection_002",
+      world_claim: "wcl_test_projection_002",
+      contradiction: "contra_test_projection_002",
+      contradiction_resolution: "cres_test_projection_002",
+      wiki_page: "wpg_test_projection_002",
+      wiki_claim: "wclm_test_projection_002",
+      proposal: "prop_test_projection_002",
+      disposition: "disp_test_projection_002",
+      ratification: "rat_test_projection_002",
+      diagnostic: "diag_test_projection_002",
+      canonical: "mem_test_projection_002",
+      canon_artifact: "part_openclaw_canon_test_projection_002",
+      world_artifact: "part_openclaw_world_test_projection_002",
+      wiki_artifact: "part_openclaw_wiki_test_projection_002",
+      projection_manifest: "pmf_openclaw_test_projection_002",
+    },
+  };
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  const firstProjectionAfter = await readFile(first.paths.projection_markdown, "utf8");
+  const secondProjection = await readFile(second.paths.projection_markdown, "utf8");
+
+  assert.notEqual(first.paths.projection_markdown, second.paths.projection_markdown);
+  assert.equal(firstProjectionAfter, firstProjectionBefore);
+  assert.match(firstProjectionAfter, /\[canon:mem_test_001\]/);
+  assert.match(secondProjection, /\[canon:mem_test_001\]/);
+  assert.match(secondProjection, /\[world:wcl_test_projection_002\]/);
+});
+
 test("writeConversationPreferenceFlowToStore records contradictions against existing active world claims", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -251,6 +306,39 @@ test("writeConversationPreferenceFlowToStore records contradictions against exis
   const projectionMarkdown = await readFile(second.paths.projection_markdown, "utf8");
   assert.match(projectionMarkdown, /\[canon:mem_test_001\] \(ratified; active\)/);
   assert.doesNotMatch(projectionMarkdown, /\[canon:mem_test_002\]/);
+});
+
+test("readConversationPreferenceFlowResult rejects recovery journals that escape the store root", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  const outsidePath = join(tmpdir(), "cristalina-core-recovery-escape.txt");
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+    await rm(outsidePath, { force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await mkdir(join(rootDir, "audits/snapshots"), { recursive: true });
+  await writeFile(
+    join(rootDir, `audits/snapshots/recovery-conversation_preference_write-${input.ids.proposal}.json`),
+    JSON.stringify({
+      version: 1,
+      operation: "conversation_preference_write",
+      created_at: input.now,
+      files: [
+        {
+          path: outsidePath,
+          content: "escape\n",
+        },
+      ],
+    }, null, 2),
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => readConversationPreferenceFlowResult(input),
+    /Resolved path escapes store root/,
+  );
+  await assert.rejects(() => readFile(outsidePath, "utf8"));
 });
 
 test("applyConversationPreferenceResolutionToStore persists applied resolution and recompiles projection", async (t) => {

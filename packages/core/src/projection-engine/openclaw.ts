@@ -25,6 +25,10 @@ import type {
   WorldClaim,
 } from "../types.js";
 
+export function defaultOpenClawBootstrapProjectionPath(manifestId: string): string {
+  return `derived/openclaw/${manifestId}/bootstrap-memory.md`;
+}
+
 function uniqueRefs(...groups: string[][]): string[] {
   return [...new Set(groups.flat())];
 }

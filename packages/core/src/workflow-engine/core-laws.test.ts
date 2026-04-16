@@ -244,6 +244,119 @@ test("canonical workflow rejects mismatched target_ref and existing_record", () 
   );
 });
 
+test("proposal validation validates target_ref as a full reference object", () => {
+  const issues = validateCoreRecord({
+    id: "prop_test_invalid_target_ref",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_invalid_target_ref",
+      evidence_refs: ["obs_invalid_target_ref"],
+    },
+    operation: "revise",
+    candidate_kind: "preference",
+    target_layer: "canon",
+    target_ref: {
+      id: "",
+      kind: 7,
+      layer: "canon",
+    },
+    candidate_payload: {
+      kind: "preference",
+      statement: "Revise target",
+      semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    },
+    reason: "Invalid target_ref should fail validation.",
+    evidence_refs: ["obs_invalid_target_ref"],
+    governance_state: "proposed",
+  });
+
+  assert.ok(issues.some((issue) => issue.path === "target_ref.id"));
+  assert.ok(issues.some((issue) => issue.path === "target_ref.kind"));
+});
+
+test("canonical workflow rejects target_ref kind mismatches even when the id exists", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const targetRecord = {
+    id: "mem_target_kind_001",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_target_kind_001",
+    },
+    statement: "Target record",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: now,
+      valid_to: null,
+    },
+    supersedes_ref: null,
+    superseded_by_ref: null,
+  } as const;
+
+  const workflow = executeCanonicalProposalWorkflow({
+    proposal: {
+      id: "prop_test_kind_mismatch",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "src_prop_kind_mismatch",
+        evidence_refs: ["obs_test_kind_mismatch"],
+      },
+      operation: "supersede",
+      candidate_kind: "fact",
+      target_layer: "canon",
+      target_ref: {
+        id: targetRecord.id,
+        kind: "fact",
+        layer: "world",
+      },
+      candidate_payload: {
+        kind: "fact",
+        semantic_slot: targetRecord.semantic_slot,
+        reason: "Supersede the target.",
+      },
+      reason: "Supersede target",
+      evidence_refs: ["obs_test_kind_mismatch"],
+      governance_state: "proposed",
+    },
+    existing_canon_records: [targetRecord],
+    now,
+    actor: "system:test",
+    ratification_id: "rat_test_kind_mismatch",
+    diagnostic_id: "diag_test_kind_mismatch",
+    canonical_id: "unused_test_kind_mismatch",
+  });
+
+  assert.equal(workflow.accepted, false);
+  assert.equal(workflow.ratification_record.decision, "rejected");
+  assert.equal(workflow.updated_records.length, 0);
+});
+
 test("conversation preference intake preserves the raw source_ref in provenance", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const intake = buildConversationPreferenceIntake({

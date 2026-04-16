@@ -1,6 +1,9 @@
 import { applyApprovedCanonicalProposal } from "../canon/engine.js";
 import { evaluateCanonicalProposal, type GovernanceEvaluationResult } from "../governance/engine.js";
-import { compileOpenClawBootstrapProjection } from "../projection-engine/openclaw.js";
+import {
+  compileOpenClawBootstrapProjection,
+  defaultOpenClawBootstrapProjectionPath,
+} from "../projection-engine/openclaw.js";
 import { resolvePreferenceSignalSemanticProfile, type PreferenceSignalSemanticProfile } from "./source-intake.js";
 import type {
   ActorIdentity,
@@ -24,6 +27,7 @@ import type {
   SourceRecord,
   VisibilityState,
   ConversationThread,
+  Reference,
   WikiClaim,
   WikiPage,
   WorldClaim,
@@ -968,16 +972,20 @@ function mergeExistingCanonRecords(input: CanonicalProposalWorkflowInput): Canon
   return merged;
 }
 
+function referenceMatchesCanonicalRecord(reference: Reference, record: CanonicalMemoryObject): boolean {
+  return (
+    reference.id === record.id &&
+    (reference.kind === undefined || reference.kind === record.kind) &&
+    (reference.layer === undefined || reference.layer === record.layer)
+  );
+}
+
 function resolveWorkflowExistingRecord(
   input: CanonicalProposalWorkflowInput,
   existingRecords: CanonicalMemoryObject[],
 ): CanonicalMemoryObject | undefined {
-  const targetId =
-    input.proposal.target_ref && typeof input.proposal.target_ref.id === "string"
-      ? input.proposal.target_ref.id
-      : undefined;
-  const targetRecord = targetId
-    ? existingRecords.find((record) => record.id === targetId)
+  const targetRecord = input.proposal.target_ref
+    ? existingRecords.find((record) => referenceMatchesCanonicalRecord(input.proposal.target_ref as Reference, record))
     : undefined;
 
   if (
@@ -1031,6 +1039,7 @@ export function executeCanonicalProposalWorkflow(input: CanonicalProposalWorkflo
 export interface OpenClawBootstrapWorkflowInput {
   now: string;
   visibility_state: VisibilityState;
+  projection_path?: string;
   canonical_records: CanonicalMemoryObject[];
   world_claims: WorldClaim[];
   episodes?: Episode[];
@@ -1072,7 +1081,7 @@ export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflo
   return compileOpenClawBootstrapProjection({
     now: input.now,
     visibility_state: input.visibility_state,
-    projection_path: "derived/openclaw/bootstrap-memory.md",
+    projection_path: input.projection_path ?? defaultOpenClawBootstrapProjectionPath(input.ids.manifest),
     canonical_records: input.canonical_records,
     world_claims: input.world_claims,
     episodes: input.episodes ?? [],

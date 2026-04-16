@@ -2,6 +2,7 @@ import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { appendAuditChange, appendValidationLog } from "../audit/log.js";
+import { defaultOpenClawBootstrapProjectionPath } from "../projection-engine/openclaw.js";
 import {
   coreRecordPath,
   initializeStore,
@@ -184,11 +185,16 @@ interface MaterializedFile {
   content: string;
 }
 
+interface RecoveryJournalFile {
+  relative_path: string;
+  content: string;
+}
+
 interface RecoveryJournal {
   version: 1;
   operation: "conversation_preference_write" | "conversation_preference_resolution_apply";
   created_at: string;
-  files: MaterializedFile[];
+  files: RecoveryJournalFile[];
 }
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
@@ -248,7 +254,47 @@ function recoveryJournalPath(
   return resolveStorePath(rootDir, `audits/snapshots/recovery-${operation}-${stableId}.json`);
 }
 
+function relativeStorePath(rootDir: string, filePath: string): string {
+  const rootPath = resolve(rootDir);
+  const targetPath = resolveStorePath(rootDir, filePath);
+  return relative(rootPath, targetPath);
+}
+
+function parseRecoveryJournalFiles(rootDir: string, files: unknown): MaterializedFile[] {
+  if (!Array.isArray(files)) {
+    throw new Error("Recovery journal is malformed");
+  }
+
+  return files.map((entry, index) => {
+    if (typeof entry !== "object" || entry === null) {
+      throw new Error(`Recovery journal entry ${index} is malformed`);
+    }
+
+    const candidate = entry as {
+      relative_path?: unknown;
+      path?: unknown;
+      content?: unknown;
+    };
+    const rawPath =
+      typeof candidate.relative_path === "string"
+        ? candidate.relative_path
+        : typeof candidate.path === "string"
+          ? candidate.path
+          : undefined;
+
+    if (!rawPath || typeof candidate.content !== "string") {
+      throw new Error(`Recovery journal entry ${index} is malformed`);
+    }
+
+    return {
+      path: resolveStorePath(rootDir, rawPath),
+      content: candidate.content,
+    };
+  });
+}
+
 function buildRecoveryJournal(input: {
+  rootDir: string;
   operation: RecoveryJournal["operation"];
   created_at: string;
   files: MaterializedFile[];
@@ -257,7 +303,10 @@ function buildRecoveryJournal(input: {
     version: 1,
     operation: input.operation,
     created_at: input.created_at,
-    files: input.files,
+    files: input.files.map((file) => ({
+      relative_path: relativeStorePath(input.rootDir, file.path),
+      content: file.content,
+    })),
   };
 }
 
@@ -265,19 +314,15 @@ async function writeRecoveryJournal(filePath: string, journal: RecoveryJournal):
   await writeTextFile(filePath, `${JSON.stringify(journal, null, 2)}\n`);
 }
 
-async function recoverPendingJournal(filePath: string): Promise<boolean> {
+async function recoverPendingJournal(rootDir: string, filePath: string): Promise<boolean> {
   if (!(await pathExists(filePath))) {
     return false;
   }
 
   const source = await readFile(filePath, "utf8");
   const parsed = JSON.parse(source) as Partial<RecoveryJournal>;
-  if (!Array.isArray(parsed.files)) {
-    throw new Error(`Recovery journal ${filePath} is malformed`);
-  }
-
-  const journal = parsed as RecoveryJournal;
-  await materializeFiles(journal.files);
+  const files = parseRecoveryJournalFiles(rootDir, parsed.files);
+  await materializeFiles(files);
   await rm(filePath, { force: true });
   return true;
 }
@@ -401,7 +446,7 @@ function buildPaths(
         layer: "canon",
       } as CanonicalMemoryObject,
     ),
-    projection_markdown: resolveStorePath(rootDir, "derived/openclaw/bootstrap-memory.md"),
+    projection_markdown: resolveStorePath(rootDir, defaultOpenClawBootstrapProjectionPath(input.ids.projection_manifest)),
     projection_manifest: coreRecordPath(
       rootDir,
       {
@@ -541,7 +586,7 @@ async function recoverOrResetWriteFlow(
   paths: ConversationPreferenceStorePaths,
 ): Promise<void> {
   const journalPath = recoveryJournalPath(rootDir, "conversation_preference_write", input.ids.proposal);
-  if (await recoverPendingJournal(journalPath)) {
+  if (await recoverPendingJournal(rootDir, journalPath)) {
     return;
   }
 
@@ -556,6 +601,7 @@ async function recoverResolutionApplication(rootDir: string, input: Conversation
   }
 
   await recoverPendingJournal(
+    rootDir,
     recoveryJournalPath(rootDir, "conversation_preference_resolution_apply", input.ids.contradiction_resolution),
   );
 }
@@ -985,6 +1031,7 @@ function assertLoadedFlowMatchesInput(
 
 async function buildProjectionFromStoreState(
   rootDir: string,
+  paths: ConversationPreferenceStorePaths,
   input: ConversationPreferenceStoreInput,
   canonicalRecord: CanonicalMemoryObject | undefined,
   intake: ConversationPreferenceIntakeArtifacts,
@@ -1045,6 +1092,7 @@ async function buildProjectionFromStoreState(
 
   return executeOpenClawBootstrapWorkflow({
     now,
+    projection_path: relativeStorePath(rootDir, paths.projection_markdown),
     visibility_state: canonicalRecord?.visibility_state ?? intake.world_claim.visibility_state,
     canonical_records: effectiveCanonicalRecords,
     world_claims: mergeById(world_claims, overrides?.world_claims),
@@ -1193,6 +1241,7 @@ async function ensureReplayableArtifacts(
     await deriveReplayProjectionTimestamp(input, paths, loaded);
   const projection = await buildProjectionFromStoreState(
     resolve(input.rootDir),
+    paths,
     input,
     loaded.canonical_record,
     loaded.intake,
@@ -1412,7 +1461,7 @@ export async function writeConversationPreferenceFlowToStore(
           candidate_claim: intake.world_claim,
         })
       : undefined;
-  const projection = await buildProjectionFromStoreState(rootDir, input, canonicalWorkflow.created_record, intake, input.now, {
+  const projection = await buildProjectionFromStoreState(rootDir, paths, input, canonicalWorkflow.created_record, intake, input.now, {
     canonical_records: canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : [],
     world_claims: [intake.world_claim],
     episodes: [intake.episode],
@@ -1441,6 +1490,7 @@ export async function writeConversationPreferenceFlowToStore(
   await writeRecoveryJournal(
     journalPath,
     buildRecoveryJournal({
+      rootDir,
       operation: "conversation_preference_write",
       created_at: input.now,
       files,
@@ -1648,7 +1698,7 @@ export async function applyConversationPreferenceResolutionToStore(
     candidate_claim: records.intake.world_claim,
   });
 
-  const projection = await buildProjectionFromStoreState(rootDir, input, records.canonical_record, {
+  const projection = await buildProjectionFromStoreState(rootDir, paths, input, records.canonical_record, {
     ...records.intake,
     world_claim: applied.candidate_claim,
   }, input.now, {
@@ -1670,6 +1720,7 @@ export async function applyConversationPreferenceResolutionToStore(
   await writeRecoveryJournal(
     journalPath,
     buildRecoveryJournal({
+      rootDir,
       operation: "conversation_preference_resolution_apply",
       created_at: input.now,
       files,
