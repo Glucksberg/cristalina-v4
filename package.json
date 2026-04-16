@@ -3,6 +3,27 @@
   "private": true,
   "version": "0.0.0",
   "description": "Next-generation governed memory architecture with OpenClaw and Hermes Agent integrations",
+  "license": "MIT",
+  "author": "Markus Glucksberg",
+  "homepage": "https://github.com/Glucksberg/cristalina-v4",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Glucksberg/cristalina-v4.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Glucksberg/cristalina-v4/issues"
+  },
+  "keywords": [
+    "memory",
+    "agent-memory",
+    "knowledge-graph",
+    "governed-memory",
+    "ai-memory",
+    "openclaw",
+    "hermes-agent",
+    "llm-memory",
+    "canonical-memory"
+  ],
   "packageManager": "pnpm@10.17.1",
   "scripts": {
     "build": "pnpm -r build",

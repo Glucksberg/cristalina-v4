@@ -1,64 +1,142 @@
 # Cristalina v4
 
-This directory is the official working area for the next-generation Cristalina repository line.
+> A runtime-agnostic, governed memory kernel for AI agents.
+> Raw sources + runtime self + temporal world model + governed canonical memory + persistent knowledge wiki — with a hard line between **evidence**, **operational state**, and **truth**.
 
-Cristalina v4 is being designed as a new memory architecture rather than a direct merge of older products.
+[![License: MIT](https://img.shields.io/badge/License-MIT-22d3ee.svg)](LICENSE)
+[![Status: kernel implementation](https://img.shields.io/badge/status-kernel%20implementation-fbbf24.svg)](PROJECT-STATUS.md)
+[![pnpm workspace](https://img.shields.io/badge/pnpm-monorepo-fb923c.svg)](https://pnpm.io/workspaces)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-34d399.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6.svg)](https://www.typescriptlang.org/)
 
-Its working thesis is:
+---
 
-`raw sources + runtime self + temporal world model + governed canonical memory + persistent knowledge wiki`
+## Architecture at a glance
 
-## Scope
+![Cristalina v4 Architecture](docs/architecture.svg)
 
-This repository line is intended to produce:
+> Open [`docs/architecture.html`](docs/architecture.html) locally for the fully styled version with summary cards.
 
-- a runtime-agnostic governed memory core
-- a first-class OpenClaw integration
-- a first-class Hermes Agent integration
+---
 
-## Start Here
+## What it is
 
-1. [docs/NEXT-GEN-MEMORY-SYNTHESIS.md](/home/dev/projects/cristalina-v4/docs/NEXT-GEN-MEMORY-SYNTHESIS.md)
-2. [docs/VISION.md](/home/dev/projects/cristalina-v4/docs/VISION.md)
-3. [docs/ARCHITECTURE.md](/home/dev/projects/cristalina-v4/docs/ARCHITECTURE.md)
-4. [docs/HARDENING-PLAN.md](/home/dev/projects/cristalina-v4/docs/HARDENING-PLAN.md)
-5. [docs/OBJECT-ENVELOPE.md](/home/dev/projects/cristalina-v4/docs/OBJECT-ENVELOPE.md)
-6. [docs/RUNTIME-IDENTITY.md](/home/dev/projects/cristalina-v4/docs/RUNTIME-IDENTITY.md)
-7. [docs/DISPOSITION-AND-CONSOLIDATION.md](/home/dev/projects/cristalina-v4/docs/DISPOSITION-AND-CONSOLIDATION.md)
-8. [docs/ROADMAP.md](/home/dev/projects/cristalina-v4/docs/ROADMAP.md)
-9. [docs/STORAGE-MODEL.md](/home/dev/projects/cristalina-v4/docs/STORAGE-MODEL.md)
-10. [docs/CORE-TYPES.md](/home/dev/projects/cristalina-v4/docs/CORE-TYPES.md)
-11. [docs/LEGAL-TRANSITIONS.md](/home/dev/projects/cristalina-v4/docs/LEGAL-TRANSITIONS.md)
-12. [docs/INFORMATION-FLOW.md](/home/dev/projects/cristalina-v4/docs/INFORMATION-FLOW.md)
-13. [docs/MVP-FLOW-001.md](/home/dev/projects/cristalina-v4/docs/MVP-FLOW-001.md)
-14. [docs/MVP-SPEC.md](/home/dev/projects/cristalina-v4/docs/MVP-SPEC.md)
-15. [docs/INSPIRATION-AND-COMPATIBILITY.md](/home/dev/projects/cristalina-v4/docs/INSPIRATION-AND-COMPATIBILITY.md)
-16. [docs/ANCESTOR-CROSSWALK.md](/home/dev/projects/cristalina-v4/docs/ANCESTOR-CROSSWALK.md)
-17. [docs/MODULARIZATION-PLAN.md](/home/dev/projects/cristalina-v4/docs/MODULARIZATION-PLAN.md)
-18. [docs/MODULE-FLOWS.md](/home/dev/projects/cristalina-v4/docs/MODULE-FLOWS.md)
-19. [docs/REUSE-MATRIX.md](/home/dev/projects/cristalina-v4/docs/REUSE-MATRIX.md)
-20. [docs/KNOWLEDGE-WIKI-LAYER.md](/home/dev/projects/cristalina-v4/docs/KNOWLEDGE-WIKI-LAYER.md)
-21. [docs/ADAPTER-CONTRACTS.md](/home/dev/projects/cristalina-v4/docs/ADAPTER-CONTRACTS.md)
-22. [docs/MODEL-DEPENDENCY-MAP.md](/home/dev/projects/cristalina-v4/docs/MODEL-DEPENDENCY-MAP.md)
-23. [docs/DECISIONS.md](/home/dev/projects/cristalina-v4/docs/DECISIONS.md)
-24. [docs/GLOSSARY.md](/home/dev/projects/cristalina-v4/docs/GLOSSARY.md)
-25. [docs/NON-GOALS.md](/home/dev/projects/cristalina-v4/docs/NON-GOALS.md)
-26. [docs/USE-CASES.md](/home/dev/projects/cristalina-v4/docs/USE-CASES.md)
-27. [docs/EVALS.md](/home/dev/projects/cristalina-v4/docs/EVALS.md)
-28. [docs/FAILURE-MODES.md](/home/dev/projects/cristalina-v4/docs/FAILURE-MODES.md)
-29. [docs/WSL-DEVELOPMENT.md](/home/dev/projects/cristalina-v4/docs/WSL-DEVELOPMENT.md)
+Cristalina v4 is a **memory kernel** designed to sit underneath any agent runtime (OpenClaw, Hermes, your own) and give that runtime a coherent, replayable, governed memory layer.
 
-## Repository Layout
+It separates memory into six layers, each with explicit authority:
 
-- `docs/` architecture, flow, compatibility, and spec documents
-- `schemas/` stable object and adapter schemas
-- `notes/` reverse-engineering and translation notes
-- `packages/core` governed memory core
-- `packages/openclaw-adapter` OpenClaw integration
-- `packages/hermes-adapter` Hermes Agent integration
+| Layer        | Role                                  | Authority                                    |
+|--------------|---------------------------------------|----------------------------------------------|
+| `raw/`       | Source records, imports, attachments  | Evidence — never truth                       |
+| `runtime/`   | Sessions, observations, threads       | Operational context — never canon            |
+| `world/`     | Entities, relations, claims, episodes | Structured + temporal — not final authority  |
+| `governance/`| Proposals, ratifications, dispositions| The only legal path into canon               |
+| `canon/`     | Ratified durable memory               | **The single source of truth**               |
+| `wiki/`      | Editorial synthesis                   | Derived narrative — not authoritative        |
+| `derived/`   | Projection artifacts for adapters     | Reproducible outputs — never source of truth |
 
-## Environment
+Adapters consume projections. **Adapters never write canon directly.** Every promotion to canon must pass through the governance gate.
 
-- Use a single OS environment per checkout.
-- Prefer WSL-only development and keep the repo under the Linux filesystem.
-- See [docs/WSL-DEVELOPMENT.md](/home/dev/projects/cristalina-v4/docs/WSL-DEVELOPMENT.md) for the migration checklist and recovery steps.
+## Why it exists
+
+Most agent memory systems collapse "what was said", "what is known", and "what is true" into the same store. That works until the agent contradicts itself, until you need to audit a decision, until you need to roll back a bad belief, or until you need to migrate to a different runtime.
+
+Cristalina v4 keeps those concerns separate at the architectural level, with executable contracts you can replay. The goal: memory that is governed, auditable, and runtime-agnostic — without becoming a database engine in disguise.
+
+## Status
+
+**Current phase:** kernel implementation — early but not vague. See [PROJECT-STATUS.md](PROJECT-STATUS.md) for a precise rundown of what is and isn't built.
+
+What runs today:
+- Source intake profiles (3 normalized intake kinds)
+- Workflow engine (observations → world → wiki → proposals → contradictions)
+- Governance engine (5 promotion gates)
+- Canon engine (create / revise / supersede)
+- Projection SDK + OpenClaw projection compiler
+- Store IO with reuse and recovery
+- Audit log and 3 executable end-to-end fixture flows
+
+What's planned:
+- Real `@cristalina-v4/openclaw-adapter` and `@cristalina-v4/hermes-adapter` packages
+- Standalone wiki engine, retrieval orchestrator
+- Eval harness
+
+## Quick start
+
+```bash
+# Requires Node >= 20 and pnpm >= 10
+git clone https://github.com/Glucksberg/cristalina-v4.git
+cd cristalina-v4
+pnpm install
+
+pnpm typecheck
+pnpm test
+pnpm build
+
+# Run an end-to-end fixture (writes a real .cristalina-v4/ store under examples/)
+pnpm fixture:mvp-flow-001   # conversation → observation → world → proposal → ratification → projection
+pnpm fixture:mvp-flow-002   # canonical create → revise → supersede → audit trail
+pnpm fixture:mvp-flow-003   # contradiction detection → resolution → projection recompilation
+```
+
+After running a fixture, inspect `examples/mvp-flow-00X/.cristalina-v4/` to see the materialized store layout — every layer, every record, every audit entry.
+
+## Repository layout
+
+```
+cristalina-v4/
+├── packages/
+│   ├── core/                      # @cristalina-v4/core — the governed memory kernel
+│   ├── openclaw-adapter/          # planned
+│   └── hermes-adapter/            # planned
+├── docs/                          # architecture, contracts, flows, hardening plan
+│   ├── architecture.svg           # diagram embedded above
+│   └── architecture.html          # fully styled version with cards
+├── schemas/                       # stable object and adapter schemas
+├── examples/                      # output of fixture runs
+└── notes/                         # rough working notes (lower precision than docs/)
+```
+
+## Documentation
+
+The docs are organized by purpose. Start with the first three if you're new.
+
+**Start here**
+- [docs/VISION.md](docs/VISION.md) — what Cristalina v4 is and why
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the six layers and their relationships
+- [docs/NEXT-GEN-MEMORY-SYNTHESIS.md](docs/NEXT-GEN-MEMORY-SYNTHESIS.md) — synthesis of the design
+
+**Contracts**
+- [docs/CORE-TYPES.md](docs/CORE-TYPES.md), [docs/OBJECT-ENVELOPE.md](docs/OBJECT-ENVELOPE.md)
+- [docs/STORAGE-MODEL.md](docs/STORAGE-MODEL.md), [docs/LEGAL-TRANSITIONS.md](docs/LEGAL-TRANSITIONS.md)
+- [docs/RUNTIME-IDENTITY.md](docs/RUNTIME-IDENTITY.md), [docs/DISPOSITION-AND-CONSOLIDATION.md](docs/DISPOSITION-AND-CONSOLIDATION.md)
+- [docs/ADAPTER-CONTRACTS.md](docs/ADAPTER-CONTRACTS.md), [docs/SOURCE-INTAKE-PROFILES.md](docs/SOURCE-INTAKE-PROFILES.md)
+- [docs/PROJECTION-READ-DISCIPLINE.md](docs/PROJECTION-READ-DISCIPLINE.md), [docs/KNOWLEDGE-WIKI-LAYER.md](docs/KNOWLEDGE-WIKI-LAYER.md)
+
+**Flows**
+- [docs/INFORMATION-FLOW.md](docs/INFORMATION-FLOW.md), [docs/MODULE-FLOWS.md](docs/MODULE-FLOWS.md)
+- [docs/MVP-FLOW-001.md](docs/MVP-FLOW-001.md), [docs/MVP-SPEC.md](docs/MVP-SPEC.md)
+- [docs/WORLD-CONTRADICTION-FLOW-001.md](docs/WORLD-CONTRADICTION-FLOW-001.md)
+
+**Roadmap & engineering**
+- [docs/ROADMAP.md](docs/ROADMAP.md), [docs/HARDENING-PLAN.md](docs/HARDENING-PLAN.md)
+- [docs/MODULARIZATION-PLAN.md](docs/MODULARIZATION-PLAN.md), [docs/REUSE-MATRIX.md](docs/REUSE-MATRIX.md)
+- [docs/MODEL-DEPENDENCY-MAP.md](docs/MODEL-DEPENDENCY-MAP.md), [docs/NEXT-KERNEL-EXTENSIONS.md](docs/NEXT-KERNEL-EXTENSIONS.md)
+
+**Reference**
+- [docs/GLOSSARY.md](docs/GLOSSARY.md), [docs/DECISIONS.md](docs/DECISIONS.md), [docs/NON-GOALS.md](docs/NON-GOALS.md)
+- [docs/USE-CASES.md](docs/USE-CASES.md), [docs/EVALS.md](docs/EVALS.md), [docs/FAILURE-MODES.md](docs/FAILURE-MODES.md)
+- [docs/INSPIRATION-AND-COMPATIBILITY.md](docs/INSPIRATION-AND-COMPATIBILITY.md), [docs/ANCESTOR-CROSSWALK.md](docs/ANCESTOR-CROSSWALK.md)
+- [docs/WSL-DEVELOPMENT.md](docs/WSL-DEVELOPMENT.md)
+
+## Contributing
+
+Contributions welcome — especially around contract clarity, contradiction handling, adapter design, and eval coverage. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE). Use it, fork it, build on it, sell it. The only ask: keep the copyright notice.
+
+---
+
+<sub>Cristalina v4 is in active development. The kernel APIs may change before 1.0. Pin a commit if you depend on it.</sub>
