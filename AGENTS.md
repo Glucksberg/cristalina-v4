@@ -70,6 +70,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-16: Replay hardening only closes the contract when recovery artifacts stay root-scoped, projection materialization is context-addressable instead of singleton global state, and governance verifies target references by full identity rather than id alone.
 - 2026-04-15: Write-path hardening only closes the contract when authoritative persistence can recover from partial materialization, derived artifacts are replay-verified against source state, and schema validation treats local refs and absent fields with the same semantics as persisted JSON.
 - 2026-04-13: Hardening should first eliminate drift between docs, schemas, and executable core before expanding proposal operations, adapters, or projection surfaces.
 - 2026-04-13: Runtime identity, episodes, and disposition invariants should become executable in the same flow so world structure and projection fidelity harden together instead of drifting apart.
