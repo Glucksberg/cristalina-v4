@@ -15,7 +15,8 @@
 
 ![Cristalina v4 Architecture](docs/architecture.svg)
 
-> Open [`docs/architecture.html`](docs/architecture.html) locally for the fully styled version with summary cards.
+> 🔍 **[View the diagram in full detail →](https://glucksberg.github.io/cristalina-v4/)** (live, fully styled, summary cards included)
+> Or open [`docs/architecture.html`](docs/architecture.html) locally.
 
 ---
 
