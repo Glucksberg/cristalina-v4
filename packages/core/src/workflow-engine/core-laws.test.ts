@@ -482,6 +482,86 @@ test("canonical workflow rejects revise proposals without target_ref", () => {
   assert.equal(workflow.ratification_record.decision, "rejected");
 });
 
+test("canonical workflow blocks revise while an active world contradiction is open", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const targetRecord: CanonicalMemoryObject = {
+    id: "mem_target_revise_conflict_001",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_target_revise_conflict_001",
+    },
+    statement: "The user prefers concise answers.",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: now,
+      valid_to: null,
+    },
+    supersedes_ref: null,
+    superseded_by_ref: null,
+  };
+
+  const workflow = executeCanonicalProposalWorkflow({
+    proposal: {
+      id: "prop_test_revise_active_conflict",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "world_promotion",
+        source_ref: "wcl_test_revise_active_conflict",
+        evidence_refs: ["wcl_test_revise_active_conflict"],
+      },
+      operation: "revise",
+      candidate_kind: "preference",
+      target_layer: "canon",
+      target_ref: {
+        id: targetRecord.id,
+        kind: targetRecord.kind,
+        layer: targetRecord.layer,
+      },
+      candidate_payload: {
+        kind: "preference",
+        statement: "The user prefers concise answers unless they ask for depth.",
+        semantic_slot: targetRecord.semantic_slot,
+      },
+      reason: "Revise should block on active contradiction.",
+      evidence_refs: ["wcl_test_revise_active_conflict"],
+      governance_state: "proposed",
+    },
+    existing_canon_records: [targetRecord],
+    existing_record: targetRecord,
+    blocking_world_conflict_ref: "contra_open_revise_001",
+    now,
+    actor: "system:test",
+    ratification_id: "rat_test_revise_active_conflict",
+    diagnostic_id: "diag_test_revise_active_conflict",
+    canonical_id: "mem_test_revise_active_conflict",
+  });
+
+  assert.equal(workflow.accepted, false);
+  assert.equal(workflow.ratification_record.decision, "rejected");
+  assert.equal(
+    workflow.gate_results.find((gate) => gate.gate === "conflict")?.reason_code,
+    "active_world_conflict",
+  );
+});
+
 test("canonical supersede retires a record without creating a replacement", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const targetRecord: CanonicalMemoryObject = {
@@ -562,6 +642,85 @@ test("canonical supersede retires a record without creating a replacement", () =
     "prop_test_supersede_retire",
     "rat_test_supersede_retire",
   ]);
+});
+
+test("canonical workflow blocks supersede while an active world contradiction is open", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const targetRecord: CanonicalMemoryObject = {
+    id: "mem_target_supersede_conflict_001",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_target_supersede_conflict_001",
+    },
+    statement: "The user prefers concise answers.",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: now,
+      valid_to: null,
+    },
+    supersedes_ref: null,
+    superseded_by_ref: null,
+  };
+
+  const workflow = executeCanonicalProposalWorkflow({
+    proposal: {
+      id: "prop_test_supersede_active_conflict",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "world_promotion",
+        source_ref: "wcl_test_supersede_active_conflict",
+        evidence_refs: ["wcl_test_supersede_active_conflict"],
+      },
+      operation: "supersede",
+      candidate_kind: "preference",
+      target_layer: "canon",
+      target_ref: {
+        id: targetRecord.id,
+        kind: targetRecord.kind,
+        layer: targetRecord.layer,
+      },
+      candidate_payload: {
+        kind: "preference",
+        semantic_slot: targetRecord.semantic_slot,
+      },
+      reason: "Supersede should block on active contradiction.",
+      evidence_refs: ["wcl_test_supersede_active_conflict"],
+      governance_state: "proposed",
+    },
+    existing_canon_records: [targetRecord],
+    existing_record: targetRecord,
+    blocking_world_conflict_ref: "contra_open_supersede_001",
+    now,
+    actor: "system:test",
+    ratification_id: "rat_test_supersede_active_conflict",
+    diagnostic_id: "diag_test_supersede_active_conflict",
+    canonical_id: "mem_test_supersede_active_conflict",
+  });
+
+  assert.equal(workflow.accepted, false);
+  assert.equal(workflow.ratification_record.decision, "rejected");
+  assert.equal(
+    workflow.gate_results.find((gate) => gate.gate === "conflict")?.reason_code,
+    "active_world_conflict",
+  );
 });
 
 test("canonical application rejects ratifications that do not belong to the proposal", () => {

@@ -214,6 +214,12 @@ type RecoveryJournalAppendEntry =
       entry: ValidationLogEntry;
     };
 
+const LEGAL_SOURCE_CONTENT_PREFIXES = [
+  "raw/sources/",
+  "raw/imports/",
+  "raw/attachments/",
+] as const;
+
 function resolveStorePath(rootDir: string, relativePath: string): string {
   const rootPath = resolve(rootDir);
   const targetPath = resolve(rootPath, relativePath);
@@ -228,6 +234,14 @@ function resolveStorePath(rootDir: string, relativePath: string): string {
   }
 
   return targetPath;
+}
+
+function assertLegalSourceContentRef(contentRef: string): void {
+  if (!LEGAL_SOURCE_CONTENT_PREFIXES.some((prefix) => contentRef.startsWith(prefix))) {
+    throw new Error(
+      `Source content_ref must stay within raw/ sources, imports, or attachments: ${contentRef}`,
+    );
+  }
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -393,6 +407,8 @@ function selectConversationPreferenceIntakeBuilder(input: ConversationPreference
 }
 
 function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecord {
+  assertLegalSourceContentRef(input.source.content_ref);
+
   return {
     id: input.source.id,
     kind: "source_record",
@@ -421,7 +437,7 @@ function buildPaths(
   intake: ConversationPreferenceIntakeArtifacts,
   input: ConversationPreferenceStoreInput,
 ): ConversationPreferenceStorePaths {
-  return {
+  const paths: ConversationPreferenceStorePaths = {
     raw_source: resolveStorePath(rootDir, sourceRecord.content_ref),
     source_record: coreRecordPath(rootDir, sourceRecord),
     observation: coreRecordPath(rootDir, intake.observation),
@@ -527,17 +543,64 @@ function buildPaths(
       ),
     },
   };
+
+  assertNoPathCollisions(paths);
+  return paths;
+}
+
+function definedFlowPaths(paths: ConversationPreferenceStorePaths): Array<[string, string]> {
+  return [
+    ["raw_source", paths.raw_source],
+    ["source_record", paths.source_record],
+    ["observation", paths.observation],
+    ["episode", paths.episode],
+    ["subject_entity", paths.subject_entity],
+    ["preference_entity", paths.preference_entity],
+    ["preference_relation", paths.preference_relation],
+    ["world_claim", paths.world_claim],
+    ...(paths.contradiction ? [["contradiction", paths.contradiction] as [string, string]] : []),
+    ...(paths.contradiction_resolution
+      ? [["contradiction_resolution", paths.contradiction_resolution] as [string, string]]
+      : []),
+    ...(paths.actor_identity ? [["actor_identity", paths.actor_identity] as [string, string]] : []),
+    ...(paths.owner_identity ? [["owner_identity", paths.owner_identity] as [string, string]] : []),
+    ...(paths.runtime_instance ? [["runtime_instance", paths.runtime_instance] as [string, string]] : []),
+    ...(paths.runtime_session ? [["runtime_session", paths.runtime_session] as [string, string]] : []),
+    ...(paths.conversation_thread
+      ? [["conversation_thread", paths.conversation_thread] as [string, string]]
+      : []),
+    ["wiki_page_record", paths.wiki_page_record],
+    ["wiki_page_markdown", paths.wiki_page_markdown],
+    ["wiki_claim", paths.wiki_claim],
+    ["proposal", paths.proposal],
+    ["disposition_record", paths.disposition_record],
+    ["ratification_record", paths.ratification_record],
+    ...(paths.diagnostic_record ? [["diagnostic_record", paths.diagnostic_record] as [string, string]] : []),
+    ["canonical_record", paths.canonical_record],
+    ["projection_markdown", paths.projection_markdown],
+    ["projection_manifest", paths.projection_manifest],
+    ["projection_artifacts.canon", paths.projection_artifacts.canon],
+    ["projection_artifacts.world", paths.projection_artifacts.world],
+    ["projection_artifacts.wiki", paths.projection_artifacts.wiki],
+  ];
+}
+
+function assertNoPathCollisions(paths: ConversationPreferenceStorePaths): void {
+  const seen = new Map<string, string>();
+
+  for (const [label, filePath] of definedFlowPaths(paths)) {
+    const previous = seen.get(filePath);
+    if (previous) {
+      throw new Error(`Conversation preference flow paths collide: ${previous} and ${label}`);
+    }
+    seen.set(filePath, label);
+  }
 }
 
 function writeFlowBaselinePaths(paths: ConversationPreferenceStorePaths): string[] {
   return [
     paths.raw_source,
     paths.source_record,
-    ...(paths.actor_identity ? [paths.actor_identity] : []),
-    ...(paths.owner_identity ? [paths.owner_identity] : []),
-    ...(paths.runtime_instance ? [paths.runtime_instance] : []),
-    ...(paths.runtime_session ? [paths.runtime_session] : []),
-    ...(paths.conversation_thread ? [paths.conversation_thread] : []),
     paths.observation,
     paths.episode,
     paths.subject_entity,
@@ -1646,7 +1709,10 @@ async function buildExpectedIntakeForStore(
     loadWorldClaims(rootDir),
   ]);
 
-  const previewIntake = buildPreviewIntake(input, source_record, intakeBuilder);
+  const previewIntake = await reconcilePersistedRuntimeIdentityArtifacts(
+    rootDir,
+    buildPreviewIntake(input, source_record, intakeBuilder),
+  );
 
   const conflicting_world_claim = findConflictingWorldClaim(previewIntake.world_claim, existingWorldClaims);
 
@@ -1688,6 +1754,41 @@ async function buildExpectedIntakeForStore(
     existingCanonicalRecords,
     existingWorldClaims,
     conflicting_world_claim,
+  };
+}
+
+async function reconcilePersistedRuntimeIdentityArtifacts(
+  rootDir: string,
+  intake: ConversationPreferenceIntakeArtifacts,
+): Promise<ConversationPreferenceIntakeArtifacts> {
+  async function preserveExistingRecord<
+    T extends ActorIdentity | RuntimeInstance | RuntimeSession | ConversationThread,
+  >(record: T | undefined): Promise<T | undefined> {
+    if (!record) {
+      return undefined;
+    }
+
+    const filePath = coreRecordPath(rootDir, record);
+    if (!(await pathExists(filePath))) {
+      return record;
+    }
+
+    const existing = await readCoreRecord<T>(filePath);
+    return {
+      ...record,
+      created_at: existing.created_at,
+      provenance: existing.provenance,
+      upstream_refs: existing.upstream_refs ?? record.upstream_refs,
+    };
+  }
+
+  return {
+    ...intake,
+    agent_identity: await preserveExistingRecord(intake.agent_identity),
+    owner_identity: await preserveExistingRecord(intake.owner_identity),
+    runtime_instance: await preserveExistingRecord(intake.runtime_instance),
+    runtime_session: await preserveExistingRecord(intake.runtime_session),
+    conversation_thread: await preserveExistingRecord(intake.conversation_thread),
   };
 }
 

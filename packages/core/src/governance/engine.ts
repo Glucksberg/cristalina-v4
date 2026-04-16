@@ -128,6 +128,14 @@ export function evaluateCanonicalProposal(input: {
           reason_code: "evidence_presence",
         };
       case "conflict":
+        if (input.blocking_world_conflict_ref) {
+          return {
+            gate,
+            passed: false,
+            reason_code: "active_world_conflict",
+          };
+        }
+
         if (proposal.operation === "create") {
           const conflictingActiveRecord = payloadSemanticSlot
             ? existingRecords.find(
@@ -137,14 +145,6 @@ export function evaluateCanonicalProposal(input: {
                   record.semantic_slot === payloadSemanticSlot,
               )
             : undefined;
-
-          if (input.blocking_world_conflict_ref) {
-            return {
-              gate,
-              passed: false,
-              reason_code: "active_world_conflict",
-            };
-          }
 
           const duplicate =
             conflictingActiveRecord &&

@@ -220,6 +220,103 @@ test("writeConversationPreferenceFlowToStore recovers from partial authoritative
   assert.match(projectionMarkdown, /\[canon:mem_test_001\]/);
 });
 
+test("writeConversationPreferenceFlowToStore rejects source payloads outside raw storage", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...buildInput(rootDir),
+        source: {
+          ...buildInput(rootDir).source,
+          content_ref: "wiki/index.md",
+        },
+      }),
+    /Source content_ref must stay within raw\/ sources, imports, or attachments/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore rejects path collisions between raw payload and authoritative records", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...input,
+        source: {
+          ...input.source,
+          content_ref: `raw/sources/${input.source.id}.json`,
+        },
+      }),
+    /paths collide: raw_source and source_record/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore preserves persisted runtime identity provenance across distinct flows", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: "2026-04-13T00:00:00.000Z",
+    statement: "The user now asks for terse summaries first.",
+    source: {
+      id: "src_test_002",
+      source_ref: "runtime/session-test#turn-002",
+      content_ref: "raw/sources/conversation-turn-test-002.json",
+      runtime: "openclaw",
+      message: "The user now asks for terse summaries first.",
+    },
+    ids: {
+      observation: "obs_test_002",
+      episode: "ep_test_002",
+      subject_entity: "ent_subject_test_002",
+      preference_entity: "ent_preference_test_002",
+      preference_relation: "rel_preference_test_002",
+      world_claim: "wcl_test_002",
+      contradiction: "contra_test_002",
+      contradiction_resolution: "cres_test_002",
+      wiki_page: "wpg_test_002",
+      wiki_claim: "wclm_test_002",
+      proposal: "prop_test_002",
+      disposition: "disp_test_002",
+      ratification: "rat_test_002",
+      diagnostic: "diag_test_002",
+      canonical: "mem_test_002",
+      canon_artifact: "part_openclaw_canon_test_002",
+      world_artifact: "part_openclaw_world_test_002",
+      wiki_artifact: "part_openclaw_wiki_test_002",
+      projection_manifest: "pmf_openclaw_test_002",
+    },
+  };
+
+  await writeConversationPreferenceFlowToStore(secondInput);
+
+  const actorIdentity = JSON.parse(
+    await readFile(join(rootDir, "canon/identity/actor_agent_test_001.json"), "utf8"),
+  ) as {
+    created_at: string;
+    updated_at?: string | null;
+    provenance: { source_ref: string };
+  };
+
+  assert.equal(actorIdentity.created_at, firstInput.now);
+  assert.equal(actorIdentity.updated_at, secondInput.now);
+  assert.equal(actorIdentity.provenance.source_ref, firstInput.source.source_ref);
+});
+
 test("writeConversationPreferenceFlowToStore keeps projection markdown isolated per manifest", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
