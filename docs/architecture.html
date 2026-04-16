@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cristalina v4 Governed Memory Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1500px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot {
+      width: 12px; height: 12px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+    svg { width: 100%; min-width: 1300px; display: block; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: #475569;
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Cristalina v4 Governed Memory Architecture</h1>
+      </div>
+      <p class="subtitle">Runtime-agnostic memory kernel with OpenClaw and Hermes adapter targets</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1420 1320" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrowhead-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <marker id="arrowhead-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===================================================================
+             ARROWS DRAWN EARLY (so they render behind component boxes)
+             =================================================================== -->
+
+        <!-- External inputs → Source Intake -->
+        <line x1="180" y1="275" x2="228" y2="290" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+        <line x1="180" y1="365" x2="228" y2="320" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+        <line x1="180" y1="455" x2="228" y2="360" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- Source Intake → Workflow Engine -->
+        <line x1="410" y1="320" x2="438" y2="320" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+        <!-- Workflow → Governance -->
+        <line x1="620" y1="320" x2="648" y2="320" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+        <!-- Governance → Canon (proposals) -->
+        <line x1="830" y1="320" x2="858" y2="320" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead-rose)"/>
+
+        <!-- Workflow Engine → storage zones (writes to runtime, world, wiki, governance) -->
+        <path d="M 530 400 Q 530 700 285 850" fill="none" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowhead-violet)"/>
+        <path d="M 530 400 Q 530 700 451 850" fill="none" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowhead-violet)"/>
+        <path d="M 530 400 Q 530 700 783 850" fill="none" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowhead-violet)"/>
+        <path d="M 530 400 Q 530 700 949 850" fill="none" stroke="#a78bfa" stroke-width="1.2" marker-end="url(#arrowhead-violet)"/>
+
+        <!-- Canon Engine → canon/ zone -->
+        <path d="M 950 400 Q 800 600 617 850" fill="none" stroke="#fb7185" stroke-width="1.6" marker-end="url(#arrowhead-rose)"/>
+
+        <!-- Governance Engine → governance/ + audits/ (rejected/deferred diagnostics) -->
+        <path d="M 740 400 Q 880 700 949 850" fill="none" stroke="#fb7185" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrowhead-rose)"/>
+        <path d="M 740 400 Q 1100 700 1281 850" fill="none" stroke="#fb7185" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrowhead-rose)"/>
+
+        <!-- Projection SDK / OpenClaw Compiler READS from storage (dashed up-arrows) -->
+        <path d="M 285 850 Q 285 700 530 580" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+        <path d="M 451 850 Q 451 700 580 580" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+        <path d="M 617 850 Q 617 700 720 580" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+        <path d="M 783 850 Q 783 700 740 580" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+        <path d="M 949 850 Q 949 700 760 580" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+        <path d="M 1281 850 Q 1281 700 800 580" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+
+        <!-- OpenClaw Projection Compiler → derived/ -->
+        <path d="M 740 580 Q 900 700 1115 850" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+        <!-- derived/ → OpenClaw Projection Surface (long up arrow) -->
+        <path d="M 1160 850 Q 1160 600 1160 320" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- OpenClaw Projection Surface → OpenClaw Adapter -->
+        <line x1="1230" y1="280" x2="1252" y2="280" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- Hermes path (planned, dashed) -->
+        <path d="M 1115 850 Q 1115 600 1160 430" fill="none" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="6,4" marker-end="url(#arrowhead)"/>
+        <line x1="1230" y1="390" x2="1252" y2="390" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="6,4" marker-end="url(#arrowhead)"/>
+
+        <!-- Adapter feedback loop → Source Intake (dashed cyan, long curve) -->
+        <path d="M 1320 245 Q 1320 130 700 110 Q 320 110 250 235" fill="none" stroke="#22d3ee" stroke-width="1.2" stroke-dasharray="6,4" marker-end="url(#arrowhead-cyan)"/>
+        <text x="700" y="100" fill="#22d3ee" font-size="9" text-anchor="middle">adapter feedback: observations + diagnostics back through intake profiles</text>
+
+        <!-- Blocked write: Adapter ✗→ canon/ -->
+        <path d="M 1320 320 Q 1100 600 670 870" fill="none" stroke="#fb7185" stroke-width="1.2" stroke-dasharray="3,5" opacity="0.6"/>
+        <circle cx="980" cy="615" r="11" fill="#0f172a" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="980" y="619" fill="#fb7185" font-size="13" font-weight="700" text-anchor="middle">×</text>
+        <text x="980" y="640" fill="#fb7185" font-size="8" text-anchor="middle">adapters may NOT write canon directly</text>
+
+        <!-- ===================================================================
+             EXTERNAL INPUTS (left column)
+             =================================================================== -->
+        <text x="20" y="220" fill="#94a3b8" font-size="10" font-weight="600">EXTERNAL INPUTS</text>
+
+        <rect x="20" y="240" width="160" height="70" rx="6" fill="#0f172a"/>
+        <rect x="20" y="240" width="160" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="100" y="262" fill="white" font-size="11" font-weight="600" text-anchor="middle">Conversation Input</text>
+        <text x="100" y="278" fill="#94a3b8" font-size="9" text-anchor="middle">runtime sessions</text>
+        <text x="100" y="294" fill="#64748b" font-size="8" text-anchor="middle">conversation_preference</text>
+
+        <rect x="20" y="330" width="160" height="70" rx="6" fill="#0f172a"/>
+        <rect x="20" y="330" width="160" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="100" y="352" fill="white" font-size="11" font-weight="600" text-anchor="middle">OpenClaw Runtime</text>
+        <text x="100" y="366" fill="white" font-size="11" font-weight="600" text-anchor="middle">Feedback</text>
+        <text x="100" y="384" fill="#64748b" font-size="8" text-anchor="middle">openclaw_projection_feedback</text>
+
+        <rect x="20" y="420" width="160" height="70" rx="6" fill="#0f172a"/>
+        <rect x="20" y="420" width="160" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="100" y="442" fill="white" font-size="11" font-weight="600" text-anchor="middle">Structured Preference</text>
+        <text x="100" y="456" fill="white" font-size="11" font-weight="600" text-anchor="middle">Signal Imports</text>
+        <text x="100" y="474" fill="#64748b" font-size="8" text-anchor="middle">structured_preference_signal</text>
+
+        <!-- ===================================================================
+             PACKAGES/CORE BOUNDARY (solid amber — implemented)
+             =================================================================== -->
+        <rect x="210" y="50" width="850" height="700" rx="14" fill="rgba(251, 191, 36, 0.04)" stroke="#fbbf24" stroke-width="1.2"/>
+        <text x="225" y="72" fill="#fbbf24" font-size="11" font-weight="700">packages/core  ·  @cristalina-v4/core  ·  IMPLEMENTED KERNEL</text>
+
+        <!-- Types and Schemas (top band) -->
+        <rect x="228" y="90" width="820" height="80" rx="6" fill="#0f172a"/>
+        <rect x="228" y="90" width="820" height="80" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="638" y="112" fill="white" font-size="12" font-weight="600" text-anchor="middle">Types and Schemas</text>
+        <text x="638" y="130" fill="#94a3b8" font-size="9" text-anchor="middle">types.ts  ·  schema-runtime.ts  ·  validation.ts  ·  transitions.ts</text>
+        <text x="638" y="150" fill="#64748b" font-size="8" text-anchor="middle">object contracts · validation · legal layer transitions · legal governance transitions</text>
+        <text x="638" y="163" fill="#fbbf24" font-size="8" text-anchor="middle" font-style="italic">shared contracts consumed by every engine below</text>
+
+        <!-- Pipeline row (Source Intake → Workflow → Governance → Canon) -->
+        <!-- Source Intake Profiles (cyan - frontend/intake surface) -->
+        <rect x="228" y="240" width="182" height="160" rx="6" fill="#0f172a"/>
+        <rect x="228" y="240" width="182" height="160" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="319" y="262" fill="white" font-size="11" font-weight="600" text-anchor="middle">Source Intake Profiles</text>
+        <text x="319" y="278" fill="#94a3b8" font-size="8" text-anchor="middle">workflow-engine/source-intake.ts</text>
+        <line x1="240" y1="288" x2="398" y2="288" stroke="#22d3ee" stroke-width="0.5" opacity="0.4"/>
+        <text x="319" y="304" fill="#94a3b8" font-size="8" text-anchor="middle">normalize all source kinds</text>
+        <text x="319" y="316" fill="#94a3b8" font-size="8" text-anchor="middle">into one legal intake contract</text>
+        <text x="319" y="338" fill="#22d3ee" font-size="8" text-anchor="middle">supported intake kinds:</text>
+        <text x="319" y="352" fill="#94a3b8" font-size="7.5" text-anchor="middle">• conversation_preference</text>
+        <text x="319" y="364" fill="#94a3b8" font-size="7.5" text-anchor="middle">• openclaw_projection_feedback</text>
+        <text x="319" y="376" fill="#94a3b8" font-size="7.5" text-anchor="middle">• structured_preference_signal</text>
+
+        <!-- Workflow Engine (emerald - backend) -->
+        <rect x="438" y="240" width="182" height="160" rx="6" fill="#0f172a"/>
+        <rect x="438" y="240" width="182" height="160" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="529" y="262" fill="white" font-size="11" font-weight="600" text-anchor="middle">Workflow Engine</text>
+        <text x="529" y="278" fill="#94a3b8" font-size="8" text-anchor="middle">workflow-engine/pipeline.ts</text>
+        <line x1="450" y1="288" x2="608" y2="288" stroke="#34d399" stroke-width="0.5" opacity="0.4"/>
+        <text x="529" y="304" fill="#34d399" font-size="8" text-anchor="middle">builds &amp; routes:</text>
+        <text x="529" y="318" fill="#94a3b8" font-size="7.5" text-anchor="middle">observations · episodes · entities</text>
+        <text x="529" y="330" fill="#94a3b8" font-size="7.5" text-anchor="middle">relations · world claims · wiki</text>
+        <text x="529" y="342" fill="#94a3b8" font-size="7.5" text-anchor="middle">artifacts · proposals</text>
+        <text x="529" y="354" fill="#94a3b8" font-size="7.5" text-anchor="middle">contradiction objects &amp; resolutions</text>
+        <text x="529" y="366" fill="#94a3b8" font-size="7.5" text-anchor="middle">disposition routing</text>
+        <text x="529" y="388" fill="#fbbf24" font-size="7" text-anchor="middle" font-style="italic">writes structured records, not canon</text>
+
+        <!-- Governance Engine (rose - security/governance) -->
+        <rect x="648" y="240" width="182" height="160" rx="6" fill="#0f172a"/>
+        <rect x="648" y="240" width="182" height="160" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="739" y="262" fill="white" font-size="11" font-weight="600" text-anchor="middle">Governance Engine</text>
+        <text x="739" y="278" fill="#94a3b8" font-size="8" text-anchor="middle">governance/engine.ts</text>
+        <line x1="660" y1="288" x2="818" y2="288" stroke="#fb7185" stroke-width="0.5" opacity="0.4"/>
+        <text x="739" y="306" fill="#94a3b8" font-size="8" text-anchor="middle">evaluates proposals</text>
+        <text x="739" y="318" fill="#94a3b8" font-size="8" text-anchor="middle">applies promotion gates</text>
+        <text x="739" y="330" fill="#94a3b8" font-size="8" text-anchor="middle">emits ratifications</text>
+        <text x="739" y="342" fill="#94a3b8" font-size="8" text-anchor="middle">+ rejection / deferral diagnostics</text>
+        <text x="739" y="364" fill="#fb7185" font-size="8" text-anchor="middle" font-weight="600">blocks illegal canon transitions</text>
+        <text x="739" y="386" fill="#fb7185" font-size="7" text-anchor="middle" font-style="italic">the only legal path to canon</text>
+
+        <!-- Canon Engine (rose - authority) -->
+        <rect x="858" y="240" width="182" height="160" rx="6" fill="#0f172a"/>
+        <rect x="858" y="240" width="182" height="160" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="2"/>
+        <text x="949" y="262" fill="white" font-size="11" font-weight="600" text-anchor="middle">Canon Engine</text>
+        <text x="949" y="278" fill="#94a3b8" font-size="8" text-anchor="middle">canon/engine.ts</text>
+        <line x1="870" y1="288" x2="1028" y2="288" stroke="#fb7185" stroke-width="0.5" opacity="0.4"/>
+        <text x="949" y="308" fill="#fb7185" font-size="8" text-anchor="middle" font-weight="600">CANON AUTHORITY</text>
+        <text x="949" y="324" fill="#94a3b8" font-size="8" text-anchor="middle">applies approved canonical:</text>
+        <text x="949" y="338" fill="#94a3b8" font-size="7.5" text-anchor="middle">• create</text>
+        <text x="949" y="350" fill="#94a3b8" font-size="7.5" text-anchor="middle">• revise</text>
+        <text x="949" y="362" fill="#94a3b8" font-size="7.5" text-anchor="middle">• supersede</text>
+        <text x="949" y="384" fill="#fb7185" font-size="7" text-anchor="middle" font-style="italic">writes ONLY to canon/</text>
+
+        <!-- Bottom row: Audit · Projection SDK · OpenClaw Compiler · Store IO -->
+        <!-- Audit and Eval Harness (amber) -->
+        <rect x="228" y="440" width="182" height="140" rx="6" fill="#0f172a"/>
+        <rect x="228" y="440" width="182" height="140" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="319" y="462" fill="white" font-size="11" font-weight="600" text-anchor="middle">Audit &amp; Eval Harness</text>
+        <text x="319" y="478" fill="#94a3b8" font-size="8" text-anchor="middle">audit/log.ts  ·  evals.ts</text>
+        <text x="319" y="490" fill="#94a3b8" font-size="8" text-anchor="middle">fixture flows + tests</text>
+        <line x1="240" y1="500" x2="398" y2="500" stroke="#fbbf24" stroke-width="0.5" opacity="0.4"/>
+        <text x="319" y="518" fill="#94a3b8" font-size="8" text-anchor="middle">snapshots · diagnostics</text>
+        <text x="319" y="530" fill="#94a3b8" font-size="8" text-anchor="middle">executable flows · integrity checks</text>
+        <text x="319" y="556" fill="#fbbf24" font-size="7.5" text-anchor="middle">MVP Flows 001 / 002 / 003</text>
+
+        <!-- Projection SDK (emerald) -->
+        <rect x="438" y="440" width="182" height="140" rx="6" fill="#0f172a"/>
+        <rect x="438" y="440" width="182" height="140" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="529" y="462" fill="white" font-size="11" font-weight="600" text-anchor="middle">Projection SDK</text>
+        <text x="529" y="478" fill="#94a3b8" font-size="8" text-anchor="middle">adapter-sdk/projection.ts</text>
+        <line x1="450" y1="488" x2="608" y2="488" stroke="#34d399" stroke-width="0.5" opacity="0.4"/>
+        <text x="529" y="506" fill="#94a3b8" font-size="8" text-anchor="middle">common projection filtering</text>
+        <text x="529" y="520" fill="#94a3b8" font-size="8" text-anchor="middle">read-policy enforcement</text>
+        <text x="529" y="534" fill="#94a3b8" font-size="8" text-anchor="middle">projection manifest creation</text>
+        <text x="529" y="560" fill="#34d399" font-size="7.5" text-anchor="middle" font-style="italic">shared by all adapters</text>
+
+        <!-- OpenClaw Projection Compiler (emerald) -->
+        <rect x="648" y="440" width="182" height="140" rx="6" fill="#0f172a"/>
+        <rect x="648" y="440" width="182" height="140" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="739" y="462" fill="white" font-size="11" font-weight="600" text-anchor="middle">OpenClaw Projection</text>
+        <text x="739" y="476" fill="white" font-size="11" font-weight="600" text-anchor="middle">Compiler</text>
+        <text x="739" y="492" fill="#94a3b8" font-size="8" text-anchor="middle">projection-engine/openclaw.ts</text>
+        <line x1="660" y1="500" x2="818" y2="500" stroke="#34d399" stroke-width="0.5" opacity="0.4"/>
+        <text x="739" y="516" fill="#94a3b8" font-size="7.5" text-anchor="middle">compiles canonical · world · wiki</text>
+        <text x="739" y="528" fill="#94a3b8" font-size="7.5" text-anchor="middle">runtime identity · contradictions</text>
+        <text x="739" y="540" fill="#94a3b8" font-size="7.5" text-anchor="middle">resolutions · diagnostics →</text>
+        <text x="739" y="552" fill="#94a3b8" font-size="7.5" text-anchor="middle">OpenClaw bootstrap artifacts</text>
+        <text x="739" y="572" fill="#34d399" font-size="7" text-anchor="middle" font-style="italic">writes derived/, never source-of-truth</text>
+
+        <!-- Store IO and Recovery (violet) -->
+        <rect x="858" y="440" width="182" height="140" rx="6" fill="#0f172a"/>
+        <rect x="858" y="440" width="182" height="140" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="949" y="462" fill="white" font-size="11" font-weight="600" text-anchor="middle">Store IO &amp; Recovery</text>
+        <text x="949" y="478" fill="#94a3b8" font-size="8" text-anchor="middle">store/io.ts  ·  store/manifest.ts</text>
+        <text x="949" y="490" fill="#94a3b8" font-size="8" text-anchor="middle">conversation-preference-store.ts</text>
+        <line x1="870" y1="500" x2="1028" y2="500" stroke="#a78bfa" stroke-width="0.5" opacity="0.4"/>
+        <text x="949" y="516" fill="#94a3b8" font-size="7.5" text-anchor="middle">persist records · materialize store</text>
+        <text x="949" y="528" fill="#94a3b8" font-size="7.5" text-anchor="middle">reuse previous runs</text>
+        <text x="949" y="540" fill="#94a3b8" font-size="7.5" text-anchor="middle">repair drifted derived artifacts</text>
+        <text x="949" y="552" fill="#94a3b8" font-size="7.5" text-anchor="middle">recover from partial materialization</text>
+        <text x="949" y="572" fill="#a78bfa" font-size="7" text-anchor="middle" font-style="italic">spans the entire .cristalina-v4 store ↓</text>
+
+        <!-- Internal annotation: legal pipeline arrow -->
+        <text x="529" y="620" fill="#fbbf24" font-size="8" text-anchor="middle">core write pipeline:  intake → workflow → governance → canon</text>
+        <text x="529" y="634" fill="#64748b" font-size="7" text-anchor="middle" font-style="italic">no shortcut from runtime to canon — every promotion must clear the governance gate</text>
+
+        <!-- Down arrow indicating Store IO spans bottom band -->
+        <line x1="949" y1="650" x2="949" y2="800" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead-violet)" opacity="0.5"/>
+        <text x="965" y="730" fill="#a78bfa" font-size="8" font-style="italic">persistence + replay</text>
+
+        <!-- ===================================================================
+             ADAPTER SURFACES & ADAPTERS (top right, outside core)
+             =================================================================== -->
+        <text x="1090" y="220" fill="#94a3b8" font-size="10" font-weight="600">RUNTIME &amp; ADAPTER SURFACES</text>
+
+        <!-- OpenClaw Projection Surface (implemented - solid cyan) -->
+        <rect x="1090" y="240" width="140" height="80" rx="6" fill="#0f172a"/>
+        <rect x="1090" y="240" width="140" height="80" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="1160" y="262" fill="white" font-size="10" font-weight="600" text-anchor="middle">OpenClaw</text>
+        <text x="1160" y="276" fill="white" font-size="10" font-weight="600" text-anchor="middle">Projection Surface</text>
+        <text x="1160" y="296" fill="#22d3ee" font-size="7.5" text-anchor="middle">[implemented target]</text>
+        <text x="1160" y="310" fill="#64748b" font-size="7" text-anchor="middle">consumes derived/ artifacts</text>
+
+        <!-- OpenClaw Adapter (planned - dashed) -->
+        <rect x="1252" y="240" width="140" height="80" rx="6" fill="#0f172a"/>
+        <rect x="1252" y="240" width="140" height="80" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6,4"/>
+        <text x="1322" y="262" fill="white" font-size="10" font-weight="600" text-anchor="middle">OpenClaw Adapter</text>
+        <text x="1322" y="280" fill="#94a3b8" font-size="8" text-anchor="middle">@cristalina-v4/</text>
+        <text x="1322" y="292" fill="#94a3b8" font-size="8" text-anchor="middle">openclaw-adapter</text>
+        <text x="1322" y="312" fill="#fb923c" font-size="7.5" text-anchor="middle">[planned package]</text>
+
+        <!-- Hermes Projection Surface (planned - dashed) -->
+        <rect x="1090" y="350" width="140" height="80" rx="6" fill="#0f172a"/>
+        <rect x="1090" y="350" width="140" height="80" rx="6" fill="rgba(8, 51, 68, 0.2)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="6,4"/>
+        <text x="1160" y="372" fill="white" font-size="10" font-weight="600" text-anchor="middle">Hermes</text>
+        <text x="1160" y="386" fill="white" font-size="10" font-weight="600" text-anchor="middle">Projection Surface</text>
+        <text x="1160" y="406" fill="#fb923c" font-size="7.5" text-anchor="middle">[planned target]</text>
+        <text x="1160" y="420" fill="#64748b" font-size="7" text-anchor="middle">parallel to OpenClaw</text>
+
+        <!-- Hermes Adapter (planned - dashed) -->
+        <rect x="1252" y="350" width="140" height="80" rx="6" fill="#0f172a"/>
+        <rect x="1252" y="350" width="140" height="80" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6,4"/>
+        <text x="1322" y="372" fill="white" font-size="10" font-weight="600" text-anchor="middle">Hermes Adapter</text>
+        <text x="1322" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">@cristalina-v4/</text>
+        <text x="1322" y="402" fill="#94a3b8" font-size="8" text-anchor="middle">hermes-adapter</text>
+        <text x="1322" y="422" fill="#fb923c" font-size="7.5" text-anchor="middle">[planned package]</text>
+
+        <!-- ===================================================================
+             PLANNED CORE EXTENSIONS (right, dashed slate boundary)
+             =================================================================== -->
+        <rect x="1080" y="470" width="320" height="280" rx="10" fill="rgba(30, 41, 59, 0.3)" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="8,4"/>
+        <text x="1095" y="490" fill="#94a3b8" font-size="10" font-weight="600">planned core extensions</text>
+
+        <rect x="1095" y="500" width="290" height="55" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="1240" y="520" fill="white" font-size="10" font-weight="600" text-anchor="middle">Wiki Engine</text>
+        <text x="1240" y="534" fill="#94a3b8" font-size="7.5" text-anchor="middle">[planned separation]</text>
+        <text x="1240" y="546" fill="#64748b" font-size="7" text-anchor="middle">currently emitted through workflow engine</text>
+
+        <rect x="1095" y="563" width="290" height="55" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="1240" y="583" fill="white" font-size="10" font-weight="600" text-anchor="middle">Retrieval Orchestrator</text>
+        <text x="1240" y="597" fill="#fb923c" font-size="7.5" text-anchor="middle">[planned]</text>
+        <text x="1240" y="609" fill="#64748b" font-size="7" text-anchor="middle">no current implementation</text>
+
+        <rect x="1095" y="626" width="290" height="55" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="1240" y="646" fill="white" font-size="10" font-weight="600" text-anchor="middle">Runtime Self Module</text>
+        <text x="1240" y="660" fill="#94a3b8" font-size="7.5" text-anchor="middle">currently records + workflows only</text>
+        <text x="1240" y="672" fill="#64748b" font-size="7" text-anchor="middle">not a separate package</text>
+
+        <rect x="1095" y="689" width="290" height="55" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="1240" y="709" fill="white" font-size="10" font-weight="600" text-anchor="middle">World Engine</text>
+        <text x="1240" y="723" fill="#94a3b8" font-size="7.5" text-anchor="middle">currently records + workflows only</text>
+        <text x="1240" y="735" fill="#64748b" font-size="7" text-anchor="middle">not a separate package</text>
+
+        <!-- ===================================================================
+             STORAGE BAND (.cristalina-v4) — Store IO and Recovery boundary
+             =================================================================== -->
+        <rect x="20" y="800" width="1380" height="170" rx="12" fill="rgba(76, 29, 149, 0.06)" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="8,4"/>
+        <text x="35" y="820" fill="#a78bfa" font-size="11" font-weight="700">Store IO &amp; Recovery boundary  ·  .cristalina-v4/  ·  persistence + replay</text>
+
+        <!-- raw/ (violet) -->
+        <rect x="35" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="35" y="840" width="160" height="120" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="115" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">raw/</text>
+        <text x="115" y="876" fill="#a78bfa" font-size="7.5" text-anchor="middle" font-style="italic">evidence fidelity</text>
+        <line x1="50" y1="884" x2="180" y2="884" stroke="#a78bfa" stroke-width="0.5" opacity="0.4"/>
+        <text x="115" y="900" fill="#94a3b8" font-size="7.5" text-anchor="middle">source records</text>
+        <text x="115" y="912" fill="#94a3b8" font-size="7.5" text-anchor="middle">imports</text>
+        <text x="115" y="924" fill="#94a3b8" font-size="7.5" text-anchor="middle">attachments</text>
+        <text x="115" y="950" fill="#fbbf24" font-size="7" text-anchor="middle">evidence, not truth</text>
+
+        <!-- runtime/ -->
+        <rect x="201" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="201" y="840" width="160" height="120" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="281" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">runtime/</text>
+        <text x="281" y="876" fill="#a78bfa" font-size="7.5" text-anchor="middle" font-style="italic">operational context</text>
+        <line x1="216" y1="884" x2="346" y2="884" stroke="#a78bfa" stroke-width="0.5" opacity="0.4"/>
+        <text x="281" y="900" fill="#94a3b8" font-size="7.5" text-anchor="middle">observations</text>
+        <text x="281" y="912" fill="#94a3b8" font-size="7.5" text-anchor="middle">runtime instances</text>
+        <text x="281" y="924" fill="#94a3b8" font-size="7.5" text-anchor="middle">sessions · threads · blocks</text>
+        <text x="281" y="950" fill="#fbbf24" font-size="7" text-anchor="middle">not canon</text>
+
+        <!-- world/ -->
+        <rect x="367" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="367" y="840" width="160" height="120" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="447" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">world/</text>
+        <text x="447" y="876" fill="#a78bfa" font-size="7.5" text-anchor="middle" font-style="italic">structured + temporal</text>
+        <line x1="382" y1="884" x2="512" y2="884" stroke="#a78bfa" stroke-width="0.5" opacity="0.4"/>
+        <text x="447" y="900" fill="#94a3b8" font-size="7.5" text-anchor="middle">entities · relations</text>
+        <text x="447" y="912" fill="#94a3b8" font-size="7.5" text-anchor="middle">episodes · claims</text>
+        <text x="447" y="924" fill="#94a3b8" font-size="7.5" text-anchor="middle">contradictions · ontology</text>
+        <text x="447" y="950" fill="#fbbf24" font-size="7" text-anchor="middle">not final truth authority</text>
+
+        <!-- canon/ (rose - authority) -->
+        <rect x="533" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="533" y="840" width="160" height="120" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="2"/>
+        <text x="613" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">canon/</text>
+        <text x="613" y="876" fill="#fb7185" font-size="7.5" text-anchor="middle" font-weight="700">GOVERNED AUTHORITY</text>
+        <line x1="548" y1="884" x2="678" y2="884" stroke="#fb7185" stroke-width="0.5" opacity="0.4"/>
+        <text x="613" y="900" fill="#94a3b8" font-size="7.5" text-anchor="middle">ratified durable</text>
+        <text x="613" y="912" fill="#94a3b8" font-size="7.5" text-anchor="middle">memory objects</text>
+        <text x="613" y="924" fill="#94a3b8" font-size="7.5" text-anchor="middle">supersession chains</text>
+        <text x="613" y="950" fill="#fb7185" font-size="7" text-anchor="middle">writes only via Canon Engine</text>
+
+        <!-- wiki/ -->
+        <rect x="699" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="699" y="840" width="160" height="120" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="779" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">wiki/</text>
+        <text x="779" y="876" fill="#a78bfa" font-size="7.5" text-anchor="middle" font-style="italic">editorial synthesis</text>
+        <line x1="714" y1="884" x2="844" y2="884" stroke="#a78bfa" stroke-width="0.5" opacity="0.4"/>
+        <text x="779" y="900" fill="#94a3b8" font-size="7.5" text-anchor="middle">pages</text>
+        <text x="779" y="912" fill="#94a3b8" font-size="7.5" text-anchor="middle">claims · index</text>
+        <text x="779" y="924" fill="#94a3b8" font-size="7.5" text-anchor="middle">log</text>
+        <text x="779" y="950" fill="#fbbf24" font-size="7" text-anchor="middle">not authoritative memory</text>
+
+        <!-- governance/ -->
+        <rect x="865" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="865" y="840" width="160" height="120" rx="6" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="945" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">governance/</text>
+        <text x="945" y="876" fill="#fb7185" font-size="7.5" text-anchor="middle" font-style="italic">decision ledger</text>
+        <line x1="880" y1="884" x2="1010" y2="884" stroke="#fb7185" stroke-width="0.5" opacity="0.4"/>
+        <text x="945" y="898" fill="#94a3b8" font-size="7.5" text-anchor="middle">proposals · ratifications</text>
+        <text x="945" y="910" fill="#94a3b8" font-size="7.5" text-anchor="middle">curation · policy snapshots</text>
+        <text x="945" y="922" fill="#94a3b8" font-size="7.5" text-anchor="middle">contradiction resolutions</text>
+        <text x="945" y="934" fill="#94a3b8" font-size="7.5" text-anchor="middle">disposition records</text>
+
+        <!-- derived/ (cyan - reproducible) -->
+        <rect x="1031" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="1031" y="840" width="160" height="120" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="1111" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">derived/</text>
+        <text x="1111" y="876" fill="#22d3ee" font-size="7.5" text-anchor="middle" font-style="italic">reproducible outputs</text>
+        <line x1="1046" y1="884" x2="1176" y2="884" stroke="#22d3ee" stroke-width="0.5" opacity="0.4"/>
+        <text x="1111" y="900" fill="#94a3b8" font-size="7.5" text-anchor="middle">OpenClaw + Hermes</text>
+        <text x="1111" y="912" fill="#94a3b8" font-size="7.5" text-anchor="middle">projection artifacts</text>
+        <text x="1111" y="924" fill="#94a3b8" font-size="7.5" text-anchor="middle">projection manifests</text>
+        <text x="1111" y="950" fill="#fbbf24" font-size="7" text-anchor="middle">never source-of-truth</text>
+
+        <!-- audits/ (amber) -->
+        <rect x="1197" y="840" width="160" height="120" rx="6" fill="#0f172a"/>
+        <rect x="1197" y="840" width="160" height="120" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="1277" y="862" fill="white" font-size="11" font-weight="700" text-anchor="middle">audits/</text>
+        <text x="1277" y="876" fill="#fbbf24" font-size="7.5" text-anchor="middle" font-style="italic">accountability trail</text>
+        <line x1="1212" y1="884" x2="1342" y2="884" stroke="#fbbf24" stroke-width="0.5" opacity="0.4"/>
+        <text x="1277" y="898" fill="#94a3b8" font-size="7.5" text-anchor="middle">change logs · diagnostics</text>
+        <text x="1277" y="910" fill="#94a3b8" font-size="7.5" text-anchor="middle">validation logs</text>
+        <text x="1277" y="922" fill="#94a3b8" font-size="7.5" text-anchor="middle">snapshots</text>
+        <text x="1277" y="934" fill="#94a3b8" font-size="7.5" text-anchor="middle">recovery journals</text>
+
+        <!-- ===================================================================
+             LEGEND (top-right empty area)
+             =================================================================== -->
+        <rect x="1080" y="80" width="320" height="135" rx="8" fill="rgba(15, 23, 42, 0.6)" stroke="#1e293b" stroke-width="1"/>
+        <text x="1095" y="98" fill="white" font-size="10" font-weight="700">Legend</text>
+
+        <rect x="1095" y="106" width="14" height="9" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="1115" y="114" fill="#94a3b8" font-size="8">Intake / Projection surface</text>
+
+        <rect x="1095" y="120" width="14" height="9" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="1115" y="128" fill="#94a3b8" font-size="8">Engine / SDK / Compiler</text>
+
+        <rect x="1095" y="134" width="14" height="9" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="1115" y="142" fill="#94a3b8" font-size="8">Governance / Canon authority</text>
+
+        <rect x="1095" y="148" width="14" height="9" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1115" y="156" fill="#94a3b8" font-size="8">Storage zone / Store IO</text>
+
+        <rect x="1095" y="162" width="14" height="9" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="1115" y="170" fill="#94a3b8" font-size="8">Audit / accountability</text>
+
+        <rect x="1095" y="176" width="14" height="9" rx="2" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="1115" y="184" fill="#94a3b8" font-size="8">Planned (dashed = not implemented)</text>
+
+        <line x1="1245" y1="113" x2="1265" y2="113" stroke="#64748b" stroke-width="1.2" marker-end="url(#arrowhead)"/>
+        <text x="1270" y="116" fill="#94a3b8" font-size="8">write</text>
+
+        <line x1="1245" y1="128" x2="1265" y2="128" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#arrowhead)"/>
+        <text x="1270" y="131" fill="#94a3b8" font-size="8">read</text>
+
+        <text x="1245" y="146" fill="#fb7185" font-size="11" font-weight="700">×</text>
+        <text x="1255" y="146" fill="#94a3b8" font-size="8">forbidden write path</text>
+
+        <!-- ===================================================================
+             CALLOUTS BAND (below storage)
+             =================================================================== -->
+
+        <!-- Callout 1: Authority Rules -->
+        <rect x="20" y="985" width="680" height="150" rx="8" fill="rgba(136, 19, 55, 0.08)" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="35" y="1006" fill="#fb7185" font-size="11" font-weight="700">Authority Rules</text>
+        <text x="35" y="1024" fill="#94a3b8" font-size="9">• Raw sources are evidence, not truth</text>
+        <text x="35" y="1038" fill="#94a3b8" font-size="9">• Runtime state is operational context, not canon</text>
+        <text x="35" y="1052" fill="#94a3b8" font-size="9">• World model is structured + temporal, but not final truth authority</text>
+        <text x="35" y="1066" fill="#94a3b8" font-size="9">• Canon is the only governed durable memory authority</text>
+        <text x="35" y="1080" fill="#94a3b8" font-size="9">• Wiki is editorial synthesis, not authoritative memory</text>
+        <text x="35" y="1094" fill="#94a3b8" font-size="9">• Derived projections are reproducible outputs, never a source of truth</text>
+        <text x="35" y="1108" fill="#94a3b8" font-size="9">• Adapters may write observations + diagnostics back through intake profiles</text>
+        <text x="35" y="1122" fill="#fb7185" font-size="9" font-weight="600">• Adapters may NOT write canon directly</text>
+
+        <!-- Callout 2: Contradiction Handling -->
+        <rect x="720" y="985" width="680" height="150" rx="8" fill="rgba(251, 191, 36, 0.08)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="735" y="1006" fill="#fbbf24" font-size="11" font-weight="700">Contradiction Handling</text>
+        <text x="735" y="1024" fill="#94a3b8" font-size="9">• Conflicting world claims create explicit contradiction records in world/</text>
+        <text x="735" y="1038" fill="#94a3b8" font-size="9">• Contradiction resolutions are persisted in governance/</text>
+        <text x="735" y="1052" fill="#94a3b8" font-size="9">• Accepted resolutions are applied later (asynchronous, reviewable)</text>
+        <text x="735" y="1066" fill="#94a3b8" font-size="9">• Projection is recompiled after every resolution application</text>
+        <text x="735" y="1090" fill="#fbbf24" font-size="10" font-weight="600">Workflow Engine builds:</text>
+        <text x="735" y="1104" fill="#94a3b8" font-size="9">  contradiction objects · contradiction resolutions · disposition routing</text>
+        <text x="735" y="1122" fill="#fbbf24" font-size="9" font-style="italic">• Governance is the only path that promotes a resolution into canon</text>
+
+        <!-- Callout 3: Replay & Resilience -->
+        <rect x="20" y="1150" width="680" height="150" rx="8" fill="rgba(76, 29, 149, 0.10)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="35" y="1171" fill="#a78bfa" font-size="11" font-weight="700">Replay &amp; Resilience</text>
+        <text x="35" y="1189" fill="#94a3b8" font-size="9">• Recovery journals + artifact reuse live inside the store layer</text>
+        <text x="35" y="1203" fill="#94a3b8" font-size="9">• Derived projections are rebuilt from upstream state, never trusted as canon</text>
+        <text x="35" y="1217" fill="#94a3b8" font-size="9">• Store IO can repair drifted derived artifacts</text>
+        <text x="35" y="1231" fill="#94a3b8" font-size="9">• Store IO can recover from partial materialization</text>
+        <text x="35" y="1245" fill="#94a3b8" font-size="9">• Previous runs are reused — no work lost between sessions</text>
+        <text x="35" y="1269" fill="#a78bfa" font-size="9" font-style="italic">• If derived/ is lost, it can be regenerated deterministically from canon/ + world/ + wiki/ + governance/</text>
+        <text x="35" y="1287" fill="#a78bfa" font-size="9" font-style="italic">• If runtime/ drifts, replay from raw/ + governance/ rebuilds operational context</text>
+
+        <!-- Callout 4: Executable Flows -->
+        <rect x="720" y="1150" width="680" height="150" rx="8" fill="rgba(6, 78, 59, 0.10)" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="735" y="1171" fill="#34d399" font-size="11" font-weight="700">Executable Fixture Flows</text>
+        <text x="735" y="1191" fill="#34d399" font-size="9.5" font-weight="600">MVP Flow 001 — conversation → ratification</text>
+        <text x="735" y="1205" fill="#94a3b8" font-size="8.5">  conversation input → observation → world → wiki → proposal → ratification → projection</text>
+        <text x="735" y="1227" fill="#34d399" font-size="9.5" font-weight="600">MVP Flow 002 — canonical lifecycle</text>
+        <text x="735" y="1241" fill="#94a3b8" font-size="8.5">  canonical create → revise → supersede → audit trail → projection manifest</text>
+        <text x="735" y="1263" fill="#34d399" font-size="9.5" font-weight="600">MVP Flow 003 — contradiction lifecycle</text>
+        <text x="735" y="1277" fill="#94a3b8" font-size="8.5">  contradiction detection → resolution application → projection recompilation</text>
+        <text x="735" y="1297" fill="#34d399" font-size="8" font-style="italic">all three flows are executable end-to-end via the eval harness (evals.ts + fixtures)</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>Core Thesis</h3>
+        </div>
+        <ul>
+          <li>• Raw sources (evidence)</li>
+          <li>• Runtime self (operational context)</li>
+          <li>• Temporal world model (structured)</li>
+          <li>• Governed canonical memory (authority)</li>
+          <li>• Persistent knowledge wiki (editorial)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>Implemented Kernel</h3>
+        </div>
+        <ul>
+          <li>• Source intake (3 normalized kinds)</li>
+          <li>• Workflow engine (records + proposals)</li>
+          <li>• Governance (promotion gates)</li>
+          <li>• Canon (create / revise / supersede)</li>
+          <li>• OpenClaw projection compiler</li>
+          <li>• Store IO with reuse + recovery</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Boundary Rules</h3>
+        </div>
+        <ul>
+          <li>• No direct runtime → canon writes</li>
+          <li>• Wiki is derived editorial memory</li>
+          <li>• Projections are reproducible downstream artifacts</li>
+          <li>• Adapters never write canon directly</li>
+          <li>• Governance is the only legal promotion path</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">
+      pnpm monorepo  ·  @cristalina-v4/core  ·  @cristalina-v4/openclaw-adapter [planned]  ·  @cristalina-v4/hermes-adapter [planned]  ·  current strongest implementation area: packages/core
+    </p>
+  </div>
+</body>
+</html>
