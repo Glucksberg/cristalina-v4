@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, rm, unlink } from "node:fs/promises";
+import { readFile, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -152,6 +152,50 @@ test("writeConversationPreferenceFlowToStore repairs missing derived artifacts o
   assert.equal(auditLogAfter, auditLogBefore);
 });
 
+test("writeConversationPreferenceFlowToStore repairs drifted derived artifacts on rerun", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  const first = await writeConversationPreferenceFlowToStore(input);
+  const auditLogBefore = await readFile(join(rootDir, "audits/changes.log"), "utf8");
+
+  await writeFile(first.paths.wiki_page_markdown, "# drifted\n", "utf8");
+  await writeFile(first.paths.projection_markdown, "# drifted projection\n", "utf8");
+  await writeFile(first.paths.projection_artifacts.wiki, "{\n  \"broken\": true\n}\n", "utf8");
+
+  const repaired = await writeConversationPreferenceFlowToStore(input);
+  const auditLogAfter = await readFile(join(rootDir, "audits/changes.log"), "utf8");
+  const repairedWikiMarkdown = await readFile(first.paths.wiki_page_markdown, "utf8");
+  const repairedProjectionMarkdown = await readFile(first.paths.projection_markdown, "utf8");
+
+  assert.equal(repaired.reused, true);
+  assert.match(repairedWikiMarkdown, /User Interaction Preferences/);
+  assert.match(repairedProjectionMarkdown, /\[canon:mem_test_001\]/);
+  assert.equal(auditLogAfter, auditLogBefore);
+});
+
+test("writeConversationPreferenceFlowToStore recovers from partial authoritative materialization on rerun", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  const first = await writeConversationPreferenceFlowToStore(input);
+
+  await unlink(first.paths.canonical_record);
+
+  const recovered = await writeConversationPreferenceFlowToStore(input);
+  const projectionMarkdown = await readFile(first.paths.projection_markdown, "utf8");
+
+  assert.equal(recovered.reused, false);
+  assert.equal(recovered.records.canonical_record?.id, input.ids.canonical);
+  assert.match(projectionMarkdown, /\[canon:mem_test_001\]/);
+});
+
 test("writeConversationPreferenceFlowToStore records contradictions against existing active world claims", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -287,6 +331,62 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   assert.equal(appliedAgain.records.contradiction_resolution.status, "applied");
 });
 
+test("applyConversationPreferenceResolutionToStore blocks auto-application of manual-review resolutions", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: firstInput.now,
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_manual_002",
+      source_ref: "runtime/session-test#turn-manual-002",
+      content_ref: "raw/sources/conversation-turn-test-manual-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_manual_002",
+      episode: "ep_test_manual_002",
+      subject_entity: "ent_subject_test_manual_002",
+      preference_entity: "ent_preference_test_manual_002",
+      preference_relation: "rel_preference_test_manual_002",
+      world_claim: "wcl_test_manual_002",
+      contradiction: "contra_test_manual_002",
+      contradiction_resolution: "cres_test_manual_002",
+      wiki_page: "wpg_test_manual_002",
+      wiki_claim: "wclm_test_manual_002",
+      proposal: "prop_test_manual_002",
+      disposition: "disp_test_manual_002",
+      ratification: "rat_test_manual_002",
+      diagnostic: "diag_test_manual_002",
+      canonical: "mem_test_manual_002",
+      canon_artifact: "part_openclaw_canon_test_manual_002",
+      world_artifact: "part_openclaw_world_test_manual_002",
+      wiki_artifact: "part_openclaw_wiki_test_manual_002",
+      projection_manifest: "pmf_openclaw_test_manual_002",
+    },
+  };
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+
+  await assert.rejects(
+    () =>
+      applyConversationPreferenceResolutionToStore({
+        ...secondInput,
+        now: "2026-04-12T00:05:00.000Z",
+      }),
+    /Manual-review contradiction resolutions require explicit review/,
+  );
+});
+
 test("openclaw feedback round-trip preserves runtime identity and recompiles projection", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -376,6 +476,75 @@ test("openclaw feedback round-trip preserves runtime identity and recompiles pro
     validation_scope: "test:openclaw-roundtrip",
   });
   assert.equal(replayed.reused, true);
+});
+
+test("projection excludes superseded canonical records during recompilation", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const seed = buildInput(rootDir);
+  const initial = await writeConversationPreferenceFlowToStore(seed);
+  const canonicalRecord = initial.records.canonical_record;
+  if (!canonicalRecord) {
+    throw new Error("Expected seeded flow to materialize canonical state");
+  }
+
+  await writeCoreRecord(rootDir, {
+    ...canonicalRecord,
+    id: "mem_test_superseded_001",
+    created_at: "2026-04-11T23:00:00.000Z",
+    updated_at: "2026-04-11T23:30:00.000Z",
+    statement: "The user previously preferred ultra-concise answers.",
+    governance_state: "superseded",
+    temporal_state: {
+      temporal_status: "historical",
+      valid_from: "2026-04-11T23:00:00.000Z",
+      valid_to: "2026-04-11T23:30:00.000Z",
+    },
+    superseded_by_ref: canonicalRecord.id,
+  });
+
+  const roundTrip = await writeOpenClawPreferenceFeedbackFlowToStore({
+    ...seed,
+    now: "2026-04-12T02:00:00.000Z",
+    statement: "OpenClaw confirms the concise-answer preference is still active.",
+    source: {
+      id: "src_feedback_projection_test_001",
+      source_ref: "openclaw/runtime-001#thread-projection-001",
+      content_ref: "raw/imports/openclaw-feedback-projection-test-001.json",
+      runtime: "openclaw",
+      message: "Runtime feedback confirms the concise-answer preference.",
+      source_type: "openclaw_runtime_feedback",
+    },
+    ids: {
+      observation: "obs_feedback_projection_test_001",
+      episode: "ep_feedback_projection_test_001",
+      subject_entity: "ent_subject_feedback_projection_test_001",
+      preference_entity: "ent_preference_feedback_projection_test_001",
+      preference_relation: "rel_preference_feedback_projection_test_001",
+      world_claim: "wcl_feedback_projection_test_001",
+      contradiction: "contra_feedback_projection_test_001",
+      contradiction_resolution: "cres_feedback_projection_test_001",
+      wiki_page: "wpg_feedback_projection_test_001",
+      wiki_claim: "wclm_feedback_projection_test_001",
+      proposal: "prop_feedback_projection_test_001",
+      disposition: "disp_feedback_projection_test_001",
+      ratification: "rat_feedback_projection_test_001",
+      diagnostic: "diag_feedback_projection_test_001",
+      canonical: "mem_feedback_projection_test_001",
+      canon_artifact: "part_openclaw_canon_feedback_projection_test_001",
+      world_artifact: "part_openclaw_world_feedback_projection_test_001",
+      wiki_artifact: "part_openclaw_wiki_feedback_projection_test_001",
+      projection_manifest: "pmf_openclaw_feedback_projection_test_001",
+    },
+    validation_scope: "test:openclaw-projection-canon-filter",
+  });
+
+  const projectionMarkdown = await readFile(roundTrip.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /\[canon:mem_test_001\] \(ratified; active\)/);
+  assert.doesNotMatch(projectionMarkdown, /\[canon:mem_test_superseded_001\]/);
 });
 
 test("structured preference signal flow reuses the generic intake framework", async (t) => {

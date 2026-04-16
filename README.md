@@ -46,6 +46,7 @@ This repository line is intended to produce:
 26. [docs/USE-CASES.md](/home/dev/projects/cristalina-v4/docs/USE-CASES.md)
 27. [docs/EVALS.md](/home/dev/projects/cristalina-v4/docs/EVALS.md)
 28. [docs/FAILURE-MODES.md](/home/dev/projects/cristalina-v4/docs/FAILURE-MODES.md)
+29. [docs/WSL-DEVELOPMENT.md](/home/dev/projects/cristalina-v4/docs/WSL-DEVELOPMENT.md)
 
 ## Repository Layout
 
@@ -55,3 +56,9 @@ This repository line is intended to produce:
 - `packages/core` governed memory core
 - `packages/openclaw-adapter` OpenClaw integration
 - `packages/hermes-adapter` Hermes Agent integration
+
+## Environment
+
+- Use a single OS environment per checkout.
+- Prefer WSL-only development and keep the repo under the Linux filesystem.
+- See [docs/WSL-DEVELOPMENT.md](/home/dev/projects/cristalina-v4/docs/WSL-DEVELOPMENT.md) for the migration checklist and recovery steps.

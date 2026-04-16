@@ -103,10 +103,16 @@ function isTypeMatch(value: unknown, expectedType: string): boolean {
   }
 }
 
-function resolveRef(schema: JsonSchema, ref: string, registry: Map<string, JsonSchema>): JsonSchema | undefined {
+function resolveRef(schemaPath: JsonSchema[], ref: string, registry: Map<string, JsonSchema>): JsonSchema | undefined {
   if (ref.startsWith("#/$defs/")) {
     const defKey = ref.slice("#/$defs/".length);
-    return schema.$defs?.[defKey];
+    for (const schema of schemaPath) {
+      const definition = schema.$defs?.[defKey];
+      if (definition) {
+        return definition;
+      }
+    }
+    return undefined;
   }
 
   return registry.get(ref);
@@ -117,38 +123,40 @@ function validateNode(
   schema: JsonSchema,
   path: string,
   registry: Map<string, JsonSchema>,
+  schemaPath: JsonSchema[] = [],
 ): SchemaValidationIssue[] {
   const issues: SchemaValidationIssue[] = [];
+  const nextSchemaPath = [schema, ...schemaPath];
 
   if (schema.$ref) {
-    const referenced = resolveRef(schema, schema.$ref, registry);
+    const referenced = resolveRef(nextSchemaPath, schema.$ref, registry);
     if (!referenced) {
       return [{ path, message: `unresolved schema ref: ${schema.$ref}` }];
     }
-    issues.push(...validateNode(value, referenced, path, registry));
+    issues.push(...validateNode(value, referenced, path, registry, nextSchemaPath));
   }
 
   if (schema.allOf) {
     for (const branch of schema.allOf) {
-      issues.push(...validateNode(value, branch, path, registry));
+      issues.push(...validateNode(value, branch, path, registry, nextSchemaPath));
     }
   }
 
   if (schema.oneOf) {
-    const matchingBranches = schema.oneOf.filter((branch) => validateNode(value, branch, path, registry).length === 0);
+    const matchingBranches = schema.oneOf.filter((branch) => validateNode(value, branch, path, registry, nextSchemaPath).length === 0);
     if (matchingBranches.length !== 1) {
       issues.push({ path, message: "expected value to match exactly one schema variant" });
     }
   }
 
   if (schema.anyOf) {
-    const anyMatch = schema.anyOf.some((branch) => validateNode(value, branch, path, registry).length === 0);
+    const anyMatch = schema.anyOf.some((branch) => validateNode(value, branch, path, registry, nextSchemaPath).length === 0);
     if (!anyMatch) {
       issues.push({ path, message: "expected value to match at least one schema variant" });
     }
   }
 
-  if (schema.not && validateNode(value, schema.not, path, registry).length === 0) {
+  if (schema.not && validateNode(value, schema.not, path, registry, nextSchemaPath).length === 0) {
     issues.push({ path, message: "value matched forbidden schema" });
   }
 
@@ -213,20 +221,20 @@ function validateNode(
 
     if (schema.items) {
       value.forEach((entry, index) => {
-        issues.push(...validateNode(entry, schema.items as JsonSchema, `${path}[${index}]`, registry));
-      });
-    }
+          issues.push(...validateNode(entry, schema.items as JsonSchema, `${path}[${index}]`, registry, nextSchemaPath));
+        });
+      }
 
     if (schema.prefixItems) {
       schema.prefixItems.forEach((entrySchema, index) => {
         if (index < value.length) {
-          issues.push(...validateNode(value[index], entrySchema, `${path}[${index}]`, registry));
+          issues.push(...validateNode(value[index], entrySchema, `${path}[${index}]`, registry, nextSchemaPath));
         }
       });
     }
 
     if (schema.contains) {
-      const matchesContains = value.some((entry, index) => validateNode(entry, schema.contains as JsonSchema, `${path}[${index}]`, registry).length === 0);
+      const matchesContains = value.some((entry, index) => validateNode(entry, schema.contains as JsonSchema, `${path}[${index}]`, registry, nextSchemaPath).length === 0);
       if (!matchesContains) {
         issues.push({ path, message: "expected array to contain a matching item" });
       }
@@ -234,36 +242,40 @@ function validateNode(
   }
 
   if (isRecord(value)) {
-    if (schema.minProperties !== undefined && Object.keys(value).length < schema.minProperties) {
+    const definedEntries = Object.entries(value).filter(([, entryValue]) => entryValue !== undefined);
+    const definedKeys = definedEntries.map(([key]) => key);
+    const definedValues = Object.fromEntries(definedEntries);
+
+    if (schema.minProperties !== undefined && definedKeys.length < schema.minProperties) {
       issues.push({ path, message: `expected minimum properties ${schema.minProperties}` });
     }
-    if (schema.maxProperties !== undefined && Object.keys(value).length > schema.maxProperties) {
+    if (schema.maxProperties !== undefined && definedKeys.length > schema.maxProperties) {
       issues.push({ path, message: `expected maximum properties ${schema.maxProperties}` });
     }
 
     const properties = schema.properties ?? {};
     for (const key of schema.required ?? []) {
-      if (!(key in value)) {
+      if (!(key in definedValues)) {
         issues.push({ path: path === "$" ? key : `${path}.${key}`, message: "missing required property" });
       }
     }
 
     for (const [key, propertySchema] of Object.entries(properties)) {
-      if (key in value) {
-        issues.push(...validateNode(value[key], propertySchema, path === "$" ? key : `${path}.${key}`, registry));
+      if (key in definedValues) {
+        issues.push(...validateNode(definedValues[key], propertySchema, path === "$" ? key : `${path}.${key}`, registry, nextSchemaPath));
       }
     }
 
     if (schema.propertyNames) {
-      for (const key of Object.keys(value)) {
-        issues.push(...validateNode(key, schema.propertyNames, path === "$" ? key : `${path}.${key}`, registry));
+      for (const key of definedKeys) {
+        issues.push(...validateNode(key, schema.propertyNames, path === "$" ? key : `${path}.${key}`, registry, nextSchemaPath));
       }
     }
 
     for (const [key, requirements] of Object.entries(schema.dependentRequired ?? {})) {
-      if (key in value) {
+      if (key in definedValues) {
         for (const requiredKey of requirements) {
-          if (!(requiredKey in value)) {
+          if (!(requiredKey in definedValues)) {
             issues.push({
               path: path === "$" ? requiredKey : `${path}.${requiredKey}`,
               message: `required because ${key} is present`,
@@ -274,20 +286,21 @@ function validateNode(
     }
 
     if (schema.additionalProperties === false) {
-      for (const key of Object.keys(value)) {
+      for (const key of definedKeys) {
         if (!(key in properties)) {
           issues.push({ path: path === "$" ? key : `${path}.${key}`, message: "unexpected property" });
         }
       }
     } else if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
-      for (const key of Object.keys(value)) {
+      for (const key of definedKeys) {
         if (!(key in properties)) {
           issues.push(
             ...validateNode(
-              value[key],
+              definedValues[key],
               schema.additionalProperties,
               path === "$" ? key : `${path}.${key}`,
               registry,
+              nextSchemaPath,
             ),
           );
         }
@@ -296,12 +309,12 @@ function validateNode(
   }
 
   if (schema.if) {
-    const ifIssues = validateNode(value, schema.if, path, registry);
+    const ifIssues = validateNode(value, schema.if, path, registry, nextSchemaPath);
     if (ifIssues.length === 0 && schema.then) {
-      issues.push(...validateNode(value, schema.then, path, registry));
+      issues.push(...validateNode(value, schema.then, path, registry, nextSchemaPath));
     }
     if (ifIssues.length > 0 && schema.else) {
-      issues.push(...validateNode(value, schema.else, path, registry));
+      issues.push(...validateNode(value, schema.else, path, registry, nextSchemaPath));
     }
   }
 

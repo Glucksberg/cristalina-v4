@@ -116,3 +116,30 @@ test("schema runtime supports broader object, array, and local-ref features", ()
   assert.ok(invalid.some((issue) => issue.path === "mode"));
   assert.ok(invalid.some((issue) => issue.path === "Bad-Name"));
 });
+
+test("schema runtime treats undefined object properties as absent JSON fields", () => {
+  const schema: JsonSchema = {
+    type: "object",
+    required: ["id"],
+    properties: {
+      id: {
+        type: "string",
+        minLength: 1,
+      },
+      optional_ref: {
+        type: ["string", "null"],
+      },
+    },
+    additionalProperties: false,
+  };
+
+  const issues = validateValueAgainstJsonSchema(
+    {
+      id: "obj_001",
+      optional_ref: undefined,
+    },
+    schema,
+  );
+
+  assert.deepEqual(issues, []);
+});

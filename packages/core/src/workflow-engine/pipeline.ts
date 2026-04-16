@@ -727,6 +727,10 @@ export function acceptContradictionResolution(input: {
   now: string;
   resolution: ContradictionResolution;
 }): ContradictionResolution {
+  if (input.resolution.strategy === "manual_review") {
+    throw new Error("Manual-review contradiction resolutions require explicit review and cannot be auto-accepted");
+  }
+
   if (input.resolution.status === "rejected") {
     throw new Error("Rejected contradiction resolutions cannot be accepted");
   }
@@ -891,6 +895,9 @@ export function applyAcceptedContradictionResolution(input: {
 }): AcceptedContradictionResolutionApplicationResult {
   if (input.resolution.status !== "accepted") {
     throw new Error("Only accepted contradiction resolutions can be applied");
+  }
+  if (input.resolution.strategy === "manual_review") {
+    throw new Error("Manual-review contradiction resolutions cannot be applied directly");
   }
 
   const resolution: ContradictionResolution = {

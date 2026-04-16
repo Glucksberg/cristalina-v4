@@ -219,7 +219,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const wiki_pages = wikiPagesFilter.included;
   const wiki_claims = wikiClaimsFilter.included;
   const diagnostics = diagnosticsFilter.included;
-  const canonical_records = canonicalFilter.included;
+  const canonical_records = canonicalFilter.included.filter((record) => record.governance_state === "ratified");
 
   const suppressed_refs = [
     ...runtimeSuppressed,
