@@ -18,7 +18,7 @@ import {
   proposeContradictionResolution,
   reconcileConversationPreferenceSupersede,
 } from "./pipeline.js";
-import { isLegalLayerTransition } from "../transitions.js";
+import { isConditionalLayerTransition, isLegalLayerTransition } from "../transitions.js";
 import { validateCoreRecord } from "../validation.js";
 
 function buildIds(suffix: string) {
@@ -88,6 +88,11 @@ test("canon records reject pre-ratification governance states", () => {
 
 test("runtime cannot transition directly into canon", () => {
   assert.equal(isLegalLayerTransition("runtime", "canon"), false);
+});
+
+test("conditionally legal transitions still count as legal transitions", () => {
+  assert.equal(isConditionalLayerTransition("world", "canon"), true);
+  assert.equal(isLegalLayerTransition("world", "canon"), true);
 });
 
 test("proposal validation rejects operations outside the executable baseline", () => {
@@ -359,6 +364,206 @@ test("canonical workflow rejects target_ref kind mismatches even when the id exi
   assert.equal(workflow.updated_records.length, 0);
 });
 
+test("canonical workflow rejects create proposals that target an existing record", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const targetRecord = {
+    id: "mem_target_create_001",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_target_create_001",
+    },
+    statement: "Target record",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: now,
+      valid_to: null,
+    },
+    supersedes_ref: null,
+    superseded_by_ref: null,
+  } as const;
+
+  const workflow = executeCanonicalProposalWorkflow({
+    proposal: {
+      id: "prop_test_create_target_ref",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "src_prop_create_target_ref",
+        evidence_refs: ["obs_test_create_target_ref"],
+      },
+      operation: "create",
+      candidate_kind: "preference",
+      target_layer: "canon",
+      target_ref: {
+        id: targetRecord.id,
+        kind: targetRecord.kind,
+        layer: targetRecord.layer,
+      },
+      candidate_payload: {
+        kind: "preference",
+        statement: "The user prefers concise answers.",
+        semantic_slot: targetRecord.semantic_slot,
+      },
+      reason: "Create should not target an existing record.",
+      evidence_refs: ["obs_test_create_target_ref"],
+      governance_state: "proposed",
+    },
+    existing_canon_records: [targetRecord],
+    now,
+    actor: "system:test",
+    ratification_id: "rat_test_create_target_ref",
+    diagnostic_id: "diag_test_create_target_ref",
+    canonical_id: "mem_test_create_target_ref",
+  });
+
+  assert.equal(workflow.accepted, false);
+  assert.equal(workflow.ratification_record.decision, "rejected");
+});
+
+test("canonical workflow rejects revise proposals without target_ref", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+
+  const workflow = executeCanonicalProposalWorkflow({
+    proposal: {
+      id: "prop_test_revise_missing_target",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "src_prop_revise_missing_target",
+        evidence_refs: ["obs_test_revise_missing_target"],
+      },
+      operation: "revise",
+      candidate_kind: "preference",
+      target_layer: "canon",
+      target_ref: null,
+      candidate_payload: {
+        kind: "preference",
+        statement: "The user prefers concise answers.",
+        semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+      },
+      reason: "Revise requires a target_ref.",
+      evidence_refs: ["obs_test_revise_missing_target"],
+      governance_state: "proposed",
+    },
+    existing_canon_records: [],
+    now,
+    actor: "system:test",
+    ratification_id: "rat_test_revise_missing_target",
+    diagnostic_id: "diag_test_revise_missing_target",
+    canonical_id: "mem_test_revise_missing_target",
+  });
+
+  assert.equal(workflow.accepted, false);
+  assert.equal(workflow.ratification_record.decision, "rejected");
+});
+
+test("canonical supersede retires a record without creating a replacement", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const targetRecord: CanonicalMemoryObject = {
+    id: "mem_target_supersede_001",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_target_supersede_001",
+    },
+    statement: "The user prefers concise answers.",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: now,
+      valid_to: null,
+    },
+    supersedes_ref: null,
+    superseded_by_ref: null,
+    upstream_refs: ["mem_origin_supersede_001"],
+  };
+
+  const workflow = executeCanonicalProposalWorkflow({
+    proposal: {
+      id: "prop_test_supersede_retire",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "src_prop_supersede_retire",
+        evidence_refs: ["obs_test_supersede_retire"],
+      },
+      operation: "supersede",
+      candidate_kind: "preference",
+      target_layer: "canon",
+      target_ref: {
+        id: targetRecord.id,
+        kind: targetRecord.kind,
+        layer: targetRecord.layer,
+      },
+      candidate_payload: {
+        kind: "preference",
+        semantic_slot: targetRecord.semantic_slot,
+      },
+      reason: "Withdraw the active canonical preference pending future confirmation.",
+      evidence_refs: ["obs_test_supersede_retire"],
+      governance_state: "proposed",
+    },
+    existing_canon_records: [targetRecord],
+    now,
+    actor: "system:test",
+    ratification_id: "rat_test_supersede_retire",
+    diagnostic_id: "diag_test_supersede_retire",
+    canonical_id: "unused_test_supersede_retire",
+  });
+
+  assert.equal(workflow.accepted, true);
+  assert.equal(workflow.created_record, undefined);
+  assert.equal(workflow.updated_records.length, 1);
+  assert.equal(workflow.updated_records[0]?.governance_state, "superseded");
+  assert.equal(workflow.updated_records[0]?.superseded_by_ref, null);
+  assert.deepEqual(workflow.updated_records[0]?.upstream_refs, [
+    "mem_origin_supersede_001",
+    "prop_test_supersede_retire",
+    "rat_test_supersede_retire",
+  ]);
+});
+
 test("canonical application rejects ratifications that do not belong to the proposal", () => {
   const now = "2026-04-12T00:00:00.000Z";
 
@@ -415,6 +620,65 @@ test("canonical application rejects ratifications that do not belong to the prop
         now,
       }),
     /does not belong to proposal/,
+  );
+});
+
+test("canonical application rejects proposals that were not in proposed state", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+
+  assert.throws(
+    () =>
+      applyApprovedCanonicalProposal({
+        proposal: {
+          id: "prop_test_not_proposed",
+          kind: "proposal",
+          layer: "governance",
+          authoritative_home: "governance",
+          created_at: now,
+          updated_at: now,
+          visibility_state: {
+            privacy_scope: "owner_private",
+          },
+          provenance: {
+            source_type: "conversation",
+            source_ref: "src_prop_not_proposed",
+            evidence_refs: ["obs_test_not_proposed"],
+          },
+          operation: "create",
+          candidate_kind: "preference",
+          target_layer: "canon",
+          target_ref: null,
+          candidate_payload: {
+            kind: "preference",
+            statement: "The user prefers concise answers.",
+            semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+          },
+          reason: "Promote preference to canon.",
+          evidence_refs: ["obs_test_not_proposed"],
+          governance_state: "draft",
+        },
+        ratification_record: {
+          id: "rat_test_not_proposed",
+          kind: "ratification",
+          layer: "governance",
+          authoritative_home: "governance",
+          created_at: now,
+          updated_at: now,
+          visibility_state: {
+            privacy_scope: "owner_private",
+          },
+          provenance: {
+            source_type: "governance",
+            source_ref: "ratification/test/not-proposed",
+          },
+          proposal_ref: "prop_test_not_proposed",
+          decision: "approved",
+          actor: "system:test",
+        },
+        canonical_id: "mem_test_not_proposed",
+        now,
+      }),
+    /must be in proposed state/,
   );
 });
 

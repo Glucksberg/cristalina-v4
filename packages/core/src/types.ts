@@ -65,6 +65,10 @@ export const AUTHORITATIVE_HOMES = [
   "governance",
 ] as const;
 
+export const CANONICAL_CLAIM_KINDS = MEMORY_OBJECT_KINDS.filter(
+  (kind) => !["entity", "relation", "episode"].includes(kind),
+) as ReadonlyArray<Exclude<(typeof MEMORY_OBJECT_KINDS)[number], "entity" | "relation" | "episode">>;
+
 export const ACTOR_KINDS = [
   "owner",
   "agent",
@@ -123,10 +127,12 @@ export type TemporalStatus = typeof TEMPORAL_STATUSES[number];
 export type VisibilityScope = typeof VISIBILITY_SCOPES[number];
 export type Layer = typeof LAYERS[number];
 export type AuthoritativeHome = typeof AUTHORITATIVE_HOMES[number];
+export type CanonicalClaimKind = typeof CANONICAL_CLAIM_KINDS[number];
 export type ActorKind = typeof ACTOR_KINDS[number];
 export type RuntimeKind = typeof RUNTIMES[number];
 export type SourceIntakeKind = typeof SOURCE_INTAKE_KINDS[number];
 export type ProposalOperation = typeof PROPOSAL_OPERATIONS[number];
+export type ProposalStageState = Exclude<GovernanceState, "ratified" | "superseded">;
 export type DispositionOutcome = typeof DISPOSITION_OUTCOMES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
@@ -187,6 +193,8 @@ export interface RecordEnvelope {
   updated_at?: string | null;
   visibility_state: VisibilityState;
   provenance: Provenance;
+  // Cumulative refs that materially shaped the current record state, including
+  // creation inputs and later lifecycle events such as supersession or reconciliation.
   upstream_refs?: string[];
 }
 
@@ -297,18 +305,20 @@ export interface Relation extends RecordEnvelope {
 }
 
 export interface WorldClaim extends ClaimEnvelope {
-  kind: Exclude<MemoryObjectKind, "entity" | "relation" | "episode">;
+  kind: CanonicalClaimKind;
   layer: "world";
   authoritative_home: "world";
   support_refs: string[];
 }
 
 export interface CanonicalMemoryObject extends ClaimEnvelope {
-  kind: Exclude<MemoryObjectKind, "entity" | "relation" | "episode">;
+  kind: CanonicalClaimKind;
   layer: "canon";
   authoritative_home: "canon";
   governance_state: GovernanceState;
+  // Present when this record was created as the successor of another canonical record.
   supersedes_ref?: string | null;
+  // Present when this record was replaced by a successor; null is intentional for retirement without replacement.
   superseded_by_ref?: string | null;
 }
 
@@ -316,6 +326,7 @@ export interface Proposal extends RecordEnvelope {
   kind: "proposal";
   layer: "governance";
   authoritative_home: "governance";
+  // `supersede` retires an existing canonical record without creating a replacement.
   operation: ProposalOperation;
   candidate_kind: string;
   target_layer: Extract<Layer, "world" | "canon" | "wiki" | "governance">;
@@ -323,7 +334,8 @@ export interface Proposal extends RecordEnvelope {
   candidate_payload: Record<string, unknown>;
   reason: string;
   evidence_refs: string[];
-  governance_state: Exclude<GovernanceState, "ratified" | "superseded">;
+  // This is the proposal's pre-ratification stage, not the canonical record's governance lifecycle.
+  governance_state: ProposalStageState;
 }
 
 export interface CurationPacket extends RecordEnvelope {

@@ -126,6 +126,12 @@ The current executable baseline supports these proposal operations:
 - `revise`
 - `supersede`
 
+Executable semantics in the baseline kernel:
+
+- `create`: introduce a new canonical record
+- `revise`: introduce a replacement record and mark the prior record as superseded
+- `supersede`: retire the targeted canonical record without creating a replacement
+
 The next expansion after the baseline kernel should add:
 
 - `confirm`

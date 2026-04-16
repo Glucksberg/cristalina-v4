@@ -1,11 +1,13 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { STORAGE_LAYOUT } from "../storage.js";
+import { atomicWriteText, isMissingFileError } from "../store/atomic-write.js";
 import type { CoreRecord } from "../types.js";
 import type { ValidationIssue } from "../validation.js";
 
 export interface AuditChangeEntry {
+  entry_id?: string;
   at: string;
   operation: string;
   record_id: string;
@@ -16,6 +18,7 @@ export interface AuditChangeEntry {
 }
 
 export interface ValidationLogEntry {
+  entry_id?: string;
   at: string;
   scope: string;
   issues: ValidationIssue[];
@@ -37,10 +40,34 @@ export interface SnapshotRecordEntry {
   path: string;
 }
 
-async function appendJsonLine(filePath: string, value: unknown): Promise<void> {
+async function hasJsonLineEntry(filePath: string, entryId: string): Promise<boolean> {
+  const source = await readFile(filePath, "utf8").catch((error) => {
+    if (isMissingFileError(error)) return "";
+    throw error;
+  });
+
+  if (source.length === 0) {
+    return false;
+  }
+
+  for (const line of source.split("\n")) {
+    if (!line) continue;
+    const parsed = JSON.parse(line) as { entry_id?: unknown };
+    if (parsed.entry_id === entryId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function appendJsonLine(filePath: string, value: { entry_id?: string }): Promise<void> {
   const payload = `${JSON.stringify(value)}\n`;
   await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, payload, { encoding: "utf8", flag: "a" });
+  if (value.entry_id && await hasJsonLineEntry(filePath, value.entry_id)) {
+    return;
+  }
+  await appendFile(filePath, payload, "utf8");
 }
 
 export async function appendAuditChange(rootDir: string, entry: AuditChangeEntry): Promise<void> {
@@ -54,7 +81,7 @@ export async function appendValidationLog(rootDir: string, entry: ValidationLogE
 export async function writeSnapshotManifest(rootDir: string, snapshot: SnapshotManifest): Promise<string> {
   const filePath = join(rootDir, STORAGE_LAYOUT.audits.snapshots, `${snapshot.snapshot_id}.json`);
   await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  await atomicWriteText(filePath, `${JSON.stringify(snapshot, null, 2)}\n`);
   return filePath;
 }
 
@@ -74,7 +101,7 @@ export async function writeSnapshotRecordCopies(
     records.map(async (record, index) => {
       const filename = `${String(index + 1).padStart(4, "0")}-${sanitizeSnapshotSegment(record.id)}.json`;
       const filePath = join(snapshotDir, filename);
-      await writeFile(filePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+      await atomicWriteText(filePath, `${JSON.stringify(record, null, 2)}\n`);
 
       return {
         sequence: index + 1,

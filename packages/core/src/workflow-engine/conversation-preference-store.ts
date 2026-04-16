@@ -1,8 +1,14 @@
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { access, readFile, rm } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { appendAuditChange, appendValidationLog } from "../audit/log.js";
+import {
+  appendAuditChange,
+  appendValidationLog,
+  type AuditChangeEntry,
+  type ValidationLogEntry,
+} from "../audit/log.js";
 import { defaultOpenClawBootstrapProjectionPath } from "../projection-engine/openclaw.js";
+import { ValidationError, validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
   coreRecordPath,
   initializeStore,
@@ -22,6 +28,7 @@ import {
   loadWorldRelations,
   readCoreRecord,
 } from "../store/io.js";
+import { atomicWriteText, isMissingFileError } from "../store/atomic-write.js";
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
@@ -48,7 +55,6 @@ import type {
   WikiPage,
   WorldClaim,
 } from "../types.js";
-import { validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
   acceptContradictionResolution,
   applyAcceptedContradictionResolution,
@@ -195,7 +201,18 @@ interface RecoveryJournal {
   operation: "conversation_preference_write" | "conversation_preference_resolution_apply";
   created_at: string;
   files: RecoveryJournalFile[];
+  append_entries?: RecoveryJournalAppendEntry[];
 }
+
+type RecoveryJournalAppendEntry =
+  | {
+      kind: "audit_change";
+      entry: AuditChangeEntry;
+    }
+  | {
+      kind: "validation_log";
+      entry: ValidationLogEntry;
+    };
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
   const rootPath = resolve(rootDir);
@@ -217,8 +234,9 @@ async function pathExists(filePath: string): Promise<boolean> {
   try {
     await access(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isMissingFileError(error)) return false;
+    throw error;
   }
 }
 
@@ -227,8 +245,7 @@ function serializeCoreRecordContent(record: CoreRecord): string {
 }
 
 async function writeTextFile(filePath: string, content: string): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, content, "utf8");
+  await atomicWriteText(filePath, content);
 }
 
 async function materializeFiles(files: MaterializedFile[]): Promise<void> {
@@ -238,7 +255,10 @@ async function materializeFiles(files: MaterializedFile[]): Promise<void> {
 }
 
 async function ensureFileContent(filePath: string, expectedContent: string): Promise<void> {
-  const currentContent = await readFile(filePath, "utf8").catch(() => undefined);
+  const currentContent = await readFile(filePath, "utf8").catch((error) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
   if (currentContent === expectedContent) {
     return;
   }
@@ -298,6 +318,7 @@ function buildRecoveryJournal(input: {
   operation: RecoveryJournal["operation"];
   created_at: string;
   files: MaterializedFile[];
+  append_entries?: RecoveryJournalAppendEntry[];
 }): RecoveryJournal {
   return {
     version: 1,
@@ -307,11 +328,30 @@ function buildRecoveryJournal(input: {
       relative_path: relativeStorePath(input.rootDir, file.path),
       content: file.content,
     })),
+    append_entries: input.append_entries,
   };
 }
 
 async function writeRecoveryJournal(filePath: string, journal: RecoveryJournal): Promise<void> {
   await writeTextFile(filePath, `${JSON.stringify(journal, null, 2)}\n`);
+}
+
+async function replayRecoveryJournalEntries(
+  rootDir: string,
+  entries: RecoveryJournalAppendEntry[] | undefined,
+): Promise<void> {
+  if (!entries || entries.length === 0) {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (entry.kind === "validation_log") {
+      await appendValidationLog(rootDir, entry.entry);
+      continue;
+    }
+
+    await appendAuditChange(rootDir, entry.entry);
+  }
 }
 
 async function recoverPendingJournal(rootDir: string, filePath: string): Promise<boolean> {
@@ -323,6 +363,7 @@ async function recoverPendingJournal(rootDir: string, filePath: string): Promise
   const parsed = JSON.parse(source) as Partial<RecoveryJournal>;
   const files = parseRecoveryJournalFiles(rootDir, parsed.files);
   await materializeFiles(files);
+  await replayRecoveryJournalEntries(rootDir, parsed.append_entries);
   await rm(filePath, { force: true });
   return true;
 }
@@ -734,6 +775,115 @@ function buildConversationPreferenceWriteFiles(input: {
   ];
 }
 
+function buildConversationPreferenceWriteValidationIssues(input: {
+  source_record: SourceRecord;
+  intake: ConversationPreferenceIntakeArtifacts;
+  contradiction?: Contradiction;
+  contradiction_resolution?: ContradictionResolution;
+  ratification_record: RatificationRecord;
+  diagnostic?: Diagnostic;
+  canonical_record?: CanonicalMemoryObject;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): ValidationIssue[] {
+  return [
+    input.source_record,
+    ...(input.intake.agent_identity ? [input.intake.agent_identity] : []),
+    ...(input.intake.owner_identity ? [input.intake.owner_identity] : []),
+    ...(input.intake.runtime_instance ? [input.intake.runtime_instance] : []),
+    ...(input.intake.runtime_session ? [input.intake.runtime_session] : []),
+    ...(input.intake.conversation_thread ? [input.intake.conversation_thread] : []),
+    input.intake.observation,
+    input.intake.episode,
+    input.intake.subject_entity,
+    input.intake.preference_entity,
+    input.intake.preference_relation,
+    input.intake.world_claim,
+    ...(input.contradiction ? [input.contradiction] : []),
+    input.intake.wiki_page,
+    input.intake.wiki_claim,
+    input.intake.proposal,
+    input.intake.disposition_record,
+    input.ratification_record,
+    ...(input.diagnostic ? [input.diagnostic] : []),
+    ...(input.canonical_record ? [input.canonical_record] : []),
+    ...input.projection.artifacts,
+    input.projection.manifest,
+    ...(input.contradiction_resolution ? [input.contradiction_resolution] : []),
+  ].flatMap((record) => validateCoreRecord(record));
+}
+
+function buildConversationPreferenceAuditEntries(input: {
+  now: string;
+  source_record: SourceRecord;
+  intake: ConversationPreferenceIntakeArtifacts;
+  ratification_record: RatificationRecord;
+  canonical_record?: CanonicalMemoryObject;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+  conflicting_world_claim?: WorldClaim;
+}): AuditChangeEntry[] {
+  const entries: AuditChangeEntry[] = [
+    {
+      entry_id: `audit:${input.intake.proposal.id}:record_observation`,
+      at: input.now,
+      operation: "record_observation",
+      record_id: input.intake.observation.id,
+      record_kind: input.intake.observation.kind,
+      record_layer: input.intake.observation.layer,
+      detail: "Recorded observation from conversation preference input.",
+      related_refs: [input.source_record.id],
+    },
+  ];
+
+  if (input.canonical_record) {
+    entries.push(
+      {
+        entry_id: `audit:${input.intake.proposal.id}:governance_accept`,
+        at: input.now,
+        operation: "governance_accept",
+        record_id: input.ratification_record.id,
+        record_kind: input.ratification_record.kind,
+        record_layer: input.ratification_record.layer,
+        detail: "Baseline governance approved create proposal into canon.",
+        related_refs: [input.intake.proposal.id],
+      },
+      {
+        entry_id: `audit:${input.intake.proposal.id}:canon_apply_create`,
+        at: input.now,
+        operation: "canon_apply_create",
+        record_id: input.canonical_record.id,
+        record_kind: input.canonical_record.kind,
+        record_layer: input.canonical_record.layer,
+        detail: "Applied approved create proposal into canonical memory.",
+        related_refs: [input.intake.proposal.id, input.ratification_record.id],
+      },
+    );
+  } else {
+    entries.push({
+      entry_id: `audit:${input.intake.proposal.id}:governance_reject`,
+      at: input.now,
+      operation: "governance_reject",
+      record_id: input.ratification_record.id,
+      record_kind: input.ratification_record.kind,
+      record_layer: input.ratification_record.layer,
+      detail: "Governance rejected canonical promotion and left the signal queued for review.",
+      related_refs: [input.intake.proposal.id, ...(input.conflicting_world_claim ? [input.conflicting_world_claim.id] : [])],
+    });
+  }
+
+  entries.push({
+    entry_id: `audit:${input.intake.proposal.id}:projection_compile`,
+    at: input.now,
+    operation: "projection_compile",
+    record_id: input.projection.manifest.id,
+    record_kind: input.projection.manifest.kind,
+    record_layer: input.projection.manifest.layer,
+    detail: "Recompiled runtime projection artifacts for the conversation preference flow.",
+    related_refs: input.projection.artifacts.map((artifact) => artifact.id),
+  });
+
+  return entries;
+}
+
 function buildResolutionApplicationFiles(input: {
   rootDir: string;
   paths: ConversationPreferenceStorePaths;
@@ -777,6 +927,100 @@ function buildResolutionApplicationFiles(input: {
       path: input.paths.projection_manifest,
       content: serializeCoreRecordContent(input.projection.manifest),
     },
+  ];
+}
+
+function buildResolutionApplicationValidationIssues(input: {
+  applied: ReturnType<typeof applyAcceptedContradictionResolution>;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): ValidationIssue[] {
+  return [
+    input.applied.existing_claim,
+    input.applied.candidate_claim,
+    input.applied.contradiction,
+    input.applied.resolution,
+    ...input.projection.artifacts,
+    input.projection.manifest,
+  ].flatMap((record) => validateCoreRecord(record));
+}
+
+function buildResolutionApplicationAuditEntries(input: {
+  now: string;
+  applied: ReturnType<typeof applyAcceptedContradictionResolution>;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): AuditChangeEntry[] {
+  return [
+    {
+      entry_id: `audit:${input.applied.resolution.id}:world_resolution_apply`,
+      at: input.now,
+      operation: "world_resolution_apply",
+      record_id: input.applied.resolution.id,
+      record_kind: input.applied.resolution.kind,
+      record_layer: input.applied.resolution.layer,
+      detail: `Applied contradiction resolution strategy ${input.applied.resolution.strategy} and recompiled projection.`,
+      related_refs: [
+        input.applied.contradiction.id,
+        input.applied.existing_claim.id,
+        input.applied.candidate_claim.id,
+        input.projection.manifest.id,
+      ],
+    },
+  ];
+}
+
+function assertNoValidationIssues(issues: ValidationIssue[], context: string): void {
+  if (issues.length === 0) {
+    return;
+  }
+
+  throw new ValidationError(`Invalid ${context}`, issues);
+}
+
+function buildConversationPreferenceAppendEntries(input: {
+  now: string;
+  validation_scope: string;
+  proposal_id: string;
+  validation_issues: ValidationIssue[];
+  audit_entries: AuditChangeEntry[];
+}): RecoveryJournalAppendEntry[] {
+  return [
+    {
+      kind: "validation_log",
+      entry: {
+        entry_id: `validation:${input.proposal_id}`,
+        at: input.now,
+        scope: input.validation_scope,
+        issues: input.validation_issues,
+      },
+    },
+    ...input.audit_entries.map((entry) => ({
+      kind: "audit_change" as const,
+      entry,
+    })),
+  ];
+}
+
+function buildResolutionApplicationAppendEntries(input: {
+  now: string;
+  validation_scope: string;
+  resolution_id: string;
+  validation_issues: ValidationIssue[];
+  audit_entries: AuditChangeEntry[];
+}): RecoveryJournalAppendEntry[] {
+  return [
+    {
+      kind: "validation_log",
+      entry: {
+        entry_id: `validation:${input.resolution_id}`,
+        at: input.now,
+        scope: input.validation_scope,
+        issues: input.validation_issues,
+      },
+    },
+    ...input.audit_entries.map((entry) => ({
+      kind: "audit_change" as const,
+      entry,
+    })),
   ];
 }
 
@@ -1529,6 +1773,33 @@ export async function writeConversationPreferenceFlowToStore(
     canonical_record: canonicalWorkflow.created_record,
     projection,
   });
+  const validation_issues = buildConversationPreferenceWriteValidationIssues({
+    source_record,
+    intake,
+    contradiction,
+    contradiction_resolution,
+    ratification_record: canonicalWorkflow.ratification_record,
+    diagnostic: canonicalWorkflow.diagnostic,
+    canonical_record: canonicalWorkflow.created_record,
+    projection,
+  });
+  assertNoValidationIssues(validation_issues, "conversation preference write flow");
+  const audit_entries = buildConversationPreferenceAuditEntries({
+    now: input.now,
+    source_record,
+    intake,
+    ratification_record: canonicalWorkflow.ratification_record,
+    canonical_record: canonicalWorkflow.created_record,
+    projection,
+    conflicting_world_claim,
+  });
+  const append_entries = buildConversationPreferenceAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference",
+    proposal_id: intake.proposal.id,
+    validation_issues,
+    audit_entries,
+  });
   const journalPath = recoveryJournalPath(rootDir, "conversation_preference_write", input.ids.proposal);
   await writeRecoveryJournal(
     journalPath,
@@ -1537,94 +1808,12 @@ export async function writeConversationPreferenceFlowToStore(
       operation: "conversation_preference_write",
       created_at: input.now,
       files,
+      append_entries,
     }),
   );
   await materializeFiles(files);
+  await replayRecoveryJournalEntries(rootDir, append_entries);
   await rm(journalPath, { force: true });
-
-  const validation_issues = [
-    source_record,
-    ...(intake.agent_identity ? [intake.agent_identity] : []),
-    ...(intake.owner_identity ? [intake.owner_identity] : []),
-    ...(intake.runtime_instance ? [intake.runtime_instance] : []),
-    ...(intake.runtime_session ? [intake.runtime_session] : []),
-    ...(intake.conversation_thread ? [intake.conversation_thread] : []),
-    intake.observation,
-    intake.episode,
-    intake.subject_entity,
-    intake.preference_entity,
-    intake.preference_relation,
-    intake.world_claim,
-    ...(contradiction ? [contradiction] : []),
-    intake.wiki_page,
-    intake.wiki_claim,
-    intake.proposal,
-    intake.disposition_record,
-    canonicalWorkflow.ratification_record,
-    ...(canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : []),
-    ...(canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : []),
-    ...projection.artifacts,
-    projection.manifest,
-    ...(contradiction_resolution ? [contradiction_resolution] : []),
-  ].flatMap((record) => validateCoreRecord(record));
-
-  await appendValidationLog(rootDir, {
-    at: input.now,
-    scope: input.validation_scope ?? "workflow:conversation-preference",
-    issues: validation_issues,
-  });
-
-  await appendAuditChange(rootDir, {
-    at: input.now,
-    operation: "record_observation",
-    record_id: intake.observation.id,
-    record_kind: intake.observation.kind,
-    record_layer: intake.observation.layer,
-    detail: "Recorded observation from conversation preference input.",
-    related_refs: [source_record.id],
-  });
-
-  if (canonicalWorkflow.accepted && canonicalWorkflow.created_record) {
-    await appendAuditChange(rootDir, {
-      at: input.now,
-      operation: "governance_accept",
-      record_id: canonicalWorkflow.ratification_record.id,
-      record_kind: canonicalWorkflow.ratification_record.kind,
-      record_layer: canonicalWorkflow.ratification_record.layer,
-      detail: "Baseline governance approved create proposal into canon.",
-      related_refs: [intake.proposal.id],
-    });
-
-    await appendAuditChange(rootDir, {
-      at: input.now,
-      operation: "canon_apply_create",
-      record_id: canonicalWorkflow.created_record.id,
-      record_kind: canonicalWorkflow.created_record.kind,
-      record_layer: canonicalWorkflow.created_record.layer,
-      detail: "Applied approved create proposal into canonical memory.",
-      related_refs: [intake.proposal.id, canonicalWorkflow.ratification_record.id],
-    });
-  } else {
-    await appendAuditChange(rootDir, {
-      at: input.now,
-      operation: "governance_reject",
-      record_id: canonicalWorkflow.ratification_record.id,
-      record_kind: canonicalWorkflow.ratification_record.kind,
-      record_layer: canonicalWorkflow.ratification_record.layer,
-      detail: "Governance rejected canonical promotion and left the signal queued for review.",
-      related_refs: [intake.proposal.id, ...(conflicting_world_claim ? [conflicting_world_claim.id] : [])],
-    });
-  }
-
-  await appendAuditChange(rootDir, {
-    at: input.now,
-    operation: "projection_compile",
-    record_id: projection.manifest.id,
-    record_kind: projection.manifest.kind,
-    record_layer: projection.manifest.layer,
-    detail: "Compiled projection fragments and manifest for OpenClaw bootstrap package.",
-    related_refs: projection.artifacts.map((artifact) => artifact.id),
-  });
 
   return {
     reused: false,
@@ -1755,6 +1944,23 @@ export async function applyConversationPreferenceResolutionToStore(
     applied,
     projection,
   });
+  const validation_issues = buildResolutionApplicationValidationIssues({
+    applied,
+    projection,
+  });
+  assertNoValidationIssues(validation_issues, "conversation preference resolution application");
+  const audit_entries = buildResolutionApplicationAuditEntries({
+    now: input.now,
+    applied,
+    projection,
+  });
+  const append_entries = buildResolutionApplicationAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference:resolution-application",
+    resolution_id: applied.resolution.id,
+    validation_issues,
+    audit_entries,
+  });
   const journalPath = recoveryJournalPath(
     rootDir,
     "conversation_preference_resolution_apply",
@@ -1767,35 +1973,12 @@ export async function applyConversationPreferenceResolutionToStore(
       operation: "conversation_preference_resolution_apply",
       created_at: input.now,
       files,
+      append_entries,
     }),
   );
   await materializeFiles(files);
+  await replayRecoveryJournalEntries(rootDir, append_entries);
   await rm(journalPath, { force: true });
-
-  const validation_issues = [
-    applied.existing_claim,
-    applied.candidate_claim,
-    applied.contradiction,
-    applied.resolution,
-    ...projection.artifacts,
-    projection.manifest,
-  ].flatMap((record) => validateCoreRecord(record));
-
-  await appendValidationLog(rootDir, {
-    at: input.now,
-    scope: input.validation_scope ?? "workflow:conversation-preference:resolution-application",
-    issues: validation_issues,
-  });
-
-  await appendAuditChange(rootDir, {
-    at: input.now,
-    operation: "world_resolution_apply",
-    record_id: applied.resolution.id,
-    record_kind: applied.resolution.kind,
-    record_layer: applied.resolution.layer,
-    detail: `Applied contradiction resolution strategy ${applied.resolution.strategy} and recompiled projection.`,
-    related_refs: [applied.contradiction.id, applied.existing_claim.id, applied.candidate_claim.id, projection.manifest.id],
-  });
 
   return {
     reused: false,

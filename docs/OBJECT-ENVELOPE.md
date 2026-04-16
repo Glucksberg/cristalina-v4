@@ -73,6 +73,8 @@ The exact optional fields may vary by family.
 
 The axes may not disappear.
 
+`upstream_refs` is cumulative state provenance for the current object, not strictly a list of temporally earlier records.
+
 ---
 
 ## 4. Required Fields

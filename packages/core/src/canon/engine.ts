@@ -1,4 +1,5 @@
 import type { CanonicalMemoryObject, Proposal, RatificationRecord, TemporalState } from "../types.js";
+import { isLegalGovernanceTransition } from "../transitions.js";
 
 function referenceMatchesCanonicalRecord(
   reference: Proposal["target_ref"],
@@ -26,6 +27,14 @@ function assertApprovedRatificationMatchesProposal(
 
   if (ratification_record.proposal_ref !== proposal.id) {
     throw new Error(`Ratification ${ratification_record.id} does not belong to proposal ${proposal.id}`);
+  }
+
+  if (proposal.governance_state !== "proposed") {
+    throw new Error(`Proposal ${proposal.id} must be in proposed state before canon application`);
+  }
+
+  if (!isLegalGovernanceTransition(proposal.governance_state, "ratified")) {
+    throw new Error(`Proposal ${proposal.id} cannot transition from ${proposal.governance_state} to ratified`);
   }
 }
 
@@ -76,6 +85,10 @@ function closeTemporalState(record: CanonicalMemoryObject, now: string): Tempora
     valid_to: now,
     temporal_confidence: record.temporal_state?.temporal_confidence ?? null,
   };
+}
+
+function mergeLifecycleRefs(existingRefs: string[] | undefined, refsToAdd: string[]): string[] {
+  return [...new Set([...(existingRefs ?? []), ...refsToAdd])];
 }
 
 export function applyApprovedCanonicalCreate(input: {
@@ -169,7 +182,7 @@ export function applyApprovedCanonicalRevise(input: {
   });
 
   revised_record.supersedes_ref = input.existing_record.id;
-  revised_record.upstream_refs = [...new Set([...(revised_record.upstream_refs ?? []), input.existing_record.id])];
+  revised_record.upstream_refs = mergeLifecycleRefs(revised_record.upstream_refs, [input.existing_record.id]);
 
   const superseded_record: CanonicalMemoryObject = {
     ...input.existing_record,
@@ -177,7 +190,11 @@ export function applyApprovedCanonicalRevise(input: {
     governance_state: "superseded",
     temporal_state: closeTemporalState(input.existing_record, input.now),
     superseded_by_ref: revised_record.id,
-    upstream_refs: [...new Set([...(input.existing_record.upstream_refs ?? []), input.proposal.id, input.ratification_record.id, revised_record.id])],
+    upstream_refs: mergeLifecycleRefs(input.existing_record.upstream_refs, [
+      input.proposal.id,
+      input.ratification_record.id,
+      revised_record.id,
+    ]),
   };
 
   return {
@@ -203,13 +220,17 @@ export function applyApprovedCanonicalSupersede(input: {
     existing_record: input.existing_record,
   });
 
+  // `supersede` in the executable baseline means retirement without a replacement record.
   return {
     ...input.existing_record,
     updated_at: input.now,
     governance_state: "superseded",
     temporal_state: closeTemporalState(input.existing_record, input.now),
     superseded_by_ref: null,
-    upstream_refs: [...new Set([...(input.existing_record.upstream_refs ?? []), input.proposal.id, input.ratification_record.id])],
+    upstream_refs: mergeLifecycleRefs(input.existing_record.upstream_refs, [
+      input.proposal.id,
+      input.ratification_record.id,
+    ]),
   };
 }
 

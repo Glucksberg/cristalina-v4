@@ -1,8 +1,8 @@
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { MEMORY_OBJECT_KINDS } from "../types.js";
+import { CANONICAL_CLAIM_KINDS } from "../types.js";
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
@@ -22,6 +22,7 @@ import type {
 } from "../types.js";
 import { STORAGE_LAYOUT } from "../storage.js";
 import { assertCoreRecord, assertStoreManifest } from "../validation.js";
+import { atomicWriteText, isMissingFileError } from "./atomic-write.js";
 import { createStoreManifest, parseStoreManifestYaml, serializeStoreManifestYaml, type StoreManifest } from "./manifest.js";
 
 const CANON_KIND_DIRECTORIES = {
@@ -35,14 +36,14 @@ const CANON_KIND_DIRECTORIES = {
   identity_trait: STORAGE_LAYOUT.canon.identityTraits,
 } as const;
 
-const CANONICAL_CLAIM_KINDS = new Set(
-  MEMORY_OBJECT_KINDS.filter((kind) => !["entity", "relation", "episode"].includes(kind)),
+const CANONICAL_CLAIM_KIND_SET = new Set(
+  CANONICAL_CLAIM_KINDS,
 );
 
 function isCanonicalMemoryRecord(record: CoreRecord): record is CanonicalMemoryObject {
   return (
     record.layer === "canon" &&
-    CANONICAL_CLAIM_KINDS.has(record.kind as (typeof MEMORY_OBJECT_KINDS)[number]) &&
+    CANONICAL_CLAIM_KIND_SET.has(record.kind as CanonicalMemoryObject["kind"]) &&
     "statement" in record &&
     typeof record.statement === "string" &&
     "governance_state" in record &&
@@ -136,7 +137,10 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
   const manifestPath = resolveWithinRoot(rootDir, STORAGE_LAYOUT.manifest);
   const existingManifest = await access(manifestPath)
     .then(async () => readManifest(rootDir))
-    .catch(() => undefined);
+    .catch((error) => {
+      if (isMissingFileError(error)) return undefined;
+      throw error;
+    });
   if (existingManifest) {
     return existingManifest;
   }
@@ -198,10 +202,10 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
   await Promise.all(directories.map((directory) => mkdir(join(rootDir, directory), { recursive: true })));
 
   await writeManifest(rootDir, manifest);
-  await writeFile(join(rootDir, STORAGE_LAYOUT.wiki.index), "# Index\n", "utf8");
-  await writeFile(join(rootDir, STORAGE_LAYOUT.wiki.log), "# Log\n", "utf8");
-  await writeFile(join(rootDir, STORAGE_LAYOUT.audits.changes), "", "utf8");
-  await writeFile(join(rootDir, STORAGE_LAYOUT.audits.validation), "", "utf8");
+  await atomicWriteText(join(rootDir, STORAGE_LAYOUT.wiki.index), "# Index\n");
+  await atomicWriteText(join(rootDir, STORAGE_LAYOUT.wiki.log), "# Log\n");
+  await atomicWriteText(join(rootDir, STORAGE_LAYOUT.audits.changes), "");
+  await atomicWriteText(join(rootDir, STORAGE_LAYOUT.audits.validation), "");
 
   return manifest;
 }
@@ -210,7 +214,7 @@ export async function writeManifest(rootDir: string, manifest: StoreManifest): P
   assertStoreManifest(manifest);
   const filePath = resolveWithinRoot(rootDir, STORAGE_LAYOUT.manifest);
   await ensureParent(filePath);
-  await writeFile(filePath, serializeStoreManifestYaml(manifest), "utf8");
+  await atomicWriteText(filePath, serializeStoreManifestYaml(manifest));
 }
 
 export async function readManifest(rootDir: string): Promise<StoreManifest> {
@@ -225,7 +229,7 @@ export async function writeCoreRecord(rootDir: string, record: CoreRecord): Prom
   assertCoreRecord(record);
   const filePath = recordFilePath(rootDir, record);
   await ensureParent(filePath);
-  await writeFile(filePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  await atomicWriteText(filePath, `${JSON.stringify(record, null, 2)}\n`);
   return filePath;
 }
 
@@ -242,7 +246,10 @@ export function coreRecordPath(rootDir: string, record: CoreRecord): string {
 
 async function collectJsonFiles(rootDir: string, relativeDir: string): Promise<string[]> {
   const absoluteDir = resolveWithinRoot(rootDir, relativeDir);
-  const entries = await readdir(absoluteDir, { withFileTypes: true }).catch(() => []);
+  const entries = await readdir(absoluteDir, { withFileTypes: true }).catch((error) => {
+    if (isMissingFileError(error)) return [];
+    throw error;
+  });
   const nested = await Promise.all(
     entries.map(async (entry) => {
       const nextRelative = join(relativeDir, entry.name);

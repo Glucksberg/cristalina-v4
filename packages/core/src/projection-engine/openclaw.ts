@@ -49,14 +49,6 @@ function renderWorldSection(records: WorldClaim[]): string[] {
   });
 }
 
-function renderWorldTraceSection(records: WorldClaim[]): string[] {
-  if (records.length === 0) return ["- (none)"];
-  return records.map((record) => {
-    const temporal = record.temporal_state?.temporal_status ?? "unresolved";
-    return `- [world:${record.id}] (${record.epistemic_state}; ${temporal}) ${record.statement}`;
-  });
-}
-
 function renderRuntimeSection(input: OpenClawBootstrapCompilationInput["runtime_identity"]): string[] {
   if (!input) return ["- (none)"];
 
@@ -324,7 +316,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     ...renderWorldSection(active_world_claims),
     "",
     "## World Trace",
-    ...renderWorldTraceSection(traced_world_claims),
+    ...renderWorldSection(traced_world_claims),
     "",
     "## Episodes",
     ...renderEpisodeSection(episodes),

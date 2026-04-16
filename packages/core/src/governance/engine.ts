@@ -1,5 +1,5 @@
 import type { CanonicalMemoryObject, Diagnostic, Proposal, RatificationRecord, Reference } from "../types.js";
-import { MEMORY_OBJECT_KINDS } from "../types.js";
+import { CANONICAL_CLAIM_KINDS } from "../types.js";
 import { PROMOTION_GATES, type PromotionGate } from "../transitions.js";
 
 export interface GateEvaluation {
@@ -14,8 +14,6 @@ export interface GovernanceEvaluationResult {
   diagnostic?: Diagnostic;
   accepted: boolean;
 }
-
-const CANONICAL_CLAIM_KINDS = MEMORY_OBJECT_KINDS.filter((kind) => !["entity", "relation", "episode"].includes(kind));
 
 function normalizeStatement(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -35,6 +33,10 @@ function findCanonicalTarget(
 ): CanonicalMemoryObject | undefined {
   if (!targetRef) return undefined;
   return records.find((record) => referenceMatchesRecord(record, targetRef));
+}
+
+function proposalHasExplicitCanonicalTarget(proposal: Proposal): boolean {
+  return proposal.target_ref !== null && proposal.target_ref !== undefined;
 }
 
 function buildFailureDiagnostic(input: {
@@ -79,30 +81,45 @@ export function evaluateCanonicalProposal(input: {
   const payloadKind = typeof payload.kind === "string" ? payload.kind : null;
   const targetRecord = findCanonicalTarget(existingRecords, proposal.target_ref);
   const payloadStatement = typeof payload.statement === "string" ? payload.statement : null;
+  const hasExplicitTarget = proposalHasExplicitCanonicalTarget(proposal);
+  const isCreateOperation = proposal.operation === "create";
+  const isTargetedOperation = proposal.operation === "revise" || proposal.operation === "supersede";
+  const hasStructuralShape =
+    proposal.target_layer === "canon" &&
+            CANONICAL_CLAIM_KINDS.includes(proposal.candidate_kind as CanonicalMemoryObject["kind"]) &&
+    payloadKind === proposal.candidate_kind &&
+    (
+      ((proposal.operation === "create" || proposal.operation === "revise") && typeof payload.statement === "string") ||
+      proposal.operation === "supersede"
+    );
+  const hasLegalTargetContract =
+    (isCreateOperation && !hasExplicitTarget) ||
+    (
+      isTargetedOperation &&
+      hasExplicitTarget &&
+      targetRecord !== undefined &&
+      targetRecord.kind === proposal.candidate_kind &&
+      targetRecord.kind === payloadKind
+    );
 
   const gate_results: GateEvaluation[] = PROMOTION_GATES.map((gate) => {
     switch (gate) {
       case "structural":
         return {
           gate,
-          passed:
-            proposal.target_layer === "canon" &&
-            CANONICAL_CLAIM_KINDS.includes(proposal.candidate_kind as (typeof CANONICAL_CLAIM_KINDS)[number]) &&
-            payloadKind === proposal.candidate_kind &&
-            (
-              ((proposal.operation === "create" || proposal.operation === "revise") && typeof payload.statement === "string") ||
-              proposal.operation === "supersede"
-            ) &&
-            (
-              proposal.operation === "create" ||
-              (
-                (proposal.operation === "revise" || proposal.operation === "supersede") &&
-                targetRecord !== undefined &&
-                targetRecord.kind === proposal.candidate_kind &&
-                targetRecord.kind === payloadKind
-              )
-            ),
-          reason_code: "structural_contract",
+          passed: hasStructuralShape && hasLegalTargetContract,
+          reason_code:
+            !hasStructuralShape
+              ? "structural_contract"
+              : isCreateOperation && hasExplicitTarget
+                ? "create_must_not_target_existing_record"
+                : isTargetedOperation && !hasExplicitTarget
+                  ? "targeted_operations_require_target_ref"
+                  : targetRecord === undefined
+                    ? "missing_target_record"
+                    : targetRecord.kind !== proposal.candidate_kind || targetRecord.kind !== payloadKind
+                      ? "target_kind_mismatch"
+                      : "structural_contract",
         };
       case "evidence":
         return {
@@ -201,11 +218,15 @@ export function evaluateCanonicalProposal(input: {
           reason_code: "unsupported_operation",
         };
       case "policy":
+        {
+          const isPublicSafe = proposal.visibility_state.privacy_scope === "public_safe";
+          const targetIsCanon = proposal.target_layer === "canon";
         return {
           gate,
-          passed: proposal.visibility_state.privacy_scope !== "public_safe" || proposal.target_layer === "canon",
+          passed: !isPublicSafe || targetIsCanon,
           reason_code: "policy_baseline",
         };
+        }
       case "ratification":
         return {
           gate,
@@ -251,16 +272,4 @@ export function evaluateCanonicalProposal(input: {
     diagnostic,
     accepted,
   };
-}
-
-export function evaluateCanonCreateProposal(input: {
-  proposal: Proposal;
-  existing_canon_records?: CanonicalMemoryObject[];
-  blocking_world_conflict_ref?: string | null;
-  now: string;
-  actor: string;
-  ratification_id: string;
-  diagnostic_id?: string;
-}): GovernanceEvaluationResult {
-  return evaluateCanonicalProposal(input);
 }

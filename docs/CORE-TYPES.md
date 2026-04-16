@@ -151,6 +151,9 @@ Optional but strongly expected by many families:
 - `temporal_state`
 - `upstream_refs`
 
+`upstream_refs` is cumulative provenance for the current record state, not a strict chronological "came before" list.
+It may include creation inputs and later lifecycle refs such as ratifications, replacements, or reconciliation events.
+
 ### 4.2 Reference
 
 Reference records should preserve at least:
@@ -408,6 +411,10 @@ Minimum fields:
 
 For claim-like promotion into canon, `candidate_payload` should preserve the same `semantic_slot` used by the upstream world claim so governance can apply conflict gates against the right active memory slot.
 
+For `Proposal`, `governance_state` describes the proposal stage before ratification, not the lifecycle state of a canonical record.
+
+In the executable baseline, `supersede` means retirement without replacement; `revise` is the operation that creates a successor record.
+
 ### 4.14 `CurationPacket`
 
 Represents a governance packet presented for human or approved higher-order review.
@@ -567,6 +574,8 @@ Minimum fields:
 - `upstream_refs`
 - `created_at`
 
+Here `upstream_refs` should capture the material refs that led to this derived artifact, not just immediately previous records.
+
 ### 4.23 `ProjectionManifest`
 
 Represents the common metadata contract for a compiled runtime package.
@@ -585,6 +594,8 @@ Minimum fields:
 - `policy_snapshot_ref`
 - `upstream_refs`
 - `artifact_refs`
+
+For manifests, `upstream_refs` should remain the cumulative source set that materially shaped the compiled package.
 
 ### 4.24 `Diagnostic`
 

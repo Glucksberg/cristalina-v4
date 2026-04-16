@@ -13,6 +13,8 @@ import type {
 } from "./types.js";
 import {
   ACTOR_KINDS,
+  AUTHORITATIVE_HOMES,
+  CANONICAL_CLAIM_KINDS,
   DISPOSITION_OUTCOME_REF_REQUIREMENTS,
   DISPOSITION_OUTCOME_TARGET_LAYER,
   DISPOSITION_OUTCOMES,
@@ -39,17 +41,6 @@ import {
 } from "./schema-runtime.js";
 import type { StoreManifest } from "./store/manifest.js";
 
-const AUTHORITATIVE_HOMES = [
-  "raw",
-  "runtime",
-  "world",
-  "canon",
-  "wiki",
-  "governance",
-] as const;
-
-type AuthoritativeHome = typeof AUTHORITATIVE_HOMES[number];
-
 export interface ValidationIssue {
   path: string;
   message: string;
@@ -66,11 +57,6 @@ export class ValidationError extends Error {
 }
 
 const SAFE_RECORD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const CANONICAL_MEMORY_GOVERNANCE_STATES = [
-  "ratified",
-  "superseded",
-  "archived",
-] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -394,7 +380,7 @@ function validateWorldClaim(value: unknown): ValidationIssue[] {
   if (!isRecord(value)) return issues;
   if (value.layer !== "world") issues.push({ path: "layer", message: 'expected "world"' });
   if (value.authoritative_home !== "world") issues.push({ path: "authoritative_home", message: 'expected "world"' });
-  if (!isEnumValue(value.kind, MEMORY_OBJECT_KINDS.filter((kind) => !["entity", "relation", "episode"].includes(kind)))) {
+  if (!isEnumValue(value.kind, CANONICAL_CLAIM_KINDS)) {
     issues.push({ path: "kind", message: "expected world-claim kind" });
   }
   pushRequiredString(issues, value, "statement");
