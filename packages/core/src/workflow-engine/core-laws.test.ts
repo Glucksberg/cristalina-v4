@@ -682,9 +682,49 @@ test("openclaw projection suppresses runtime-private records outside the active 
   assert.ok(projection.manifest.suppressed_refs?.includes("wcl_runtime_private_foreign"));
   assert.ok(
     projection.manifest.suppressed_records?.some(
-      (entry) => entry.id === "wcl_runtime_private_foreign" && entry.reason_code === "runtime_instance_mismatch",
+      (entry) => entry.id === "wcl_runtime_private_foreign" && entry.reason_code === "runtime_private_runtime_instance_mismatch",
     ),
   );
+});
+
+test("projection manifests require declared context refs and coherent suppression metadata", () => {
+  const issues = validateCoreRecord({
+    id: "pmf_invalid_projection_001",
+    kind: "projection_manifest",
+    layer: "derived",
+    authoritative_home: "governance",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "projection_manifest",
+      source_ref: "derived/manifests/pmf_invalid_projection_001.json",
+      evidence_refs: ["mem_test_001"],
+    },
+    adapter: "openclaw",
+    projection_profile: "bootstrap",
+    audience: "runtime",
+    read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
+    actor_identity_ref: "actor_agent_test_001",
+    runtime_instance_ref: "runtime_test_001",
+    context_refs: ["runtime_test_001"],
+    suppressed_refs: ["foreign_world_claim"],
+    suppressed_records: [
+      {
+        id: "other_world_claim",
+        kind: "preference",
+        reason_code: "owner_private_runtime_instance_mismatch",
+      },
+    ],
+    artifact_refs: ["part_openclaw_world_invalid_001"],
+    upstream_refs: ["mem_test_001"],
+  });
+
+  assert.ok(issues.some((issue) => issue.path === "context_refs" && issue.message.includes("actor_agent_test_001")));
+  assert.ok(issues.some((issue) => issue.path === "suppressed_refs" && issue.message.includes("foreign_world_claim")));
+  assert.ok(issues.some((issue) => issue.path === "suppressed_records" && issue.message.includes("other_world_claim")));
 });
 
 test("actor identities reject runtime-private visibility", () => {

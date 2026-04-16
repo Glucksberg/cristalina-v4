@@ -8,7 +8,7 @@ import type {
   VisibilityState,
 } from "../types.js";
 
-export const DEFAULT_PROJECTION_READ_POLICY_VERSION = "projection-read-v1";
+export const DEFAULT_PROJECTION_READ_POLICY_VERSION = "projection-read-v2";
 
 export interface ProjectionReadContext {
   adapter: Exclude<RuntimeKind, "generic">;
@@ -54,7 +54,7 @@ export interface ProjectionClaimPartitionResult<T extends ProjectionTraceableCla
 }
 
 function readContextMismatch(recordRef: string | null | undefined, contextRef: string | null | undefined): boolean {
-  return typeof recordRef === "string" && typeof contextRef === "string" && recordRef !== contextRef;
+  return typeof recordRef === "string" && recordRef !== contextRef;
 }
 
 function resolveRecordRuntimeContext(record: ProjectionReadableRecord): {
@@ -78,11 +78,70 @@ function resolveRecordRuntimeContext(record: ProjectionReadableRecord): {
   };
 }
 
+function evaluateScopedContextDecision(input: {
+  scope: "runtime_private" | "owner_private";
+  hasScopedContext: boolean;
+  recordContext: ReturnType<typeof resolveRecordRuntimeContext>;
+  context: ProjectionReadContext;
+}): ProjectionReadDecision {
+  const scopePrefix = input.scope;
+
+  if (!input.hasScopedContext) {
+    if (input.scope === "runtime_private") {
+      return {
+        include: false,
+        reason_code: "runtime_private_missing_context_binding",
+      };
+    }
+
+    return {
+      include: true,
+      reason_code: "owner_private_unscoped",
+    };
+  }
+
+  if (!input.context.runtime_instance_ref && !input.context.runtime_session_ref && !input.context.conversation_thread_ref) {
+    return {
+      include: false,
+      reason_code: `${scopePrefix}_requires_projection_context`,
+    };
+  }
+
+  if (readContextMismatch(input.recordContext.runtime_instance_ref, input.context.runtime_instance_ref)) {
+    return {
+      include: false,
+      reason_code: `${scopePrefix}_runtime_instance_mismatch`,
+    };
+  }
+
+  if (readContextMismatch(input.recordContext.runtime_session_ref, input.context.runtime_session_ref)) {
+    return {
+      include: false,
+      reason_code: `${scopePrefix}_runtime_session_mismatch`,
+    };
+  }
+
+  if (readContextMismatch(input.recordContext.conversation_thread_ref, input.context.conversation_thread_ref)) {
+    return {
+      include: false,
+      reason_code: `${scopePrefix}_conversation_thread_mismatch`,
+    };
+  }
+
+  return {
+    include: true,
+    reason_code: `${scopePrefix}_context_match`,
+  };
+}
+
 export function evaluateProjectionReadDecision(
   record: ProjectionReadableRecord,
   context: ProjectionReadContext,
 ): ProjectionReadDecision {
-  if (record.visibility_state.privacy_scope !== "runtime_private") {
+  if (
+    record.visibility_state.privacy_scope !== "runtime_private" &&
+    record.visibility_state.privacy_scope !== "owner_private"
+  ) {
     return {
       include: true,
       reason_code: "scope_allows_projection",
@@ -96,45 +155,12 @@ export function evaluateProjectionReadDecision(
     recordContext.conversation_thread_ref,
   );
 
-  if (!hasScopedContext) {
-    return {
-      include: false,
-      reason_code: "runtime_private_missing_context_binding",
-    };
-  }
-
-  if (!context.runtime_instance_ref && !context.runtime_session_ref && !context.conversation_thread_ref) {
-    return {
-      include: false,
-      reason_code: "runtime_private_requires_projection_context",
-    };
-  }
-
-  if (readContextMismatch(recordContext.runtime_instance_ref, context.runtime_instance_ref)) {
-    return {
-      include: false,
-      reason_code: "runtime_instance_mismatch",
-    };
-  }
-
-  if (readContextMismatch(recordContext.runtime_session_ref, context.runtime_session_ref)) {
-    return {
-      include: false,
-      reason_code: "runtime_session_mismatch",
-    };
-  }
-
-  if (readContextMismatch(recordContext.conversation_thread_ref, context.conversation_thread_ref)) {
-    return {
-      include: false,
-      reason_code: "conversation_thread_mismatch",
-    };
-  }
-
-  return {
-    include: true,
-    reason_code: "runtime_private_context_match",
-  };
+  return evaluateScopedContextDecision({
+    scope: record.visibility_state.privacy_scope,
+    hasScopedContext,
+    recordContext,
+    context,
+  });
 }
 
 export function filterProjectionRecords<T extends ProjectionReadableRecord>(

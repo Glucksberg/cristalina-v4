@@ -641,13 +641,28 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   if (!isStringArray(value.context_refs) || !hasUniqueEntries(value.context_refs)) {
     issues.push({ path: "context_refs", message: "expected unique string array" });
   }
+  const declaredContextRefs = [
+    value.actor_identity_ref,
+    value.runtime_instance_ref,
+    value.runtime_session_ref,
+    value.conversation_thread_ref,
+  ].filter((entry): entry is string => typeof entry === "string");
+  if (isStringArray(value.context_refs)) {
+    for (const ref of declaredContextRefs) {
+      if (!value.context_refs.includes(ref)) {
+        issues.push({ path: "context_refs", message: `missing declared context ref: ${ref}` });
+      }
+    }
+  }
   if (value.suppressed_refs !== undefined && (!isStringArray(value.suppressed_refs) || !hasUniqueEntries(value.suppressed_refs))) {
     issues.push({ path: "suppressed_refs", message: "expected unique string array" });
   }
+  let suppressedRecordIds: string[] | undefined;
   if (value.suppressed_records !== undefined) {
     if (!Array.isArray(value.suppressed_records)) {
       issues.push({ path: "suppressed_records", message: "expected array" });
     } else {
+      suppressedRecordIds = [];
       for (const [index, entry] of value.suppressed_records.entries()) {
         if (!isRecord(entry)) {
           issues.push({ path: `suppressed_records[${index}]`, message: "expected object" });
@@ -656,6 +671,29 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
         pushRequiredString(issues, entry, "id", `suppressed_records[${index}].id`);
         pushRequiredString(issues, entry, "kind", `suppressed_records[${index}].kind`);
         pushRequiredString(issues, entry, "reason_code", `suppressed_records[${index}].reason_code`);
+        if (typeof entry.id === "string" && entry.id.length > 0) {
+          suppressedRecordIds.push(entry.id);
+        }
+      }
+    }
+  }
+  if ((value.suppressed_refs === undefined) !== (value.suppressed_records === undefined)) {
+    issues.push({
+      path: value.suppressed_refs === undefined ? "suppressed_refs" : "suppressed_records",
+      message: "suppressed_refs and suppressed_records must appear together",
+    });
+  }
+  if (isStringArray(value.suppressed_refs) && suppressedRecordIds) {
+    const suppressedRefSet = new Set(value.suppressed_refs);
+    const suppressedRecordSet = new Set(suppressedRecordIds);
+    for (const ref of suppressedRefSet) {
+      if (!suppressedRecordSet.has(ref)) {
+        issues.push({ path: "suppressed_refs", message: `missing suppressed_record for ref: ${ref}` });
+      }
+    }
+    for (const ref of suppressedRecordSet) {
+      if (!suppressedRefSet.has(ref)) {
+        issues.push({ path: "suppressed_records", message: `missing suppressed_ref for record: ${ref}` });
       }
     }
   }

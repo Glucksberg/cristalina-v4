@@ -130,6 +130,30 @@ test("writeConversationPreferenceFlowToStore rejects reuse with mismatched input
   );
 });
 
+test("writeConversationPreferenceFlowToStore rejects reuse with mismatched identity metadata", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(input);
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...input,
+        identity_context: {
+          ...input.identity_context!,
+          owner_label: "Other Owner",
+          thread_summary: "Changed summary",
+          message_refs: ["msg_test_changed_001"],
+        },
+      }),
+    /does not match input/,
+  );
+});
+
 test("writeConversationPreferenceFlowToStore repairs missing derived artifacts on rerun", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {

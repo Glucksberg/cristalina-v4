@@ -993,20 +993,39 @@ function assertLoadedFlowMatchesInput(
 
   if (loaded.source_record.id !== expectedSourceRecord.id) mismatches.push("source.id");
   if (loaded.source_record.content_ref !== expectedSourceRecord.content_ref) mismatches.push("source.content_ref");
+  if (loaded.source_record.provenance.source_type !== expectedSourceRecord.provenance.source_type) mismatches.push("source.source_type");
   if (loaded.source_record.provenance.source_ref !== expectedSourceRecord.provenance.source_ref) mismatches.push("source.source_ref");
+  if (loaded.source_record.provenance.actor_ref !== expectedSourceRecord.provenance.actor_ref) mismatches.push("source.actor_ref");
+  if (loaded.source_record.provenance.runtime_ref !== expectedSourceRecord.provenance.runtime_ref) mismatches.push("source.runtime_ref");
+  if (loaded.source_record.provenance.session_ref !== expectedSourceRecord.provenance.session_ref) mismatches.push("source.session_ref");
+  if (loaded.source_record.provenance.thread_ref !== expectedSourceRecord.provenance.thread_ref) mismatches.push("source.thread_ref");
   if (loaded.intake.observation.provenance.source_ref !== expectedIntake.observation.provenance.source_ref) mismatches.push("observation.provenance.source_ref");
+  if (loaded.intake.observation.provenance.source_type !== expectedIntake.observation.provenance.source_type) mismatches.push("observation.provenance.source_type");
   if (loaded.intake.observation.summary !== expectedIntake.observation.summary) mismatches.push("observation.summary");
+  if (loaded.intake.observation.runtime_instance_ref !== expectedIntake.observation.runtime_instance_ref) mismatches.push("observation.runtime_instance_ref");
+  if (loaded.intake.observation.runtime_session_ref !== expectedIntake.observation.runtime_session_ref) mismatches.push("observation.runtime_session_ref");
+  if (loaded.intake.observation.conversation_thread_ref !== expectedIntake.observation.conversation_thread_ref) mismatches.push("observation.conversation_thread_ref");
   if (loaded.intake.episode.provenance.source_ref !== expectedIntake.episode.provenance.source_ref) mismatches.push("episode.provenance.source_ref");
+  if (loaded.intake.episode.summary !== expectedIntake.episode.summary) mismatches.push("episode.summary");
   if (loaded.intake.world_claim.provenance.source_ref !== expectedIntake.world_claim.provenance.source_ref) mismatches.push("world_claim.provenance.source_ref");
   if (loaded.intake.world_claim.statement !== expectedIntake.world_claim.statement) mismatches.push("world_claim.statement");
   if (loaded.intake.world_claim.semantic_slot !== expectedIntake.world_claim.semantic_slot) mismatches.push("world_claim.semantic_slot");
+  if (loaded.intake.subject_entity.label !== expectedIntake.subject_entity.label) mismatches.push("subject_entity.label");
+  if (loaded.intake.preference_entity.label !== expectedIntake.preference_entity.label) mismatches.push("preference_entity.label");
+  if (loaded.intake.preference_relation.relation_type !== expectedIntake.preference_relation.relation_type) mismatches.push("preference_relation.relation_type");
+  if (loaded.intake.preference_relation.subject_ref.id !== expectedIntake.preference_relation.subject_ref.id) mismatches.push("preference_relation.subject_ref.id");
+  if (loaded.intake.preference_relation.object_ref.id !== expectedIntake.preference_relation.object_ref.id) mismatches.push("preference_relation.object_ref.id");
   if (loaded.intake.wiki_page.provenance.source_ref !== expectedIntake.wiki_page.provenance.source_ref) mismatches.push("wiki_page.provenance.source_ref");
+  if (loaded.intake.wiki_page.title !== expectedIntake.wiki_page.title) mismatches.push("wiki_page.title");
+  if (loaded.intake.wiki_page.path !== expectedIntake.wiki_page.path) mismatches.push("wiki_page.path");
   if (loaded.intake.wiki_claim.provenance.source_ref !== expectedIntake.wiki_claim.provenance.source_ref) mismatches.push("wiki_claim.provenance.source_ref");
   if (loaded.intake.wiki_claim.statement !== expectedIntake.wiki_claim.statement) mismatches.push("wiki_claim.statement");
   if (loaded.intake.proposal.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref) mismatches.push("proposal.provenance.source_ref");
+  if (loaded.intake.proposal.provenance.source_type !== expectedIntake.proposal.provenance.source_type) mismatches.push("proposal.provenance.source_type");
   if (loaded.intake.proposal.candidate_payload.semantic_slot !== expectedIntake.proposal.candidate_payload.semantic_slot) mismatches.push("proposal.candidate_payload.semantic_slot");
   if (loaded.intake.proposal.candidate_payload.statement !== expectedProposalStatement) mismatches.push("proposal.candidate_payload.statement");
   if (loaded.intake.disposition_record.provenance.source_ref !== expectedIntake.disposition_record.provenance.source_ref) mismatches.push("disposition_record.provenance.source_ref");
+  if (loaded.intake.disposition_record.provenance.source_type !== expectedIntake.disposition_record.provenance.source_type) mismatches.push("disposition_record.provenance.source_type");
   if (loaded.ratification_record.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref) mismatches.push("ratification_record.provenance.source_ref");
   if (
     loaded.canonical_record &&
@@ -1017,11 +1036,35 @@ function assertLoadedFlowMatchesInput(
   if (expectedIntake.runtime_instance?.id && loaded.intake.runtime_instance?.id !== expectedIntake.runtime_instance.id) {
     mismatches.push("runtime_instance.id");
   }
+  if (expectedIntake.agent_identity?.label && loaded.intake.agent_identity?.label !== expectedIntake.agent_identity.label) {
+    mismatches.push("agent_identity.label");
+  }
+  if (expectedIntake.owner_identity?.label && loaded.intake.owner_identity?.label !== expectedIntake.owner_identity.label) {
+    mismatches.push("owner_identity.label");
+  }
+  if (expectedIntake.runtime_instance?.runtime && loaded.intake.runtime_instance?.runtime !== expectedIntake.runtime_instance.runtime) {
+    mismatches.push("runtime_instance.runtime");
+  }
   if (expectedIntake.runtime_session?.id && loaded.intake.runtime_session?.id !== expectedIntake.runtime_session.id) {
     mismatches.push("runtime_session.id");
   }
+  if (expectedIntake.runtime_session?.objective !== undefined && loaded.intake.runtime_session?.objective !== expectedIntake.runtime_session.objective) {
+    mismatches.push("runtime_session.objective");
+  }
+  if (expectedIntake.runtime_session?.summary !== undefined && loaded.intake.runtime_session?.summary !== expectedIntake.runtime_session.summary) {
+    mismatches.push("runtime_session.summary");
+  }
   if (expectedIntake.conversation_thread?.id && loaded.intake.conversation_thread?.id !== expectedIntake.conversation_thread.id) {
     mismatches.push("conversation_thread.id");
+  }
+  if (
+    expectedIntake.conversation_thread &&
+    JSON.stringify(loaded.intake.conversation_thread?.message_refs ?? []) !== JSON.stringify(expectedIntake.conversation_thread.message_refs)
+  ) {
+    mismatches.push("conversation_thread.message_refs");
+  }
+  if (expectedIntake.conversation_thread?.summary !== undefined && loaded.intake.conversation_thread?.summary !== expectedIntake.conversation_thread.summary) {
+    mismatches.push("conversation_thread.summary");
   }
 
   if (mismatches.length > 0) {

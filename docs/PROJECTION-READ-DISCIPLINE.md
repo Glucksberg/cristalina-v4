@@ -21,7 +21,7 @@ Projection also needs an explicit answer to:
 
 This document freezes the first minimal policy version:
 
-- `projection-read-v1`
+- `projection-read-v2`
 
 ---
 
@@ -63,7 +63,17 @@ If a record is `runtime_private`, it may enter the runtime projection only when 
 
 If the binding does not match, the record must be suppressed.
 
-### 4.2 Historical and disputed claims
+If a `runtime_private` record lacks any runtime/session/thread binding, it must also be suppressed rather than treated as broadly readable.
+
+### 4.2 Owner-private scoped matching
+
+If a record is `owner_private` and also carries runtime/session/thread binding, it may enter the active runtime projection only when that scoped binding matches the active projection context.
+
+If the projection context is broader than the record binding, the record must be suppressed instead of becoming active context by omission.
+
+If an `owner_private` record is unscoped, it may still be projected.
+
+### 4.3 Historical and disputed claims
 
 For `audience: runtime`:
 
@@ -75,7 +85,7 @@ The current OpenClaw projection uses:
 - `## World Claims` for active claims
 - `## World Trace` for historical or disputed claims
 
-### 4.3 Suppression must remain inspectable
+### 4.4 Suppression must remain inspectable
 
 Suppression is legal only when the manifest preserves:
 
@@ -96,11 +106,15 @@ This is the minimum audit trail that prevents the read path from becoming silent
 
 The current executable baseline may emit reason codes such as:
 
-- `runtime_instance_mismatch`
-- `runtime_session_mismatch`
-- `conversation_thread_mismatch`
+- `runtime_private_runtime_instance_mismatch`
+- `runtime_private_runtime_session_mismatch`
+- `runtime_private_conversation_thread_mismatch`
 - `runtime_private_requires_projection_context`
 - `runtime_private_missing_context_binding`
+- `owner_private_runtime_instance_mismatch`
+- `owner_private_runtime_session_mismatch`
+- `owner_private_conversation_thread_mismatch`
+- `owner_private_requires_projection_context`
 
 These codes are operational diagnostics.
 
@@ -110,9 +124,8 @@ They are not yet a full policy ontology.
 
 ## 6. Non-Goals of v1
 
-`projection-read-v1` does not yet define:
+`projection-read-v2` does not yet define:
 
-- owner-private relevance gating
 - agent-operational gating
 - task-sensitive memory ranking
 - query-sensitive retrieval law
@@ -132,6 +145,7 @@ It prefers:
 The core should be considered under-hardened if:
 
 - runtime-private cross-context records leak into active runtime projection
+- owner-private scoped records become active in broader runtime context without a matching binding
 - historical/disputed claims appear as active current context
 - suppressed records leave no machine-readable audit trail
 
