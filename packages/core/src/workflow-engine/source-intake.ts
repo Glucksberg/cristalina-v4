@@ -5,6 +5,7 @@ export interface PreferenceSignalSemanticProfile {
   episode_summary: string;
   wiki_title: string;
   wiki_path: string;
+  subject_ref?: string;
   proposal_reason: string;
   subject_entity_kind: string;
   subject_label: string;

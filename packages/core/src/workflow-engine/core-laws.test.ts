@@ -1005,6 +1005,86 @@ test("structured preference intake preserves the source_type across emitted arti
   assert.equal(intake.disposition_record.provenance.source_type, "crm_import");
 });
 
+test("conversation preference intake uses stable subject identity refs in the semantic slot", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers unless they explicitly ask for depth.",
+    source_record: {
+      id: "src_subject_slot_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session-test#turn-subject-slot-001",
+      },
+      content_ref: "raw/sources/turn-subject-slot-001.json",
+    },
+    identity_context: buildIdentityContext("subject_slot_001"),
+    ids: buildIds("subject_slot_001"),
+  });
+
+  assert.equal(
+    intake.world_claim.semantic_slot,
+    "preference:participant:actor-owner-subject-slot-001:expressed-preference:user-interaction-preferences",
+  );
+});
+
+test("wiki pages reject paths outside wiki/pages markdown storage", () => {
+  const issues = validateCoreRecord({
+    id: "wpg_invalid_path_001",
+    kind: "wiki_page",
+    layer: "wiki",
+    authoritative_home: "wiki",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_invalid_path_001",
+    },
+    page_kind: "entity",
+    title: "Invalid Wiki Path",
+    path: "manifest.yaml",
+    source_refs: ["src_invalid_path_001"],
+    canonical_refs: [],
+    world_refs: [],
+  });
+
+  assert.ok(issues.some((issue) => issue.path === "path"));
+});
+
+test("ratification records accept explicit expiration as a terminal decision", () => {
+  const issues = validateCoreRecord({
+    id: "rat_expired_test_001",
+    kind: "ratification",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:05:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_rat_expired_test_001",
+    },
+    proposal_ref: "prop_rat_expired_test_001",
+    decision: "expired",
+    actor: "system:test-expirer",
+  });
+
+  assert.equal(issues.length, 0);
+});
+
 test("openclaw projection preserves visibility and renders reconciled statuses", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const visibility_state = {

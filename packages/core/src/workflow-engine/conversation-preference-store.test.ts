@@ -97,6 +97,34 @@ test("writeConversationPreferenceFlowToStore preserves speaker provenance", asyn
   assert.equal(result.records.intake.disposition_record.provenance.speaker_ref, input.source.speaker_ref);
 });
 
+test("writeConversationPreferenceFlowToStore derives distinct semantic slots for distinct speakers", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const first = buildInput(rootDir);
+  first.source.speaker_ref = "actor_external_person_slot_001";
+  first.source.message = "Participant A says they prefer concise answers.";
+  first.validation_scope = "test:conversation-preference:speaker-slot-001";
+
+  const second = cloneInputWithSuffix(rootDir, "speaker_slot_002", first.statement);
+  second.source.speaker_ref = "actor_external_person_slot_002";
+  second.source.message = "Participant B says they prefer concise answers.";
+
+  const [firstResult, secondResult] = await Promise.all([
+    writeConversationPreferenceFlowToStore(first),
+    writeConversationPreferenceFlowToStore(second),
+  ]);
+
+  assert.notEqual(
+    firstResult.records.intake.world_claim.semantic_slot,
+    secondResult.records.intake.world_claim.semantic_slot,
+  );
+  assert.equal(firstResult.records.ratification_record.decision, "approved");
+  assert.equal(secondResult.records.ratification_record.decision, "approved");
+});
+
 test("writeConversationPreferenceFlowToStore routes participant-originated owner claims to review instead of canon", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -374,7 +402,7 @@ test("owner ratification queue can expire without owner ratification and blocks 
     validation_scope: "test:conversation-preference:owner-expiration",
   });
 
-  assert.equal(expired.records.ratification_record.decision, "deferred");
+  assert.equal(expired.records.ratification_record.decision, "expired");
   assert.equal(expired.records.owner_ratification_queue?.status, "expired");
   assert.equal(expired.records.canonical_record, undefined);
   assert.equal(expired.records.diagnostic?.code, "proposal_deferred_expired");
@@ -393,6 +421,44 @@ test("owner ratification queue can expire without owner ratification and blocks 
       }),
     /already closed with status expired/,
   );
+});
+
+test("owner review terminal actions append distinct validation log entries per phase", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+
+  await rejectQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:05:00.000Z",
+    actor: input.identity_context!.ids.owner_identity!,
+    owner_actor_ref: input.identity_context!.ids.owner_identity!,
+    validation_scope: "test:conversation-preference:owner-rejection",
+  });
+
+  const validationLog = await readFile(join(rootDir, "audits/validation.log"), "utf8");
+  assert.match(validationLog, /"entry_id":"validation:prop_test_001:write"/);
+  assert.match(validationLog, /"entry_id":"validation:prop_test_001:owner-review-close"/);
 });
 
 test("ratifyDeferredConversationPreferenceProposalToStore remains compatible with the original input-shaped API", async (t) => {
@@ -643,6 +709,30 @@ test("writeConversationPreferenceFlowToStore rejects path collisions between raw
         },
       }),
     /paths collide: raw_source and source_record/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore rejects wiki paths outside wiki/pages markdown storage", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.semantic_profile = {
+    subject_entity_kind: "participant",
+    subject_authority_role: "participant",
+    subject_label: "Conversation Participant",
+    wiki_title: "User Interaction Preferences",
+    wiki_path: "manifest.yaml",
+    preference_topic_label: "User Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Conversation indicates a user interaction preference that should become governed memory.",
+  };
+
+  await assert.rejects(
+    () => writeConversationPreferenceFlowToStore(input),
+    /Wiki page path must stay within wiki\/pages and end with \.md/,
   );
 });
 
@@ -923,6 +1013,40 @@ test("readConversationPreferenceFlowResult rejects recovery journals that escape
     /Resolved path escapes store root/,
   );
   await assert.rejects(() => readFile(outsidePath, "utf8"));
+});
+
+test("readConversationPreferenceFlowResult waits for the active store lock before attempting repair", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(input);
+
+  const lockDir = join(rootDir, "audits/snapshots/.store-write.lock");
+  await mkdir(lockDir, { recursive: true });
+  await writeFile(
+    join(lockDir, "owner.json"),
+    JSON.stringify({
+      holder: "test:foreign-lock",
+      acquired_at: "2026-04-12T00:00:00.000Z",
+      heartbeat_at: new Date().toISOString(),
+    }, null, 2),
+    "utf8",
+  );
+
+  const releaseTimer = setTimeout(() => {
+    void rm(lockDir, { recursive: true, force: true });
+  }, 60);
+  t.after(() => clearTimeout(releaseTimer));
+
+  const startedAt = Date.now();
+  const result = await readConversationPreferenceFlowResult(input);
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.ok(result);
+  assert.ok(elapsedMs >= 40, `expected read to wait for store lock, got ${elapsedMs}ms`);
 });
 
 test("applyConversationPreferenceResolutionToStore persists applied resolution and recompiles projection", async (t) => {

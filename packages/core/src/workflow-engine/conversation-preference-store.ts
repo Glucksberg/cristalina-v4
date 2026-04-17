@@ -59,6 +59,7 @@ import type {
   WikiPage,
   WorldClaim,
 } from "../types.js";
+import { assertStoreRelativeWikiPagePath } from "../wiki/path.js";
 import {
   acceptContradictionResolution,
   applyAcceptedContradictionResolution,
@@ -283,6 +284,7 @@ const STORE_WRITE_LOCK_METADATA = "owner.json";
 const STORE_WRITE_LOCK_POLL_MS = 25;
 const STORE_WRITE_LOCK_TIMEOUT_MS = 120_000;
 const STORE_WRITE_LOCK_STALE_MS = 120_000;
+const STORE_WRITE_LOCK_HEARTBEAT_MS = 10_000;
 
 function ownerRatificationQueueId(proposalId: string): string {
   return `cur_owner_ratification_${proposalId}`;
@@ -338,6 +340,14 @@ function storeWriteLockMetadataPath(rootDir: string): string {
   return resolveStorePath(rootDir, `${STORE_WRITE_LOCK_PATH}/${STORE_WRITE_LOCK_METADATA}`);
 }
 
+function serializeStoreWriteLockMetadata(input: {
+  holder: string;
+  acquired_at: string;
+  heartbeat_at: string;
+}): string {
+  return `${JSON.stringify(input, null, 2)}\n`;
+}
+
 async function lockIsStale(rootDir: string, nowMs: number): Promise<boolean> {
   const lockDir = storeWriteLockPath(rootDir);
   const metadataPath = storeWriteLockMetadataPath(rootDir);
@@ -349,11 +359,17 @@ async function lockIsStale(rootDir: string, nowMs: number): Promise<boolean> {
 
   if (metadataSource) {
     try {
-      const parsed = JSON.parse(metadataSource) as { acquired_at?: unknown };
-      if (typeof parsed.acquired_at === "string") {
-        const acquiredAt = Date.parse(parsed.acquired_at);
-        if (!Number.isNaN(acquiredAt)) {
-          return nowMs - acquiredAt > STORE_WRITE_LOCK_STALE_MS;
+      const parsed = JSON.parse(metadataSource) as { acquired_at?: unknown; heartbeat_at?: unknown };
+      const freshestTimestamp =
+        typeof parsed.heartbeat_at === "string"
+          ? parsed.heartbeat_at
+          : typeof parsed.acquired_at === "string"
+            ? parsed.acquired_at
+            : undefined;
+      if (freshestTimestamp) {
+        const lastHeartbeat = Date.parse(freshestTimestamp);
+        if (!Number.isNaN(lastHeartbeat)) {
+          return nowMs - lastHeartbeat > STORE_WRITE_LOCK_STALE_MS;
         }
       }
     } catch {
@@ -372,6 +388,49 @@ async function lockIsStale(rootDir: string, nowMs: number): Promise<boolean> {
   return nowMs - lockStat.mtimeMs > STORE_WRITE_LOCK_STALE_MS;
 }
 
+function startStoreWriteLockHeartbeat(rootDir: string, holder: string, acquiredAt: string): () => Promise<void> {
+  const metadataPath = storeWriteLockMetadataPath(rootDir);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let activeWrite: Promise<void> | undefined;
+  let failure: unknown;
+
+  const scheduleNextHeartbeat = () => {
+    timer = setTimeout(() => {
+      activeWrite = writeTextFile(
+        metadataPath,
+        serializeStoreWriteLockMetadata({
+          holder,
+          acquired_at: acquiredAt,
+          heartbeat_at: new Date().toISOString(),
+        }),
+      )
+        .catch((error) => {
+          failure = error;
+        })
+        .finally(() => {
+          activeWrite = undefined;
+          if (!failure) {
+            scheduleNextHeartbeat();
+          }
+        });
+    }, STORE_WRITE_LOCK_HEARTBEAT_MS);
+    timer.unref?.();
+  };
+
+  scheduleNextHeartbeat();
+
+  return async () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    await activeWrite;
+    if (failure) {
+      throw failure;
+    }
+  };
+}
+
 async function acquireStoreWriteLock(rootDir: string, holder: string): Promise<() => Promise<void>> {
   const lockDir = storeWriteLockPath(rootDir);
   const metadataPath = storeWriteLockMetadataPath(rootDir);
@@ -379,14 +438,29 @@ async function acquireStoreWriteLock(rootDir: string, holder: string): Promise<(
 
   while (true) {
     try {
+      const acquiredAt = new Date().toISOString();
       await mkdir(lockDir, { recursive: false });
       await writeTextFile(
         metadataPath,
-        `${JSON.stringify({ holder, acquired_at: new Date().toISOString() }, null, 2)}\n`,
+        serializeStoreWriteLockMetadata({
+          holder,
+          acquired_at: acquiredAt,
+          heartbeat_at: acquiredAt,
+        }),
       );
+      const stopHeartbeat = startStoreWriteLockHeartbeat(rootDir, holder, acquiredAt);
 
       return async () => {
+        let stopFailure: unknown;
+        try {
+          await stopHeartbeat();
+        } catch (error) {
+          stopFailure = error;
+        }
         await rm(lockDir, { recursive: true, force: true });
+        if (stopFailure) {
+          throw stopFailure;
+        }
       };
     } catch (error) {
       if (!isAlreadyExistsError(error)) {
@@ -628,6 +702,8 @@ function buildPaths(
   intake: ConversationPreferenceIntakeArtifacts,
   input: ConversationPreferenceStoreInput,
 ): ConversationPreferenceStorePaths {
+  assertStoreRelativeWikiPagePath(intake.wiki_page.path);
+
   const paths: ConversationPreferenceStorePaths = {
     raw_source: resolveStorePath(rootDir, sourceRecord.content_ref),
     source_record: coreRecordPath(rootDir, sourceRecord),
@@ -1780,6 +1856,7 @@ function assertNoValidationIssues(issues: ValidationIssue[], context: string): v
 function buildConversationPreferenceAppendEntries(input: {
   now: string;
   validation_scope: string;
+  validation_entry_id: string;
   proposal_id: string;
   validation_issues: ValidationIssue[];
   audit_entries: AuditChangeEntry[];
@@ -1788,7 +1865,7 @@ function buildConversationPreferenceAppendEntries(input: {
     {
       kind: "validation_log",
       entry: {
-        entry_id: `validation:${input.proposal_id}`,
+        entry_id: input.validation_entry_id,
         at: input.now,
         scope: input.validation_scope,
         issues: input.validation_issues,
@@ -1804,6 +1881,7 @@ function buildConversationPreferenceAppendEntries(input: {
 function buildResolutionApplicationAppendEntries(input: {
   now: string;
   validation_scope: string;
+  validation_entry_id: string;
   resolution_id: string;
   validation_issues: ValidationIssue[];
   audit_entries: AuditChangeEntry[];
@@ -1812,7 +1890,7 @@ function buildResolutionApplicationAppendEntries(input: {
     {
       kind: "validation_log",
       entry: {
-        entry_id: `validation:${input.resolution_id}`,
+        entry_id: input.validation_entry_id,
         at: input.now,
         scope: input.validation_scope,
         issues: input.validation_issues,
@@ -2001,6 +2079,25 @@ async function loadExistingFlow(
     },
     validation_issues,
   };
+}
+
+async function readConversationPreferenceFlowResultInternal(
+  input: ConversationPreferenceStoreInput,
+  options?: {
+    repair?: boolean;
+  },
+): Promise<ConversationPreferenceStoreResult | undefined> {
+  const rootDir = resolve(input.rootDir);
+  const source_record = buildSourceRecord(input);
+  const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
+  const previewPaths = buildPaths(rootDir, source_record, buildPreviewIntake(input, source_record, intakeBuilder), input);
+
+  if (options?.repair) {
+    await recoverOrResetWriteFlow(rootDir, input, previewPaths);
+  }
+
+  const { intake } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
+  return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input), source_record, intake);
 }
 
 async function loadAuthoritativeFlow(paths: ConversationPreferenceStorePaths): Promise<LoadedAuthoritativeFlow> {
@@ -2679,12 +2776,13 @@ export async function writeConversationPreferenceFlowToStore(
       projection,
       conflicting_world_claim,
     });
-    const append_entries = buildConversationPreferenceAppendEntries({
-      now: input.now,
-      validation_scope: input.validation_scope ?? "workflow:conversation-preference",
-      proposal_id: intake.proposal.id,
-      validation_issues,
-      audit_entries,
+  const append_entries = buildConversationPreferenceAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference",
+    validation_entry_id: `validation:${intake.proposal.id}:write`,
+    proposal_id: intake.proposal.id,
+    validation_issues,
+    audit_entries,
     });
     const journalPath = recoveryJournalPath(rootDir, "conversation_preference_write", input.ids.proposal);
     await writeRecoveryJournal(
@@ -2725,13 +2823,9 @@ export async function readConversationPreferenceFlowResult(
   input: ConversationPreferenceStoreInput,
 ): Promise<ConversationPreferenceStoreResult | undefined> {
   const rootDir = resolve(input.rootDir);
-  const source_record = buildSourceRecord(input);
-  const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
-  const previewPaths = buildPaths(rootDir, source_record, buildPreviewIntake(input, source_record, intakeBuilder), input);
-  await recoverOrResetWriteFlow(rootDir, input, previewPaths);
-  const { intake } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
-
-  return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input), source_record, intake);
+  return withStoreWriteLock(rootDir, `conversation_preference_read:${input.ids.proposal}`, () =>
+    readConversationPreferenceFlowResultInternal(input, { repair: true }),
+  );
 }
 
 export async function writeOpenClawPreferenceFeedbackFlowToStore(
@@ -2761,7 +2855,7 @@ export async function applyConversationPreferenceResolutionToStore(
     `conversation_preference_resolution_apply:${input.ids.contradiction_resolution ?? input.ids.proposal}`,
     async () => {
       await recoverResolutionApplication(rootDir, input);
-      const existingFlow = await readConversationPreferenceFlowResult(input);
+      const existingFlow = await readConversationPreferenceFlowResultInternal(input, { repair: true });
       if (!existingFlow) {
         throw new Error("Conversation preference flow must exist before applying contradiction resolution");
       }
@@ -2857,12 +2951,13 @@ export async function applyConversationPreferenceResolutionToStore(
         applied,
         projection,
       });
-      const append_entries = buildResolutionApplicationAppendEntries({
-        now: input.now,
-        validation_scope: input.validation_scope ?? "workflow:conversation-preference:resolution-application",
-        resolution_id: applied.resolution.id,
-        validation_issues,
-        audit_entries,
+  const append_entries = buildResolutionApplicationAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference:resolution-application",
+    validation_entry_id: `validation:${applied.resolution.id}:resolution-application`,
+    resolution_id: applied.resolution.id,
+    validation_issues,
+    audit_entries,
       });
       const journalPath = recoveryJournalPath(
         rootDir,
@@ -3242,6 +3337,7 @@ async function applyOwnerRatificationToExistingFlow(
   const append_entries = buildConversationPreferenceAppendEntries({
     now: input.now,
     validation_scope: input.validation_scope ?? "workflow:conversation-preference:owner-ratification",
+    validation_entry_id: `validation:${existingFlow.records.intake.proposal.id}:owner-ratification`,
     proposal_id: existingFlow.records.intake.proposal.id,
     validation_issues,
     audit_entries,
@@ -3334,6 +3430,8 @@ async function closeOwnerReviewQueueToExistingFlow(
       : {
           ...existingFlow.records.ratification_record,
           updated_at: input.now,
+          decision: "expired",
+          actor: input.actor,
           upstream_refs: [
             ...new Set([
               ...(existingFlow.records.ratification_record.upstream_refs ?? []),
@@ -3396,6 +3494,7 @@ async function closeOwnerReviewQueueToExistingFlow(
   const append_entries = buildConversationPreferenceAppendEntries({
     now: input.now,
     validation_scope: input.validation_scope ?? "workflow:conversation-preference:owner-review-close",
+    validation_entry_id: `validation:${existingFlow.records.intake.proposal.id}:owner-review-close`,
     proposal_id: existingFlow.records.intake.proposal.id,
     validation_issues,
     audit_entries,
@@ -3577,7 +3676,7 @@ export async function ratifyDeferredConversationPreferenceProposalToStore(
     async () => {
       await recoverOwnerRatificationApplication(rootDir, input);
 
-      const existingFlow = await readConversationPreferenceFlowResult(input);
+      const existingFlow = await readConversationPreferenceFlowResultInternal(input, { repair: true });
       if (!existingFlow) {
         throw new Error("Conversation preference flow must exist before explicit owner ratification");
       }

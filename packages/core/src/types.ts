@@ -382,7 +382,7 @@ export interface RatificationRecord extends RecordEnvelope {
   layer: "governance";
   authoritative_home: "governance";
   proposal_ref: string;
-  decision: "approved" | "rejected" | "deferred";
+  decision: "approved" | "rejected" | "deferred" | "expired";
   actor: string;
 }
 

@@ -147,17 +147,55 @@ function normalizeSemanticSlotPart(value: string): string {
 
 function buildPreferenceSemanticSlot(input: {
   subject_entity_kind: string;
-  subject_label: string;
+  subject_key: string;
   relation_type: string;
   preference_topic_label: string;
 }): string {
   return [
     "preference",
     normalizeSemanticSlotPart(input.subject_entity_kind),
-    normalizeSemanticSlotPart(input.subject_label),
+    normalizeSemanticSlotPart(input.subject_key),
     normalizeSemanticSlotPart(input.relation_type),
     normalizeSemanticSlotPart(input.preference_topic_label),
   ].join(":");
+}
+
+function resolvePreferenceSubjectKey(input: {
+  semanticProfile: PreferenceSignalSemanticProfile;
+  source_record: SourceRecord;
+  owner_identity?: ActorIdentity;
+}): string {
+  const explicitSubjectRef = input.semanticProfile.subject_ref?.trim();
+  if (explicitSubjectRef) {
+    return explicitSubjectRef;
+  }
+
+  const ownerIdentityRef = input.owner_identity?.id?.trim();
+  const speakerRef = input.source_record.provenance.speaker_ref?.trim();
+
+  if (input.semanticProfile.subject_authority_role === "owner" && ownerIdentityRef) {
+    return ownerIdentityRef;
+  }
+
+  if (speakerRef) {
+    return speakerRef;
+  }
+
+  if (ownerIdentityRef) {
+    return ownerIdentityRef;
+  }
+
+  const runtimeRef = input.source_record.provenance.runtime_ref?.trim();
+  if (runtimeRef) {
+    return runtimeRef;
+  }
+
+  const sourceRef = input.source_record.provenance.source_ref?.trim();
+  if (sourceRef) {
+    return sourceRef;
+  }
+
+  return input.source_record.id;
 }
 
 function buildAuthorityReviewRequirement(input: {
@@ -476,9 +514,14 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     owner_identity: runtimeIdentity.owner_identity,
     source_record: input.source_record,
   });
+  const subjectKey = resolvePreferenceSubjectKey({
+    semanticProfile,
+    source_record: input.source_record,
+    owner_identity: runtimeIdentity.owner_identity,
+  });
   const semanticSlot = buildPreferenceSemanticSlot({
     subject_entity_kind: semanticProfile.subject_entity_kind,
-    subject_label: semanticProfile.subject_label,
+    subject_key: subjectKey,
     relation_type: semanticProfile.relation_type,
     preference_topic_label: semanticProfile.preference_topic_label,
   });

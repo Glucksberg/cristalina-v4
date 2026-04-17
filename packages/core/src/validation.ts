@@ -11,6 +11,7 @@ import type {
   RuntimeSession,
   WorldClaim,
 } from "./types.js";
+import { isStoreRelativeWikiPagePath } from "./wiki/path.js";
 import {
   ACTOR_KINDS,
   AUTHORITATIVE_HOMES,
@@ -520,8 +521,8 @@ function validateRatificationRecord(value: unknown): ValidationIssue[] {
   if (value.layer !== "governance") issues.push({ path: "layer", message: 'expected "governance"' });
   if (value.authoritative_home !== "governance") issues.push({ path: "authoritative_home", message: 'expected "governance"' });
   pushRequiredString(issues, value, "proposal_ref");
-  if (!isEnumValue(value.decision, ["approved", "rejected", "deferred"] as const)) {
-    issues.push({ path: "decision", message: 'expected one of: approved, rejected, deferred' });
+  if (!isEnumValue(value.decision, ["approved", "rejected", "deferred", "expired"] as const)) {
+    issues.push({ path: "decision", message: 'expected one of: approved, rejected, deferred, expired' });
   }
   pushRequiredString(issues, value, "actor");
   return issues;
@@ -614,6 +615,9 @@ function validateWikiPage(value: unknown): ValidationIssue[] {
   }
   pushRequiredString(issues, value, "title");
   pushRequiredString(issues, value, "path");
+  if (typeof value.path === "string" && !isStoreRelativeWikiPagePath(value.path)) {
+    issues.push({ path: "path", message: "wiki page path must stay within wiki/pages and end with .md" });
+  }
   pushStringArray(issues, value, "source_refs");
   pushStringArray(issues, value, "canonical_refs");
   pushStringArray(issues, value, "world_refs");
