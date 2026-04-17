@@ -115,6 +115,10 @@ The core should begin with:
 - `shareable`
 - `public_safe`
 
+These scopes are currently retained as runtime and publication metadata.
+
+For the current product direction they should not be treated as a per-participant secrecy model inside one owner-controlled group.
+
 ### 3.6 Disposition outcomes
 
 The core should begin with:
@@ -126,6 +130,8 @@ The core should begin with:
 - `proposal_for_canon`
 - `queued_review`
 - `diagnostic_only`
+
+`queued_review` should now be read together with governed review records such as `curation_packet`, so deferred authority checks can be listed and later applied without reconstructing the original intake input.
 
 ---
 
@@ -170,9 +176,15 @@ Provenance records should preserve at least:
 - `source_ref`
 - `evidence_refs`
 - `actor_ref`
+- `speaker_ref`
 - `runtime_ref`
 - `session_ref`
 - `thread_ref`
+
+`actor_ref` and `speaker_ref` answer different questions:
+
+- `actor_ref`: which identity context emitted or materialized the record
+- `speaker_ref`: which actor produced the underlying turn or evidence item when that distinction matters
 
 ### 4.4 Visibility state
 

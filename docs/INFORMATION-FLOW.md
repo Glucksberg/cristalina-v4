@@ -84,6 +84,12 @@ The runtime may produce:
 
 The runtime should never write canon directly.
 
+In the shared-memory group model, the write path must also preserve:
+
+- who the `speaker` was for the event
+- who the `subject` of the claim is
+- whether owner authority exists for canonical promotion
+
 The system should also support a **wiki maintenance path**:
 
 1. new source arrives
@@ -94,6 +100,11 @@ The system should also support a **wiki maintenance path**:
 6. any canonical-worthy claims are emitted as proposals instead of being silently accepted as truth
 
 This is the key rule that keeps the knowledge wiki useful without letting it become an ungoverned shadow canon.
+
+The same rule applies to group interaction:
+
+- shared group evidence may enrich world and wiki state
+- group context does not grant direct owner authority
 
 ---
 
@@ -111,6 +122,15 @@ This is the key rule that keeps the knowledge wiki useful without letting it bec
 | ratification | canonical changes | core |
 | projection | runtime-specific context | adapter |
 | diagnostics | bounded feedback | adapter + core |
+
+The table above describes implementation ownership, not social authority.
+
+For social authority inside the product:
+
+- the owner remains the responsible principal
+- the agent executes
+- participants contribute evidence
+- governance decides what may become owner-compatible canon
 
 ---
 

@@ -44,6 +44,7 @@ function buildFailureDiagnostic(input: {
   proposal: Proposal;
   diagnostic_id: string;
   failed_gates: GateEvaluation[];
+  decision: "rejected" | "deferred";
 }): Diagnostic {
   return {
     id: input.diagnostic_id,
@@ -58,11 +59,22 @@ function buildFailureDiagnostic(input: {
       ...input.proposal.provenance,
       evidence_refs: [...(input.proposal.provenance.evidence_refs ?? []), input.proposal.id],
     },
-    code: "proposal_rejected",
-    severity: "warning",
-    message: `Proposal ${input.proposal.id} failed governance gates: ${input.failed_gates.map((gate) => gate.gate).join(", ")}`,
+    code: input.decision === "deferred" ? "proposal_deferred" : "proposal_rejected",
+    severity: input.decision === "deferred" ? "info" : "warning",
+    message:
+      input.decision === "deferred"
+        ? `Proposal ${input.proposal.id} requires further authority before promotion: ${input.failed_gates.map((gate) => gate.reason_code).join(", ")}`
+        : `Proposal ${input.proposal.id} failed governance gates: ${input.failed_gates.map((gate) => gate.gate).join(", ")}`,
     related_refs: [input.proposal.id, ...input.proposal.evidence_refs],
   };
+}
+
+function shouldDeferProposal(failed_gates: GateEvaluation[]): boolean {
+  return (
+    failed_gates.length === 1 &&
+    failed_gates[0]?.gate === "policy" &&
+    failed_gates[0]?.reason_code === "owner_ratification_required"
+  );
 }
 
 export function evaluateCanonicalProposal(input: {
@@ -219,6 +231,14 @@ export function evaluateCanonicalProposal(input: {
         };
       case "policy":
         {
+          if (proposal.promotion_requirement === "owner_ratification_required") {
+            return {
+              gate,
+              passed: false,
+              reason_code: "owner_ratification_required",
+            };
+          }
+
           const isPublicSafe = proposal.visibility_state.privacy_scope === "public_safe";
           const targetIsCanon = proposal.target_layer === "canon";
         return {
@@ -237,6 +257,8 @@ export function evaluateCanonicalProposal(input: {
   });
 
   const accepted = gate_results.every((result) => result.passed);
+  const failed_gates = gate_results.filter((gate) => !gate.passed);
+  const deferred = !accepted && shouldDeferProposal(failed_gates);
   const ratification_record: RatificationRecord = {
     id: input.ratification_id,
     kind: "ratification",
@@ -251,11 +273,10 @@ export function evaluateCanonicalProposal(input: {
       evidence_refs: [...(proposal.provenance.evidence_refs ?? []), proposal.id],
     },
     proposal_ref: proposal.id,
-    decision: accepted ? "approved" : "rejected",
+    decision: accepted ? "approved" : deferred ? "deferred" : "rejected",
     actor: input.actor,
   };
 
-  const failed_gates = gate_results.filter((gate) => !gate.passed);
   const diagnostic =
     !accepted && input.diagnostic_id
       ? buildFailureDiagnostic({
@@ -263,6 +284,7 @@ export function evaluateCanonicalProposal(input: {
           proposal,
           diagnostic_id: input.diagnostic_id,
           failed_gates,
+          decision: deferred ? "deferred" : "rejected",
         })
       : undefined;
 

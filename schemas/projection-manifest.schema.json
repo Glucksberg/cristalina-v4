@@ -55,6 +55,12 @@
             "null"
           ]
         },
+        "owner_identity_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "runtime_instance_ref": {
           "type": [
             "string",
@@ -117,6 +123,12 @@
           }
         },
         "diagnostic_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "review_refs": {
           "type": "array",
           "items": {
             "type": "string"

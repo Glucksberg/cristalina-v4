@@ -127,6 +127,12 @@
             "null"
           ]
         },
+        "speaker_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "runtime_ref": {
           "type": [
             "string",

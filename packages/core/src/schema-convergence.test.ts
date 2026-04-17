@@ -13,6 +13,7 @@ import {
   MEMORY_OBJECT_KINDS,
   RUNTIMES,
   SOURCE_INTAKE_KINDS,
+  SUBJECT_AUTHORITY_ROLES,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
 } from "./types.js";
@@ -46,11 +47,13 @@ test("object envelope schema enums stay aligned with runtime validation enums", 
   const properties = schema.properties ?? {};
   const visibilityState = properties.visibility_state as { properties?: Record<string, unknown> } | undefined;
   const temporalState = properties.temporal_state as { properties?: Record<string, unknown> } | undefined;
+  const provenance = properties.provenance as { properties?: Record<string, unknown> } | undefined;
 
   assert.deepEqual(expectEnum(properties.epistemic_state), [...EPISTEMIC_STATES]);
   assert.deepEqual(expectEnum(properties.governance_state), [...GOVERNANCE_STATES]);
   assert.deepEqual(expectEnum(visibilityState?.properties?.privacy_scope), [...VISIBILITY_SCOPES]);
   assert.deepEqual(expectEnum(temporalState?.properties?.temporal_status), [...TEMPORAL_STATUSES]);
+  assert.deepEqual((provenance?.properties?.speaker_ref as { type?: string[] } | undefined)?.type, ["string", "null"]);
 });
 
 test("canonical memory schema stays aligned with hardened canonical governance states", async () => {
@@ -117,13 +120,15 @@ test("source intake profile schema stays aligned with executable intake kinds", 
   const properties = schema.properties ?? {};
   const profile = resolvePreferenceSignalSemanticProfile({
     kind: "structured_preference_signal",
-    owner_label: "Customer 001",
   });
 
   assert.deepEqual(expectEnum(properties.intake_kind), [...SOURCE_INTAKE_KINDS]);
+  assert.deepEqual(expectEnum(properties.subject_authority_role), [...SUBJECT_AUTHORITY_ROLES]);
   assert.equal(typeof profile.episode_summary, "string");
   assert.equal(typeof profile.wiki_path, "string");
   assert.equal(typeof profile.relation_type, "string");
+  assert.equal(profile.subject_label, "Conversation Participant");
+  assert.equal(profile.subject_authority_role, "participant");
 });
 
 test("projection manifest schema stays aligned with adapter and read-discipline contracts", async () => {
@@ -133,5 +138,7 @@ test("projection manifest schema stays aligned with adapter and read-discipline 
 
   assert.deepEqual(expectEnum(properties.adapter), ["openclaw", "hermes"]);
   assert.equal((properties.read_policy_version as { type?: string } | undefined)?.type, "string");
+  assert.deepEqual((properties.owner_identity_ref as { type?: string[] } | undefined)?.type, ["string", "null"]);
   assert.equal((properties.context_refs as { type?: string } | undefined)?.type, "array");
+  assert.equal((properties.review_refs as { type?: string } | undefined)?.type, "array");
 });

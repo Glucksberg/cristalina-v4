@@ -1,5 +1,5 @@
 import { access, readFile, rm } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 import {
   appendAuditChange,
@@ -16,7 +16,10 @@ import {
   loadCanonicalRecords,
   loadConversationThreads,
   loadContradictionResolutions,
+  loadCurationPackets,
   loadDiagnostics,
+  loadProposals,
+  loadRatificationRecords,
   loadRuntimeInstances,
   loadRuntimeSessions,
   loadWikiClaims,
@@ -35,6 +38,7 @@ import type {
   ContradictionResolution,
   Contradiction,
   CoreRecord,
+  CurationPacket,
   Diagnostic,
   DispositionRecord,
   Entity,
@@ -109,6 +113,7 @@ export interface ConversationPreferenceStoreInput {
     runtime: RuntimeKind;
     message: string;
     source_type?: string;
+    speaker_ref?: string | null;
   };
   ids: ConversationPreferenceStoreIds;
   validation_scope?: string;
@@ -134,6 +139,7 @@ export interface ConversationPreferenceStorePaths {
   wiki_page_markdown: string;
   wiki_claim: string;
   proposal: string;
+  owner_ratification_queue?: string;
   disposition_record: string;
   ratification_record: string;
   diagnostic_record?: string;
@@ -152,6 +158,7 @@ export interface ConversationPreferenceStoreRecords {
   intake: ConversationPreferenceIntakeArtifacts;
   contradiction?: Contradiction;
   contradiction_resolution?: ContradictionResolution;
+  owner_ratification_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
@@ -164,6 +171,53 @@ export interface ConversationPreferenceStoreResult {
   paths: ConversationPreferenceStorePaths;
   records: ConversationPreferenceStoreRecords;
   validation_issues: ValidationIssue[];
+}
+
+export interface ConversationPreferenceOwnerRatificationInput extends ConversationPreferenceStoreInput {
+  owner_actor_ref: string;
+}
+
+export interface ConversationPreferenceOwnerRatificationQueueEntry {
+  queue_id: string;
+  proposal_id: string;
+  ratification_id: string;
+  diagnostic_id?: string;
+  owner_identity_ref?: string | null;
+  speaker_ref?: string | null;
+  runtime_instance_ref?: string | null;
+  runtime_session_ref?: string | null;
+  conversation_thread_ref?: string | null;
+  statement: string;
+  semantic_slot: string;
+  reason: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationPreferenceQueuedRatificationInput {
+  rootDir: string;
+  queue_id: string;
+  now: string;
+  actor: string;
+  owner_actor_ref: string;
+  validation_scope?: string;
+}
+
+export interface ConversationPreferenceQueuedRejectionInput {
+  rootDir: string;
+  queue_id: string;
+  now: string;
+  actor: string;
+  owner_actor_ref: string;
+  validation_scope?: string;
+}
+
+export interface ConversationPreferenceQueuedExpirationInput {
+  rootDir: string;
+  queue_id: string;
+  now: string;
+  actor: string;
+  validation_scope?: string;
 }
 
 export interface ConversationPreferenceResolutionStoreResult {
@@ -181,6 +235,7 @@ export interface ConversationPreferenceResolutionStoreResult {
 interface LoadedAuthoritativeFlow {
   source_record: SourceRecord;
   intake: ConversationPreferenceIntakeArtifacts;
+  owner_ratification_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
@@ -198,7 +253,11 @@ interface RecoveryJournalFile {
 
 interface RecoveryJournal {
   version: 1;
-  operation: "conversation_preference_write" | "conversation_preference_resolution_apply";
+  operation:
+    | "conversation_preference_write"
+    | "conversation_preference_resolution_apply"
+    | "conversation_preference_owner_ratification_apply"
+    | "conversation_preference_owner_review_close";
   created_at: string;
   files: RecoveryJournalFile[];
   append_entries?: RecoveryJournalAppendEntry[];
@@ -219,6 +278,10 @@ const LEGAL_SOURCE_CONTENT_PREFIXES = [
   "raw/imports/",
   "raw/attachments/",
 ] as const;
+
+function ownerRatificationQueueId(proposalId: string): string {
+  return `cur_owner_ratification_${proposalId}`;
+}
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
   const rootPath = resolve(rootDir);
@@ -423,6 +486,7 @@ function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecor
       source_type: input.source.source_type ?? "conversation",
       source_ref: input.source.source_ref,
       actor_ref: input.identity_context?.ids.agent_identity,
+      speaker_ref: input.source.speaker_ref ?? null,
       runtime_ref: input.identity_context?.ids.runtime_instance,
       session_ref: input.identity_context?.ids.runtime_session,
       thread_ref: input.identity_context?.ids.conversation_thread,
@@ -475,6 +539,17 @@ function buildPaths(
     wiki_page_markdown: resolveStorePath(rootDir, intake.wiki_page.path),
     wiki_claim: coreRecordPath(rootDir, intake.wiki_claim),
     proposal: coreRecordPath(rootDir, intake.proposal),
+    owner_ratification_queue:
+      intake.proposal.promotion_requirement === "owner_ratification_required"
+        ? coreRecordPath(
+            rootDir,
+            {
+              id: ownerRatificationQueueId(intake.proposal.id),
+              kind: "curation_packet",
+              layer: "governance",
+            } as CurationPacket,
+          )
+        : undefined,
     disposition_record: coreRecordPath(rootDir, intake.disposition_record),
     ratification_record: coreRecordPath(
       rootDir,
@@ -573,6 +648,9 @@ function definedFlowPaths(paths: ConversationPreferenceStorePaths): Array<[strin
     ["wiki_page_markdown", paths.wiki_page_markdown],
     ["wiki_claim", paths.wiki_claim],
     ["proposal", paths.proposal],
+    ...(paths.owner_ratification_queue
+      ? [["owner_ratification_queue", paths.owner_ratification_queue] as [string, string]]
+      : []),
     ["disposition_record", paths.disposition_record],
     ["ratification_record", paths.ratification_record],
     ...(paths.diagnostic_record ? [["diagnostic_record", paths.diagnostic_record] as [string, string]] : []),
@@ -610,6 +688,7 @@ function writeFlowBaselinePaths(paths: ConversationPreferenceStorePaths): string
     paths.wiki_page_record,
     paths.wiki_claim,
     paths.proposal,
+    ...(paths.owner_ratification_queue ? [paths.owner_ratification_queue] : []),
     paths.disposition_record,
     paths.ratification_record,
   ];
@@ -671,7 +750,7 @@ async function detectPartiallyMaterializedWriteFlow(paths: ConversationPreferenc
     return true;
   }
 
-  if (ratification.decision === "rejected" && paths.diagnostic_record && !diagnosticExists) {
+  if (ratification.decision !== "approved" && paths.diagnostic_record && !diagnosticExists) {
     return true;
   }
 
@@ -710,6 +789,113 @@ async function recoverResolutionApplication(rootDir: string, input: Conversation
   );
 }
 
+async function recoverOwnerRatificationApplication(
+  rootDir: string,
+  input: ConversationPreferenceOwnerRatificationInput,
+): Promise<void> {
+  await recoverPendingJournal(
+    rootDir,
+    recoveryJournalPath(rootDir, "conversation_preference_owner_ratification_apply", input.ids.proposal),
+  );
+}
+
+async function recoverOwnerReviewClosure(rootDir: string, queue_id: string): Promise<void> {
+  await recoverPendingJournal(
+    rootDir,
+    recoveryJournalPath(rootDir, "conversation_preference_owner_review_close", queue_id),
+  );
+}
+
+function buildOwnerRatificationQueuePacket(input: {
+  now: string;
+  source_record: SourceRecord;
+  intake: ConversationPreferenceIntakeArtifacts;
+  paths: ConversationPreferenceStorePaths;
+  ratification_record: RatificationRecord;
+  diagnostic?: Diagnostic;
+}): CurationPacket | undefined {
+  if (
+    input.intake.proposal.promotion_requirement !== "owner_ratification_required" ||
+    input.ratification_record.decision !== "deferred" ||
+    !input.paths.owner_ratification_queue
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: ownerRatificationQueueId(input.intake.proposal.id),
+    kind: "curation_packet",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: input.intake.proposal.visibility_state,
+    provenance: {
+      ...input.intake.proposal.provenance,
+      evidence_refs: [
+        ...new Set([
+          ...(input.intake.proposal.provenance.evidence_refs ?? []),
+          input.intake.proposal.id,
+          input.ratification_record.id,
+          ...(input.diagnostic ? [input.diagnostic.id] : []),
+        ]),
+      ],
+    },
+    upstream_refs: [
+      ...new Set([
+        input.source_record.id,
+        input.intake.observation.id,
+        input.intake.episode.id,
+        input.intake.subject_entity.id,
+        input.intake.preference_entity.id,
+        input.intake.preference_relation.id,
+        input.intake.world_claim.id,
+        input.intake.wiki_page.id,
+        input.intake.wiki_claim.id,
+        input.intake.proposal.id,
+        input.intake.disposition_record.id,
+        input.ratification_record.id,
+        ...(input.diagnostic ? [input.diagnostic.id] : []),
+        ...(input.intake.agent_identity ? [input.intake.agent_identity.id] : []),
+        ...(input.intake.owner_identity ? [input.intake.owner_identity.id] : []),
+        ...(input.intake.runtime_instance ? [input.intake.runtime_instance.id] : []),
+        ...(input.intake.runtime_session ? [input.intake.runtime_session.id] : []),
+        ...(input.intake.conversation_thread ? [input.intake.conversation_thread.id] : []),
+      ]),
+    ],
+    proposal_refs: [input.intake.proposal.id],
+    question_count: 1,
+    review_kind: "owner_ratification",
+    ratification_ref: input.ratification_record.id,
+    diagnostic_ref: input.diagnostic?.id ?? null,
+    canonical_target_ref: {
+      id: basename(input.paths.canonical_record, ".json"),
+      kind: "preference",
+      layer: "canon",
+    },
+    source_record_ref: input.source_record.id,
+    disposition_ref: input.intake.disposition_record.id,
+    subject_entity_ref: input.intake.subject_entity.id,
+    preference_entity_ref: input.intake.preference_entity.id,
+    preference_relation_ref: input.intake.preference_relation.id,
+    world_claim_ref: input.intake.world_claim.id,
+    wiki_page_ref: input.intake.wiki_page.id,
+    wiki_claim_ref: input.intake.wiki_claim.id,
+    actor_identity_ref: input.intake.agent_identity?.id ?? null,
+    owner_identity_ref: input.intake.owner_identity?.id ?? null,
+    runtime_instance_ref: input.intake.runtime_instance?.id ?? null,
+    runtime_session_ref: input.intake.runtime_session?.id ?? null,
+    conversation_thread_ref: input.intake.conversation_thread?.id ?? null,
+    projection_manifest_ref: basename(input.paths.projection_manifest, ".json"),
+    projection_artifact_refs: [
+      basename(input.paths.projection_artifacts.canon, ".json"),
+      basename(input.paths.projection_artifacts.world, ".json"),
+      basename(input.paths.projection_artifacts.wiki, ".json"),
+    ],
+    status: "pending",
+  };
+}
+
 function buildConversationPreferenceWriteFiles(input: {
   rootDir: string;
   storeInput: ConversationPreferenceStoreInput;
@@ -718,12 +904,13 @@ function buildConversationPreferenceWriteFiles(input: {
   intake: ConversationPreferenceIntakeArtifacts;
   contradiction?: Contradiction;
   contradiction_resolution?: ContradictionResolution;
+  owner_ratification_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
   projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
 }): MaterializedFile[] {
-  const { paths, source_record, intake, contradiction, contradiction_resolution, ratification_record, diagnostic, canonical_record, projection } = input;
+  const { paths, source_record, intake, contradiction, contradiction_resolution, owner_ratification_queue, ratification_record, diagnostic, canonical_record, projection } = input;
 
   return [
     {
@@ -801,6 +988,9 @@ function buildConversationPreferenceWriteFiles(input: {
       path: paths.proposal,
       content: serializeCoreRecordContent(intake.proposal),
     },
+    ...(owner_ratification_queue
+      ? [{ path: paths.owner_ratification_queue!, content: serializeCoreRecordContent(owner_ratification_queue) }]
+      : []),
     {
       path: paths.disposition_record,
       content: serializeCoreRecordContent(intake.disposition_record),
@@ -843,6 +1033,7 @@ function buildConversationPreferenceWriteValidationIssues(input: {
   intake: ConversationPreferenceIntakeArtifacts;
   contradiction?: Contradiction;
   contradiction_resolution?: ContradictionResolution;
+  owner_ratification_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
@@ -865,6 +1056,7 @@ function buildConversationPreferenceWriteValidationIssues(input: {
     input.intake.wiki_page,
     input.intake.wiki_claim,
     input.intake.proposal,
+    ...(input.owner_ratification_queue ? [input.owner_ratification_queue] : []),
     input.intake.disposition_record,
     input.ratification_record,
     ...(input.diagnostic ? [input.diagnostic] : []),
@@ -879,6 +1071,7 @@ function buildConversationPreferenceAuditEntries(input: {
   now: string;
   source_record: SourceRecord;
   intake: ConversationPreferenceIntakeArtifacts;
+  owner_ratification_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   canonical_record?: CanonicalMemoryObject;
   projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
@@ -920,6 +1113,29 @@ function buildConversationPreferenceAuditEntries(input: {
         related_refs: [input.intake.proposal.id, input.ratification_record.id],
       },
     );
+  } else if (input.ratification_record.decision === "deferred") {
+    entries.push({
+      entry_id: `audit:${input.intake.proposal.id}:governance_defer`,
+      at: input.now,
+      operation: "governance_defer",
+      record_id: input.ratification_record.id,
+      record_kind: input.ratification_record.kind,
+      record_layer: input.ratification_record.layer,
+      detail: "Governance deferred canonical promotion pending owner ratification.",
+      related_refs: [input.intake.proposal.id, ...(input.conflicting_world_claim ? [input.conflicting_world_claim.id] : [])],
+    });
+    if (input.owner_ratification_queue) {
+      entries.push({
+        entry_id: `audit:${input.intake.proposal.id}:owner_ratification_queue`,
+        at: input.now,
+        operation: "record_observation",
+        record_id: input.owner_ratification_queue.id,
+        record_kind: input.owner_ratification_queue.kind,
+        record_layer: input.owner_ratification_queue.layer,
+        detail: "Queued proposal for explicit owner ratification review.",
+        related_refs: [input.intake.proposal.id, input.ratification_record.id],
+      });
+    }
   } else {
     entries.push({
       entry_id: `audit:${input.intake.proposal.id}:governance_reject`,
@@ -1031,6 +1247,401 @@ function buildResolutionApplicationAuditEntries(input: {
   ];
 }
 
+function buildResolvedDeferredDiagnostic(input: {
+  now: string;
+  proposal: Proposal;
+  ratification_record: RatificationRecord;
+  canonical_record: CanonicalMemoryObject;
+  diagnostic?: Diagnostic;
+}): Diagnostic | undefined {
+  if (!input.diagnostic) {
+    return undefined;
+  }
+
+  return {
+    ...input.diagnostic,
+    updated_at: input.now,
+    provenance: {
+      ...input.diagnostic.provenance,
+      evidence_refs: [
+        ...new Set([
+          ...(input.diagnostic.provenance.evidence_refs ?? []),
+          input.proposal.id,
+          input.ratification_record.id,
+          input.canonical_record.id,
+        ]),
+      ],
+    },
+    code: "proposal_deferred_resolved",
+    severity: "info",
+    message: `Deferred proposal ${input.proposal.id} was ratified by the owner and promoted into canon.`,
+    related_refs: [input.proposal.id, input.ratification_record.id, input.canonical_record.id],
+    upstream_refs: [
+      ...new Set([
+        ...(input.diagnostic.upstream_refs ?? []),
+        input.proposal.id,
+        input.ratification_record.id,
+        input.canonical_record.id,
+      ]),
+    ],
+  };
+}
+
+function buildClosedDeferredDiagnostic(input: {
+  now: string;
+  proposal: Proposal;
+  ratification_record: RatificationRecord;
+  queue_status: "answered" | "expired";
+  diagnostic?: Diagnostic;
+}): Diagnostic | undefined {
+  if (!input.diagnostic) {
+    return undefined;
+  }
+
+  const closedCode =
+    input.queue_status === "answered"
+      ? "proposal_deferred_rejected"
+      : "proposal_deferred_expired";
+  const closedMessage =
+    input.queue_status === "answered"
+      ? `Deferred proposal ${input.proposal.id} was explicitly rejected by the owner and remains outside canon.`
+      : `Deferred proposal ${input.proposal.id} expired without owner ratification and remains outside canon.`;
+
+  return {
+    ...input.diagnostic,
+    updated_at: input.now,
+    provenance: {
+      ...input.diagnostic.provenance,
+      evidence_refs: [
+        ...new Set([
+          ...(input.diagnostic.provenance.evidence_refs ?? []),
+          input.proposal.id,
+          input.ratification_record.id,
+        ]),
+      ],
+    },
+    code: closedCode,
+    severity: input.queue_status === "answered" ? "warning" : "info",
+    message: closedMessage,
+    related_refs: [input.proposal.id, input.ratification_record.id],
+    upstream_refs: [
+      ...new Set([
+        ...(input.diagnostic.upstream_refs ?? []),
+        input.proposal.id,
+        input.ratification_record.id,
+      ]),
+    ],
+  };
+}
+
+function applyOwnerRatificationQueuePacket(input: {
+  now: string;
+  queue: CurationPacket | undefined;
+  proposal: Proposal;
+  ratification_record: RatificationRecord;
+  canonical_record: CanonicalMemoryObject;
+  diagnostic?: Diagnostic;
+}): CurationPacket | undefined {
+  if (!input.queue) {
+    return undefined;
+  }
+
+  return {
+    ...input.queue,
+    updated_at: input.now,
+    status: "applied",
+    ratification_ref: input.ratification_record.id,
+    diagnostic_ref: input.diagnostic?.id ?? input.queue.diagnostic_ref ?? null,
+    upstream_refs: [
+      ...new Set([
+        ...(input.queue.upstream_refs ?? []),
+        input.proposal.id,
+        input.ratification_record.id,
+        input.canonical_record.id,
+        ...(input.diagnostic ? [input.diagnostic.id] : []),
+      ]),
+    ],
+    provenance: {
+      ...input.queue.provenance,
+      evidence_refs: [
+        ...new Set([
+          ...(input.queue.provenance.evidence_refs ?? []),
+          input.proposal.id,
+          input.ratification_record.id,
+          input.canonical_record.id,
+          ...(input.diagnostic ? [input.diagnostic.id] : []),
+        ]),
+      ],
+    },
+  };
+}
+
+function closeOwnerRatificationQueuePacket(input: {
+  now: string;
+  queue: CurationPacket | undefined;
+  proposal: Proposal;
+  ratification_record: RatificationRecord;
+  queue_status: "answered" | "expired";
+  diagnostic?: Diagnostic;
+}): CurationPacket | undefined {
+  if (!input.queue) {
+    return undefined;
+  }
+
+  return {
+    ...input.queue,
+    updated_at: input.now,
+    status: input.queue_status,
+    ratification_ref: input.ratification_record.id,
+    diagnostic_ref: input.diagnostic?.id ?? input.queue.diagnostic_ref ?? null,
+    upstream_refs: [
+      ...new Set([
+        ...(input.queue.upstream_refs ?? []),
+        input.proposal.id,
+        input.ratification_record.id,
+        ...(input.diagnostic ? [input.diagnostic.id] : []),
+      ]),
+    ],
+    provenance: {
+      ...input.queue.provenance,
+      evidence_refs: [
+        ...new Set([
+          ...(input.queue.provenance.evidence_refs ?? []),
+          input.proposal.id,
+          input.ratification_record.id,
+          ...(input.diagnostic ? [input.diagnostic.id] : []),
+        ]),
+      ],
+    },
+  };
+}
+
+function buildOwnerRatificationFiles(input: {
+  paths: ConversationPreferenceStorePaths;
+  owner_ratification_queue?: CurationPacket;
+  ratification_record: RatificationRecord;
+  canonical_record: CanonicalMemoryObject;
+  diagnostic?: Diagnostic;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): MaterializedFile[] {
+  return [
+    ...(input.owner_ratification_queue
+      ? [{ path: input.paths.owner_ratification_queue!, content: serializeCoreRecordContent(input.owner_ratification_queue) }]
+      : []),
+    {
+      path: input.paths.ratification_record,
+      content: serializeCoreRecordContent(input.ratification_record),
+    },
+    {
+      path: input.paths.canonical_record,
+      content: serializeCoreRecordContent(input.canonical_record),
+    },
+    ...(input.diagnostic
+      ? [{ path: input.paths.diagnostic_record!, content: serializeCoreRecordContent(input.diagnostic) }]
+      : []),
+    {
+      path: input.paths.projection_markdown,
+      content: input.projection.markdown,
+    },
+    {
+      path: input.paths.projection_artifacts.canon,
+      content: serializeCoreRecordContent(input.projection.artifacts[0]!),
+    },
+    {
+      path: input.paths.projection_artifacts.world,
+      content: serializeCoreRecordContent(input.projection.artifacts[1]!),
+    },
+    {
+      path: input.paths.projection_artifacts.wiki,
+      content: serializeCoreRecordContent(input.projection.artifacts[2]!),
+    },
+    {
+      path: input.paths.projection_manifest,
+      content: serializeCoreRecordContent(input.projection.manifest),
+    },
+  ];
+}
+
+function buildOwnerRatificationValidationIssues(input: {
+  owner_ratification_queue?: CurationPacket;
+  ratification_record: RatificationRecord;
+  canonical_record: CanonicalMemoryObject;
+  diagnostic?: Diagnostic;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): ValidationIssue[] {
+  return [
+    ...(input.owner_ratification_queue ? [input.owner_ratification_queue] : []),
+    input.ratification_record,
+    input.canonical_record,
+    ...(input.diagnostic ? [input.diagnostic] : []),
+    ...input.projection.artifacts,
+    input.projection.manifest,
+  ].flatMap((record) => validateCoreRecord(record));
+}
+
+function buildOwnerRatificationAuditEntries(input: {
+  now: string;
+  proposal: Proposal;
+  owner_ratification_queue?: CurationPacket;
+  ratification_record: RatificationRecord;
+  canonical_record: CanonicalMemoryObject;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): AuditChangeEntry[] {
+  return [
+    {
+      entry_id: `audit:${input.proposal.id}:governance_owner_ratify`,
+      at: input.now,
+      operation: "governance_owner_ratify",
+      record_id: input.ratification_record.id,
+      record_kind: input.ratification_record.kind,
+      record_layer: input.ratification_record.layer,
+      detail: "Owner explicitly ratified a deferred proposal and cleared the authority gate.",
+      related_refs: [input.proposal.id, input.canonical_record.id],
+    },
+    {
+      entry_id: `audit:${input.proposal.id}:canon_apply_create_owner_ratified`,
+      at: input.now,
+      operation: "canon_apply_create",
+      record_id: input.canonical_record.id,
+      record_kind: input.canonical_record.kind,
+      record_layer: input.canonical_record.layer,
+      detail: "Applied owner-ratified proposal into canonical memory.",
+      related_refs: [input.proposal.id, input.ratification_record.id],
+    },
+    ...(input.owner_ratification_queue
+      ? [{
+          entry_id: `audit:${input.proposal.id}:owner_ratification_queue_apply`,
+          at: input.now,
+          operation: "record_observation" as const,
+          record_id: input.owner_ratification_queue.id,
+          record_kind: input.owner_ratification_queue.kind,
+          record_layer: input.owner_ratification_queue.layer,
+          detail: "Marked owner ratification queue entry as applied.",
+          related_refs: [input.proposal.id, input.ratification_record.id, input.canonical_record.id],
+        }]
+      : []),
+    {
+      entry_id: `audit:${input.proposal.id}:projection_compile_owner_ratification`,
+      at: input.now,
+      operation: "projection_compile",
+      record_id: input.projection.manifest.id,
+      record_kind: input.projection.manifest.kind,
+      record_layer: input.projection.manifest.layer,
+      detail: "Recompiled projection after explicit owner ratification.",
+      related_refs: [input.proposal.id, input.ratification_record.id, input.canonical_record.id],
+    },
+  ];
+}
+
+function buildOwnerReviewClosureFiles(input: {
+  paths: ConversationPreferenceStorePaths;
+  owner_ratification_queue?: CurationPacket;
+  ratification_record: RatificationRecord;
+  diagnostic?: Diagnostic;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): MaterializedFile[] {
+  return [
+    ...(input.owner_ratification_queue
+      ? [{ path: input.paths.owner_ratification_queue!, content: serializeCoreRecordContent(input.owner_ratification_queue) }]
+      : []),
+    {
+      path: input.paths.ratification_record,
+      content: serializeCoreRecordContent(input.ratification_record),
+    },
+    ...(input.diagnostic
+      ? [{ path: input.paths.diagnostic_record!, content: serializeCoreRecordContent(input.diagnostic) }]
+      : []),
+    {
+      path: input.paths.projection_markdown,
+      content: input.projection.markdown,
+    },
+    {
+      path: input.paths.projection_artifacts.canon,
+      content: serializeCoreRecordContent(input.projection.artifacts[0]!),
+    },
+    {
+      path: input.paths.projection_artifacts.world,
+      content: serializeCoreRecordContent(input.projection.artifacts[1]!),
+    },
+    {
+      path: input.paths.projection_artifacts.wiki,
+      content: serializeCoreRecordContent(input.projection.artifacts[2]!),
+    },
+    {
+      path: input.paths.projection_manifest,
+      content: serializeCoreRecordContent(input.projection.manifest),
+    },
+  ];
+}
+
+function buildOwnerReviewClosureValidationIssues(input: {
+  owner_ratification_queue?: CurationPacket;
+  ratification_record: RatificationRecord;
+  diagnostic?: Diagnostic;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): ValidationIssue[] {
+  return [
+    ...(input.owner_ratification_queue ? [input.owner_ratification_queue] : []),
+    input.ratification_record,
+    ...(input.diagnostic ? [input.diagnostic] : []),
+    ...input.projection.artifacts,
+    input.projection.manifest,
+  ].flatMap((record) => validateCoreRecord(record));
+}
+
+function buildOwnerReviewClosureAuditEntries(input: {
+  now: string;
+  proposal: Proposal;
+  owner_ratification_queue?: CurationPacket;
+  ratification_record: RatificationRecord;
+  queue_status: "answered" | "expired";
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): AuditChangeEntry[] {
+  const detail =
+    input.queue_status === "answered"
+      ? "Owner explicitly rejected a deferred proposal and closed the queue entry."
+      : "Deferred proposal expired without owner ratification and the queue entry was closed.";
+  const queueDetail =
+    input.queue_status === "answered"
+      ? "Marked owner ratification queue entry as answered."
+      : "Marked owner ratification queue entry as expired.";
+
+  return [
+    {
+      entry_id: `audit:${input.proposal.id}:governance_owner_review_close`,
+      at: input.now,
+      operation: input.queue_status === "answered" ? "governance_owner_reject" : "governance_owner_expire",
+      record_id: input.ratification_record.id,
+      record_kind: input.ratification_record.kind,
+      record_layer: input.ratification_record.layer,
+      detail,
+      related_refs: [input.proposal.id, input.ratification_record.id],
+    },
+    ...(input.owner_ratification_queue
+      ? [{
+          entry_id: `audit:${input.proposal.id}:owner_ratification_queue_close`,
+          at: input.now,
+          operation: "record_observation" as const,
+          record_id: input.owner_ratification_queue.id,
+          record_kind: input.owner_ratification_queue.kind,
+          record_layer: input.owner_ratification_queue.layer,
+          detail: queueDetail,
+          related_refs: [input.proposal.id, input.ratification_record.id],
+        }]
+      : []),
+    {
+      entry_id: `audit:${input.proposal.id}:projection_compile_owner_review_close`,
+      at: input.now,
+      operation: "projection_compile",
+      record_id: input.projection.manifest.id,
+      record_kind: input.projection.manifest.kind,
+      record_layer: input.projection.manifest.layer,
+      detail: "Recompiled projection after closing an owner review queue entry.",
+      related_refs: [input.proposal.id, input.ratification_record.id],
+    },
+  ];
+}
+
 function assertNoValidationIssues(issues: ValidationIssue[], context: string): void {
   if (issues.length === 0) {
     return;
@@ -1105,6 +1716,7 @@ async function loadExistingFlow(
     paths.wiki_page_record,
     paths.wiki_claim,
     paths.proposal,
+    ...(paths.owner_ratification_queue ? [paths.owner_ratification_queue] : []),
     paths.disposition_record,
     paths.ratification_record,
   ];
@@ -1150,11 +1762,18 @@ async function loadExistingFlow(
   }
 
   if (
-    loaded.ratification_record.decision === "rejected" &&
+    loaded.ratification_record.decision !== "approved" &&
     paths.diagnostic_record &&
     !(await pathExists(paths.diagnostic_record))
   ) {
-    throw new Error("Existing conversation preference flow is missing rejection diagnostic state");
+    throw new Error("Existing conversation preference flow is missing non-approved diagnostic state");
+  }
+
+  if (
+    loaded.intake.proposal.promotion_requirement === "owner_ratification_required" &&
+    !loaded.owner_ratification_queue
+  ) {
+    throw new Error("Existing conversation preference flow is missing owner ratification queue state");
   }
 
   assertLoadedFlowMatchesInput(loaded, expectedSourceRecord, expectedIntake);
@@ -1187,7 +1806,7 @@ async function loadExistingFlow(
     requiredPaths.push(paths.canonical_record);
   }
 
-  if (loaded.ratification_record.decision === "rejected" && paths.diagnostic_record) {
+  if (loaded.ratification_record.decision !== "approved" && paths.diagnostic_record) {
     requiredPaths.push(paths.diagnostic_record);
   }
 
@@ -1227,6 +1846,7 @@ async function loadExistingFlow(
     intake.wiki_page,
     intake.wiki_claim,
     intake.proposal,
+    ...(loaded.owner_ratification_queue ? [loaded.owner_ratification_queue] : []),
     intake.disposition_record,
     ratification_record,
     ...(diagnostic ? [diagnostic] : []),
@@ -1245,6 +1865,7 @@ async function loadExistingFlow(
       intake,
       contradiction,
       contradiction_resolution,
+      owner_ratification_queue: loaded.owner_ratification_queue,
       ratification_record,
       diagnostic,
       canonical_record,
@@ -1276,6 +1897,10 @@ async function loadAuthoritativeFlow(paths: ConversationPreferenceStorePaths): P
       disposition_record: await readCoreRecord<DispositionRecord>(paths.disposition_record),
     },
     ratification_record: await readCoreRecord<RatificationRecord>(paths.ratification_record),
+    owner_ratification_queue:
+      paths.owner_ratification_queue && (await pathExists(paths.owner_ratification_queue))
+        ? await readCoreRecord<CurationPacket>(paths.owner_ratification_queue)
+        : undefined,
     diagnostic:
       paths.diagnostic_record && (await pathExists(paths.diagnostic_record))
         ? await readCoreRecord<Diagnostic>(paths.diagnostic_record)
@@ -1303,6 +1928,7 @@ function assertLoadedFlowMatchesInput(
   if (loaded.source_record.provenance.source_type !== expectedSourceRecord.provenance.source_type) mismatches.push("source.source_type");
   if (loaded.source_record.provenance.source_ref !== expectedSourceRecord.provenance.source_ref) mismatches.push("source.source_ref");
   if (loaded.source_record.provenance.actor_ref !== expectedSourceRecord.provenance.actor_ref) mismatches.push("source.actor_ref");
+  if (loaded.source_record.provenance.speaker_ref !== expectedSourceRecord.provenance.speaker_ref) mismatches.push("source.speaker_ref");
   if (loaded.source_record.provenance.runtime_ref !== expectedSourceRecord.provenance.runtime_ref) mismatches.push("source.runtime_ref");
   if (loaded.source_record.provenance.session_ref !== expectedSourceRecord.provenance.session_ref) mismatches.push("source.session_ref");
   if (loaded.source_record.provenance.thread_ref !== expectedSourceRecord.provenance.thread_ref) mismatches.push("source.thread_ref");
@@ -1394,6 +2020,7 @@ async function buildProjectionFromStoreState(
     relations?: Relation[];
     contradictions?: Contradiction[];
     contradiction_resolutions?: ContradictionResolution[];
+    curation_packets?: CurationPacket[];
     wiki_pages?: WikiPage[];
     wiki_claims?: WikiClaim[];
     diagnostics?: Diagnostic[];
@@ -1407,6 +2034,7 @@ async function buildProjectionFromStoreState(
     relations,
     contradictions,
     contradiction_resolutions,
+    curation_packets,
     wiki_pages,
     wiki_claims,
     diagnostics,
@@ -1418,6 +2046,7 @@ async function buildProjectionFromStoreState(
     loadWorldRelations(rootDir),
     loadWorldContradictions(rootDir),
     loadContradictionResolutions(rootDir),
+    loadCurationPackets(rootDir),
     loadWikiPages(rootDir),
     loadWikiClaims(rootDir),
     loadDiagnostics(rootDir),
@@ -1451,6 +2080,7 @@ async function buildProjectionFromStoreState(
     relations: mergeById(relations, overrides?.relations),
     contradictions: mergeById(contradictions, overrides?.contradictions),
     contradiction_resolutions: mergeById(contradiction_resolutions, overrides?.contradiction_resolutions),
+    curation_packets: mergeById(curation_packets, overrides?.curation_packets),
     wiki_pages: mergeById(wiki_pages, overrides?.wiki_pages),
     wiki_claims: mergeById(wiki_claims, overrides?.wiki_claims),
     diagnostics: mergeById(diagnostics, overrides?.diagnostics),
@@ -1463,6 +2093,7 @@ async function buildProjectionFromStoreState(
     },
     identity_context: {
       actor_identity_ref: intake.agent_identity?.id ?? null,
+      owner_identity_ref: intake.owner_identity?.id ?? null,
       runtime_instance_ref: intake.runtime_instance?.id ?? null,
       runtime_session_ref: intake.runtime_session?.id ?? null,
       conversation_thread_ref: intake.conversation_thread?.id ?? null,
@@ -1615,13 +2246,13 @@ function renderWikiMarkdown(
   return [
     "---",
     `page_id: ${wikiPage.id}`,
-    "page_kind: entity",
+    `page_kind: ${wikiPage.page_kind}`,
     `title: ${wikiPage.title}`,
     `source_refs: [${sourceRecord.id}]`,
     `world_refs: [${worldClaimId}]`,
     "---",
     "",
-    "# User Interaction Preferences",
+    `# ${wikiPage.title}`,
     "",
     `- ${statement}`,
     "",
@@ -1761,8 +2392,21 @@ async function reconcilePersistedRuntimeIdentityArtifacts(
   rootDir: string,
   intake: ConversationPreferenceIntakeArtifacts,
 ): Promise<ConversationPreferenceIntakeArtifacts> {
-  async function preserveExistingRecord<
-    T extends ActorIdentity | RuntimeInstance | RuntimeSession | ConversationThread,
+  async function preserveExistingActorIdentity(record: ActorIdentity | undefined): Promise<ActorIdentity | undefined> {
+    if (!record) {
+      return undefined;
+    }
+
+    const filePath = coreRecordPath(rootDir, record);
+    if (!(await pathExists(filePath))) {
+      return record;
+    }
+
+    return readCoreRecord<ActorIdentity>(filePath);
+  }
+
+  async function preserveRuntimeRecord<
+    T extends RuntimeInstance | RuntimeSession | ConversationThread,
   >(record: T | undefined): Promise<T | undefined> {
     if (!record) {
       return undefined;
@@ -1784,11 +2428,11 @@ async function reconcilePersistedRuntimeIdentityArtifacts(
 
   return {
     ...intake,
-    agent_identity: await preserveExistingRecord(intake.agent_identity),
-    owner_identity: await preserveExistingRecord(intake.owner_identity),
-    runtime_instance: await preserveExistingRecord(intake.runtime_instance),
-    runtime_session: await preserveExistingRecord(intake.runtime_session),
-    conversation_thread: await preserveExistingRecord(intake.conversation_thread),
+    agent_identity: await preserveExistingActorIdentity(intake.agent_identity),
+    owner_identity: await preserveExistingActorIdentity(intake.owner_identity),
+    runtime_instance: await preserveRuntimeRecord(intake.runtime_instance),
+    runtime_session: await preserveRuntimeRecord(intake.runtime_session),
+    conversation_thread: await preserveRuntimeRecord(intake.conversation_thread),
   };
 }
 
@@ -1830,6 +2474,15 @@ export async function writeConversationPreferenceFlowToStore(
     throw new Error("Conversation preference workflow produced an accepted proposal without canonical state");
   }
 
+  const owner_ratification_queue = buildOwnerRatificationQueuePacket({
+    now: input.now,
+    source_record,
+    intake,
+    paths,
+    ratification_record: canonicalWorkflow.ratification_record,
+    diagnostic: canonicalWorkflow.diagnostic,
+  });
+
   const contradiction =
     input.ids.contradiction && conflicting_world_claim
       ? detectWorldClaimContradiction({
@@ -1857,6 +2510,7 @@ export async function writeConversationPreferenceFlowToStore(
     relations: [intake.preference_relation],
     contradictions: contradiction ? [contradiction] : [],
     contradiction_resolutions: contradiction_resolution ? [contradiction_resolution] : [],
+    curation_packets: owner_ratification_queue ? [owner_ratification_queue] : [],
     wiki_pages: [intake.wiki_page],
     wiki_claims: [intake.wiki_claim],
     diagnostics: canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : [],
@@ -1869,6 +2523,7 @@ export async function writeConversationPreferenceFlowToStore(
     intake,
     contradiction,
     contradiction_resolution,
+    owner_ratification_queue,
     ratification_record: canonicalWorkflow.ratification_record,
     diagnostic: canonicalWorkflow.diagnostic,
     canonical_record: canonicalWorkflow.created_record,
@@ -1879,6 +2534,7 @@ export async function writeConversationPreferenceFlowToStore(
     intake,
     contradiction,
     contradiction_resolution,
+    owner_ratification_queue,
     ratification_record: canonicalWorkflow.ratification_record,
     diagnostic: canonicalWorkflow.diagnostic,
     canonical_record: canonicalWorkflow.created_record,
@@ -1889,6 +2545,7 @@ export async function writeConversationPreferenceFlowToStore(
     now: input.now,
     source_record,
     intake,
+    owner_ratification_queue,
     ratification_record: canonicalWorkflow.ratification_record,
     canonical_record: canonicalWorkflow.created_record,
     projection,
@@ -1924,6 +2581,7 @@ export async function writeConversationPreferenceFlowToStore(
       intake,
       contradiction,
       contradiction_resolution,
+      owner_ratification_queue,
       ratification_record: canonicalWorkflow.ratification_record,
       diagnostic: canonicalWorkflow.diagnostic,
       canonical_record: canonicalWorkflow.created_record,
@@ -1990,7 +2648,17 @@ export async function applyConversationPreferenceResolutionToStore(
     coreRecordPath(
       rootDir,
       {
-        id: records.contradiction_resolution.losing_ref?.id ?? records.contradiction.left_ref.id,
+        id: records.contradiction.left_ref.id,
+        kind: "preference",
+        layer: "world",
+      } as WorldClaim,
+    ),
+  );
+  const candidate_world_claim = await readCoreRecord<WorldClaim>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: records.contradiction.right_ref.id,
         kind: "preference",
         layer: "world",
       } as WorldClaim,
@@ -2009,13 +2677,14 @@ export async function applyConversationPreferenceResolutionToStore(
         contradiction: records.contradiction,
         contradiction_resolution: records.contradiction_resolution,
         existing_world_claim,
-        candidate_world_claim: records.intake.world_claim,
+        candidate_world_claim,
         projection_artifacts,
         projection_manifest,
       },
       validation_issues: [
         ...existingFlow.validation_issues,
         ...validateCoreRecord(existing_world_claim),
+        ...validateCoreRecord(candidate_world_claim),
       ],
     };
   }
@@ -2028,7 +2697,7 @@ export async function applyConversationPreferenceResolutionToStore(
       resolution: records.contradiction_resolution,
     }),
     existing_claim: existing_world_claim,
-    candidate_claim: records.intake.world_claim,
+    candidate_claim: candidate_world_claim,
   });
 
   const projection = await buildProjectionFromStoreState(rootDir, paths, input, records.canonical_record, {
@@ -2099,4 +2768,652 @@ export async function applyConversationPreferenceResolutionToStore(
     },
     validation_issues,
   };
+}
+
+function buildSyntheticInputForStoredFlow(
+  rootDir: string,
+  flow: ConversationPreferenceStoreResult,
+  now: string,
+  actor: string,
+  validation_scope?: string,
+): ConversationPreferenceStoreInput {
+  return {
+    rootDir,
+    now,
+    actor,
+    statement: flow.records.intake.world_claim.statement,
+    source: {
+      id: flow.records.source_record.id,
+      source_ref: flow.records.source_record.provenance.source_ref,
+      content_ref: flow.records.source_record.content_ref,
+      runtime: flow.records.intake.runtime_instance?.runtime ?? "generic",
+      message: flow.records.intake.world_claim.statement,
+      source_type: flow.records.source_record.provenance.source_type,
+      speaker_ref: flow.records.source_record.provenance.speaker_ref ?? null,
+    },
+    ids: {
+      observation: flow.records.intake.observation.id,
+      episode: flow.records.intake.episode.id,
+      subject_entity: flow.records.intake.subject_entity.id,
+      preference_entity: flow.records.intake.preference_entity.id,
+      preference_relation: flow.records.intake.preference_relation.id,
+      world_claim: flow.records.intake.world_claim.id,
+      contradiction: flow.records.contradiction?.id,
+      contradiction_resolution: flow.records.contradiction_resolution?.id,
+      wiki_page: flow.records.intake.wiki_page.id,
+      wiki_claim: flow.records.intake.wiki_claim.id,
+      proposal: flow.records.intake.proposal.id,
+      disposition: flow.records.intake.disposition_record.id,
+      ratification: flow.records.ratification_record.id,
+      diagnostic: flow.records.diagnostic?.id,
+      canonical: basename(flow.paths.canonical_record, ".json"),
+      canon_artifact: flow.records.projection_artifacts[0]!.id,
+      world_artifact: flow.records.projection_artifacts[1]!.id,
+      wiki_artifact: flow.records.projection_artifacts[2]!.id,
+      projection_manifest: flow.records.projection_manifest.id,
+    },
+    validation_scope,
+  };
+}
+
+async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
+  rootDir: string,
+  queue_id: string,
+): Promise<ConversationPreferenceStoreResult | undefined> {
+  const queuePacket = (await loadCurationPackets(rootDir)).find(
+    (packet) => packet.id === queue_id && packet.review_kind === "owner_ratification",
+  );
+  if (!queuePacket) {
+    return undefined;
+  }
+
+  const proposalId = queuePacket.proposal_refs[0];
+  if (!proposalId) {
+    throw new Error(`Owner ratification queue ${queue_id} is missing proposal_refs`);
+  }
+  if (
+    !queuePacket.ratification_ref ||
+    !queuePacket.source_record_ref ||
+    !queuePacket.disposition_ref ||
+    !queuePacket.subject_entity_ref ||
+    !queuePacket.preference_entity_ref ||
+    !queuePacket.preference_relation_ref ||
+    !queuePacket.world_claim_ref ||
+    !queuePacket.wiki_page_ref ||
+    !queuePacket.wiki_claim_ref ||
+    !queuePacket.canonical_target_ref ||
+    !queuePacket.projection_manifest_ref ||
+    (queuePacket.projection_artifact_refs?.length ?? 0) !== 3
+  ) {
+    throw new Error(`Owner ratification queue ${queue_id} does not carry enough flow refs`);
+  }
+  const projectionArtifactRefs = queuePacket.projection_artifact_refs as [string, string, string];
+
+  const proposalPath = coreRecordPath(
+    rootDir,
+    {
+      id: proposalId,
+      kind: "proposal",
+      layer: "governance",
+    } as Proposal,
+  );
+  const proposal = await readCoreRecord<Proposal>(proposalPath);
+  const [observationId, episodeId] = proposal.evidence_refs;
+  if (!observationId || !episodeId) {
+    throw new Error(`Proposal ${proposal.id} does not carry observation and episode refs`);
+  }
+
+  const sourceRecordPath = coreRecordPath(
+    rootDir,
+    {
+      id: queuePacket.source_record_ref,
+      kind: "source_record",
+      layer: "raw",
+    } as SourceRecord,
+  );
+  const source_record = await readCoreRecord<SourceRecord>(sourceRecordPath);
+  const paths: ConversationPreferenceStorePaths = {
+    raw_source: resolveStorePath(rootDir, source_record.content_ref),
+    source_record: sourceRecordPath,
+    observation: coreRecordPath(rootDir, { id: observationId, kind: "observation", layer: "runtime" } as Observation),
+    episode: coreRecordPath(rootDir, { id: episodeId, kind: "episode", layer: "world" } as Episode),
+    subject_entity: coreRecordPath(rootDir, { id: queuePacket.subject_entity_ref, kind: "entity", layer: "world" } as Entity),
+    preference_entity: coreRecordPath(rootDir, { id: queuePacket.preference_entity_ref, kind: "entity", layer: "world" } as Entity),
+    preference_relation: coreRecordPath(rootDir, { id: queuePacket.preference_relation_ref, kind: "relation", layer: "world" } as Relation),
+    world_claim: coreRecordPath(rootDir, { id: queuePacket.world_claim_ref, kind: "preference", layer: "world" } as WorldClaim),
+    actor_identity: queuePacket.actor_identity_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.actor_identity_ref, kind: "actor_identity", layer: "canon" } as ActorIdentity)
+      : undefined,
+    owner_identity: queuePacket.owner_identity_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.owner_identity_ref, kind: "actor_identity", layer: "canon" } as ActorIdentity)
+      : undefined,
+    runtime_instance: queuePacket.runtime_instance_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.runtime_instance_ref, kind: "runtime_instance", layer: "runtime" } as RuntimeInstance)
+      : undefined,
+    runtime_session: queuePacket.runtime_session_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.runtime_session_ref, kind: "runtime_session", layer: "runtime" } as RuntimeSession)
+      : undefined,
+    conversation_thread: queuePacket.conversation_thread_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.conversation_thread_ref, kind: "conversation_thread", layer: "runtime" } as ConversationThread)
+      : undefined,
+    wiki_page_record: coreRecordPath(rootDir, { id: queuePacket.wiki_page_ref, kind: "wiki_page", layer: "wiki" } as WikiPage),
+    wiki_page_markdown: resolveStorePath(
+      rootDir,
+      (await readCoreRecord<WikiPage>(coreRecordPath(rootDir, { id: queuePacket.wiki_page_ref, kind: "wiki_page", layer: "wiki" } as WikiPage))).path,
+    ),
+    wiki_claim: coreRecordPath(rootDir, { id: queuePacket.wiki_claim_ref, kind: "wiki_claim", layer: "wiki" } as WikiClaim),
+    proposal: proposalPath,
+    owner_ratification_queue: coreRecordPath(rootDir, queuePacket),
+    disposition_record: coreRecordPath(
+      rootDir,
+      { id: queuePacket.disposition_ref, kind: "disposition_record", layer: "governance" } as DispositionRecord,
+    ),
+    ratification_record: coreRecordPath(
+      rootDir,
+      { id: queuePacket.ratification_ref, kind: "ratification", layer: "governance" } as RatificationRecord,
+    ),
+    diagnostic_record: queuePacket.diagnostic_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.diagnostic_ref, kind: "diagnostic", layer: "audits" } as Diagnostic)
+      : undefined,
+    canonical_record: coreRecordPath(
+      rootDir,
+      {
+        id: queuePacket.canonical_target_ref.id,
+        kind: queuePacket.canonical_target_ref.kind ?? "preference",
+        layer: queuePacket.canonical_target_ref.layer ?? "canon",
+      } as CanonicalMemoryObject,
+    ),
+    projection_markdown: resolveStorePath(rootDir, defaultOpenClawBootstrapProjectionPath(queuePacket.projection_manifest_ref)),
+    projection_manifest: coreRecordPath(
+      rootDir,
+      { id: queuePacket.projection_manifest_ref, kind: "projection_manifest", layer: "derived", adapter: "openclaw" } as ProjectionManifest,
+    ),
+    projection_artifacts: {
+      canon: coreRecordPath(rootDir, { id: projectionArtifactRefs[0]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+      world: coreRecordPath(rootDir, { id: projectionArtifactRefs[1]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+      wiki: coreRecordPath(rootDir, { id: projectionArtifactRefs[2]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+    },
+  };
+
+  const loaded = await loadAuthoritativeFlow(paths);
+  const projection_artifacts = await readProjectionArtifacts(paths);
+  const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+  const flow: ConversationPreferenceStoreResult = {
+    reused: true,
+    paths,
+    records: {
+      source_record: loaded.source_record,
+      intake: loaded.intake,
+      contradiction: undefined,
+      contradiction_resolution: undefined,
+      owner_ratification_queue: loaded.owner_ratification_queue,
+      ratification_record: loaded.ratification_record,
+      diagnostic: loaded.diagnostic,
+      canonical_record: loaded.canonical_record,
+      projection_artifacts,
+      projection_manifest,
+    },
+    validation_issues: [
+      loaded.source_record,
+      ...(loaded.intake.agent_identity ? [loaded.intake.agent_identity] : []),
+      ...(loaded.intake.owner_identity ? [loaded.intake.owner_identity] : []),
+      ...(loaded.intake.runtime_instance ? [loaded.intake.runtime_instance] : []),
+      ...(loaded.intake.runtime_session ? [loaded.intake.runtime_session] : []),
+      ...(loaded.intake.conversation_thread ? [loaded.intake.conversation_thread] : []),
+      loaded.intake.observation,
+      loaded.intake.episode,
+      loaded.intake.subject_entity,
+      loaded.intake.preference_entity,
+      loaded.intake.preference_relation,
+      loaded.intake.world_claim,
+      loaded.intake.wiki_page,
+      loaded.intake.wiki_claim,
+      loaded.intake.proposal,
+      loaded.intake.disposition_record,
+      ...(loaded.owner_ratification_queue ? [loaded.owner_ratification_queue] : []),
+      loaded.ratification_record,
+      ...(loaded.diagnostic ? [loaded.diagnostic] : []),
+      ...(loaded.canonical_record ? [loaded.canonical_record] : []),
+      ...projection_artifacts,
+      projection_manifest,
+    ].flatMap((record) => validateCoreRecord(record)),
+  };
+
+  return {
+    ...flow,
+    reused: flow.records.ratification_record.decision === "approved",
+  };
+}
+
+async function applyOwnerRatificationToExistingFlow(
+  rootDir: string,
+  existingFlow: ConversationPreferenceStoreResult,
+  projectionInput: ConversationPreferenceStoreInput,
+  input: {
+    now: string;
+    actor: string;
+    owner_actor_ref: string;
+    validation_scope?: string;
+  },
+): Promise<ConversationPreferenceStoreResult> {
+  if (existingFlow.records.owner_ratification_queue?.status && existingFlow.records.owner_ratification_queue.status !== "pending") {
+    throw new Error(`Owner ratification queue entry is already closed with status ${existingFlow.records.owner_ratification_queue.status}`);
+  }
+
+  if (existingFlow.records.ratification_record.decision === "approved") {
+    return existingFlow;
+  }
+
+  if (existingFlow.records.ratification_record.decision !== "deferred") {
+    throw new Error("Only deferred conversation preference flows can be explicitly owner-ratified");
+  }
+
+  const ownerIdentityRef = existingFlow.records.intake.owner_identity?.id;
+  if (!ownerIdentityRef) {
+    throw new Error("Deferred conversation preference flow does not carry an owner identity");
+  }
+
+  if (input.owner_actor_ref !== ownerIdentityRef) {
+    throw new Error(`Explicit owner ratification requires owner_actor_ref ${ownerIdentityRef}`);
+  }
+
+  if (existingFlow.records.intake.proposal.promotion_requirement !== "owner_ratification_required") {
+    throw new Error("Conversation preference flow is not waiting on owner ratification");
+  }
+
+  const canonicalWorkflow = executeCanonicalProposalWorkflow({
+    proposal: {
+      ...existingFlow.records.intake.proposal,
+      promotion_requirement: "none",
+    },
+    existing_canon_records: await loadCanonicalRecords(rootDir),
+    now: input.now,
+    actor: input.actor,
+    ratification_id: existingFlow.records.ratification_record.id,
+    canonical_id: basename(existingFlow.paths.canonical_record, ".json"),
+  });
+
+  if (!canonicalWorkflow.accepted || !canonicalWorkflow.created_record) {
+    const failedReasons = canonicalWorkflow.gate_results
+      .filter((gate) => !gate.passed)
+      .map((gate) => `${gate.gate}:${gate.reason_code}`)
+      .join(", ");
+    throw new Error(`Explicit owner ratification could not promote the proposal: ${failedReasons}`);
+  }
+
+  const updatedDiagnostic = buildResolvedDeferredDiagnostic({
+    now: input.now,
+    proposal: existingFlow.records.intake.proposal,
+    ratification_record: canonicalWorkflow.ratification_record,
+    canonical_record: canonicalWorkflow.created_record,
+    diagnostic: existingFlow.records.diagnostic,
+  });
+  const updatedQueue = applyOwnerRatificationQueuePacket({
+    now: input.now,
+    queue: existingFlow.records.owner_ratification_queue,
+    proposal: existingFlow.records.intake.proposal,
+    ratification_record: canonicalWorkflow.ratification_record,
+    canonical_record: canonicalWorkflow.created_record,
+    diagnostic: updatedDiagnostic,
+  });
+
+  const projection = await buildProjectionFromStoreState(
+    rootDir,
+    existingFlow.paths,
+    projectionInput,
+    canonicalWorkflow.created_record,
+    existingFlow.records.intake,
+    input.now,
+    {
+      canonical_records: [canonicalWorkflow.created_record],
+      curation_packets: updatedQueue ? [updatedQueue] : [],
+      diagnostics: updatedDiagnostic ? [updatedDiagnostic] : [],
+    },
+  );
+
+  const files = buildOwnerRatificationFiles({
+    paths: existingFlow.paths,
+    owner_ratification_queue: updatedQueue,
+    ratification_record: canonicalWorkflow.ratification_record,
+    canonical_record: canonicalWorkflow.created_record,
+    diagnostic: updatedDiagnostic,
+    projection,
+  });
+  const validation_issues = buildOwnerRatificationValidationIssues({
+    owner_ratification_queue: updatedQueue,
+    ratification_record: canonicalWorkflow.ratification_record,
+    canonical_record: canonicalWorkflow.created_record,
+    diagnostic: updatedDiagnostic,
+    projection,
+  });
+  assertNoValidationIssues(validation_issues, "conversation preference explicit owner ratification");
+  const audit_entries = buildOwnerRatificationAuditEntries({
+    now: input.now,
+    proposal: existingFlow.records.intake.proposal,
+    owner_ratification_queue: updatedQueue,
+    ratification_record: canonicalWorkflow.ratification_record,
+    canonical_record: canonicalWorkflow.created_record,
+    projection,
+  });
+  const append_entries = buildConversationPreferenceAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference:owner-ratification",
+    proposal_id: existingFlow.records.intake.proposal.id,
+    validation_issues,
+    audit_entries,
+  });
+  const journalPath = recoveryJournalPath(
+    rootDir,
+    "conversation_preference_owner_ratification_apply",
+    existingFlow.records.intake.proposal.id,
+  );
+  await writeRecoveryJournal(
+    journalPath,
+    buildRecoveryJournal({
+      rootDir,
+      operation: "conversation_preference_owner_ratification_apply",
+      created_at: input.now,
+      files,
+      append_entries,
+    }),
+  );
+  await materializeFiles(files);
+  await replayRecoveryJournalEntries(rootDir, append_entries);
+  await rm(journalPath, { force: true });
+
+  return {
+    reused: false,
+    paths: existingFlow.paths,
+    records: {
+      ...existingFlow.records,
+      owner_ratification_queue: updatedQueue,
+      ratification_record: canonicalWorkflow.ratification_record,
+      diagnostic: updatedDiagnostic,
+      canonical_record: canonicalWorkflow.created_record,
+      projection_artifacts: projection.artifacts,
+      projection_manifest: projection.manifest,
+    },
+    validation_issues,
+  };
+}
+
+async function closeOwnerReviewQueueToExistingFlow(
+  rootDir: string,
+  existingFlow: ConversationPreferenceStoreResult,
+  projectionInput: ConversationPreferenceStoreInput,
+  input: {
+    now: string;
+    actor: string;
+    owner_actor_ref?: string;
+    validation_scope?: string;
+    queue_status: "answered" | "expired";
+  },
+): Promise<ConversationPreferenceStoreResult> {
+  const queue = existingFlow.records.owner_ratification_queue;
+  if (!queue) {
+    throw new Error("Conversation preference flow does not have an owner review queue entry");
+  }
+
+  if (queue.status !== "pending") {
+    throw new Error(`Owner ratification queue entry is already closed with status ${queue.status}`);
+  }
+
+  if (existingFlow.records.ratification_record.decision === "approved") {
+    throw new Error("Approved conversation preference flows cannot be closed as rejected or expired");
+  }
+
+  const ownerIdentityRef = existingFlow.records.intake.owner_identity?.id;
+  if (input.queue_status === "answered") {
+    if (!ownerIdentityRef) {
+      throw new Error("Deferred conversation preference flow does not carry an owner identity");
+    }
+    if (input.owner_actor_ref !== ownerIdentityRef) {
+      throw new Error(`Explicit owner rejection requires owner_actor_ref ${ownerIdentityRef}`);
+    }
+  }
+
+  const ratification_record: RatificationRecord =
+    input.queue_status === "answered"
+      ? {
+          ...existingFlow.records.ratification_record,
+          updated_at: input.now,
+          decision: "rejected",
+          actor: input.actor,
+          upstream_refs: [
+            ...new Set([
+              ...(existingFlow.records.ratification_record.upstream_refs ?? []),
+              existingFlow.records.intake.proposal.id,
+              queue.id,
+            ]),
+          ],
+        }
+      : {
+          ...existingFlow.records.ratification_record,
+          updated_at: input.now,
+          upstream_refs: [
+            ...new Set([
+              ...(existingFlow.records.ratification_record.upstream_refs ?? []),
+              existingFlow.records.intake.proposal.id,
+              queue.id,
+            ]),
+          ],
+        };
+
+  const diagnostic = buildClosedDeferredDiagnostic({
+    now: input.now,
+    proposal: existingFlow.records.intake.proposal,
+    ratification_record,
+    queue_status: input.queue_status,
+    diagnostic: existingFlow.records.diagnostic,
+  });
+  const updatedQueue = closeOwnerRatificationQueuePacket({
+    now: input.now,
+    queue,
+    proposal: existingFlow.records.intake.proposal,
+    ratification_record,
+    queue_status: input.queue_status,
+    diagnostic,
+  });
+
+  const projection = await buildProjectionFromStoreState(
+    rootDir,
+    existingFlow.paths,
+    projectionInput,
+    undefined,
+    existingFlow.records.intake,
+    input.now,
+    {
+      curation_packets: updatedQueue ? [updatedQueue] : [],
+      diagnostics: diagnostic ? [diagnostic] : [],
+    },
+  );
+  const files = buildOwnerReviewClosureFiles({
+    paths: existingFlow.paths,
+    owner_ratification_queue: updatedQueue,
+    ratification_record,
+    diagnostic,
+    projection,
+  });
+  const validation_issues = buildOwnerReviewClosureValidationIssues({
+    owner_ratification_queue: updatedQueue,
+    ratification_record,
+    diagnostic,
+    projection,
+  });
+  assertNoValidationIssues(validation_issues, "conversation preference owner review closure");
+  const audit_entries = buildOwnerReviewClosureAuditEntries({
+    now: input.now,
+    proposal: existingFlow.records.intake.proposal,
+    owner_ratification_queue: updatedQueue,
+    ratification_record,
+    queue_status: input.queue_status,
+    projection,
+  });
+  const append_entries = buildConversationPreferenceAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference:owner-review-close",
+    proposal_id: existingFlow.records.intake.proposal.id,
+    validation_issues,
+    audit_entries,
+  });
+  const journalPath = recoveryJournalPath(
+    rootDir,
+    "conversation_preference_owner_review_close",
+    queue.id,
+  );
+  await writeRecoveryJournal(
+    journalPath,
+    buildRecoveryJournal({
+      rootDir,
+      operation: "conversation_preference_owner_review_close",
+      created_at: input.now,
+      files,
+      append_entries,
+    }),
+  );
+  await materializeFiles(files);
+  await replayRecoveryJournalEntries(rootDir, append_entries);
+  await rm(journalPath, { force: true });
+
+  return {
+    reused: false,
+    paths: existingFlow.paths,
+    records: {
+      ...existingFlow.records,
+      owner_ratification_queue: updatedQueue,
+      ratification_record,
+      diagnostic,
+      projection_artifacts: projection.artifacts,
+      projection_manifest: projection.manifest,
+    },
+    validation_issues,
+  };
+}
+
+export async function listConversationPreferenceOwnerRatificationQueue(
+  rootDir: string,
+): Promise<ConversationPreferenceOwnerRatificationQueueEntry[]> {
+  const [queuePackets, proposals, ratifications] = await Promise.all([
+    loadCurationPackets(rootDir),
+    loadProposals(rootDir),
+    loadRatificationRecords(rootDir),
+  ]);
+
+  return queuePackets
+    .filter((packet) => packet.review_kind === "owner_ratification" && packet.status === "pending")
+    .map((packet) => {
+      const proposal = proposals.find((candidate) => candidate.id === packet.proposal_refs[0]);
+      if (!proposal) {
+        throw new Error(`Owner ratification queue ${packet.id} references missing proposal ${packet.proposal_refs[0]}`);
+      }
+      const ratification = ratifications.find((candidate) => candidate.id === packet.ratification_ref);
+      if (!ratification) {
+        throw new Error(`Owner ratification queue ${packet.id} references missing ratification ${packet.ratification_ref}`);
+      }
+      return {
+        queue_id: packet.id,
+        proposal_id: proposal.id,
+        ratification_id: ratification.id,
+        diagnostic_id: packet.diagnostic_ref ?? undefined,
+        owner_identity_ref: packet.owner_identity_ref ?? null,
+        speaker_ref: proposal.provenance.speaker_ref ?? null,
+        runtime_instance_ref: packet.runtime_instance_ref ?? null,
+        runtime_session_ref: packet.runtime_session_ref ?? null,
+        conversation_thread_ref: packet.conversation_thread_ref ?? null,
+        statement:
+          typeof proposal.candidate_payload.statement === "string"
+            ? proposal.candidate_payload.statement
+            : "(missing statement)",
+        semantic_slot:
+          typeof proposal.candidate_payload.semantic_slot === "string"
+            ? proposal.candidate_payload.semantic_slot
+            : "(missing semantic_slot)",
+        reason: proposal.reason,
+        created_at: packet.created_at,
+        updated_at: packet.updated_at ?? packet.created_at,
+      };
+    })
+    .sort((left, right) => left.created_at.localeCompare(right.created_at));
+}
+
+export async function ratifyQueuedConversationPreferenceProposalToStore(
+  input: ConversationPreferenceQueuedRatificationInput,
+): Promise<ConversationPreferenceStoreResult> {
+  const rootDir = resolve(input.rootDir);
+  await recoverOwnerReviewClosure(rootDir, input.queue_id);
+  const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+    rootDir,
+    input.queue_id,
+  );
+  if (!existingFlow) {
+    throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
+  }
+
+  return applyOwnerRatificationToExistingFlow(
+    rootDir,
+    existingFlow,
+    buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+    input,
+  );
+}
+
+export async function rejectQueuedConversationPreferenceProposalToStore(
+  input: ConversationPreferenceQueuedRejectionInput,
+): Promise<ConversationPreferenceStoreResult> {
+  const rootDir = resolve(input.rootDir);
+  await recoverOwnerReviewClosure(rootDir, input.queue_id);
+  const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+    rootDir,
+    input.queue_id,
+  );
+  if (!existingFlow) {
+    throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
+  }
+
+  return closeOwnerReviewQueueToExistingFlow(
+    rootDir,
+    existingFlow,
+    buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+    {
+      ...input,
+      queue_status: "answered",
+    },
+  );
+}
+
+export async function expireQueuedConversationPreferenceProposalToStore(
+  input: ConversationPreferenceQueuedExpirationInput,
+): Promise<ConversationPreferenceStoreResult> {
+  const rootDir = resolve(input.rootDir);
+  await recoverOwnerReviewClosure(rootDir, input.queue_id);
+  const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+    rootDir,
+    input.queue_id,
+  );
+  if (!existingFlow) {
+    throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
+  }
+
+  return closeOwnerReviewQueueToExistingFlow(
+    rootDir,
+    existingFlow,
+    buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+    {
+      ...input,
+      queue_status: "expired",
+    },
+  );
+}
+
+export async function ratifyDeferredConversationPreferenceProposalToStore(
+  input: ConversationPreferenceOwnerRatificationInput,
+): Promise<ConversationPreferenceStoreResult> {
+  const rootDir = resolve(input.rootDir);
+  await recoverOwnerRatificationApplication(rootDir, input);
+
+  const existingFlow = await readConversationPreferenceFlowResult(input);
+  if (!existingFlow) {
+    throw new Error("Conversation preference flow must exist before explicit owner ratification");
+  }
+  return applyOwnerRatificationToExistingFlow(rootDir, existingFlow, input, input);
 }

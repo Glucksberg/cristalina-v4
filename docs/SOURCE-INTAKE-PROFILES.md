@@ -48,12 +48,17 @@ An effective intake profile must preserve at least:
 - `proposal_reason`
 - `subject_entity_kind`
 - `subject_label`
+- `subject_authority_role`
 - `preference_topic_label`
 - `relation_type`
 
 Only `observation_prefix` is optional.
 
 The rest are required because they determine the emitted semantics of the world, wiki, and governance artifacts.
+
+The profile may shape `subject_label`.
+
+It may not infer owner authority merely because owner context exists.
 
 ---
 
@@ -78,6 +83,13 @@ The profile must not change:
 - governance authority boundaries
 
 That means the profile is semantic configuration, not a permission system.
+
+For group interaction specifically:
+
+- `speaker` attribution belongs in provenance, not in the profile
+- `subject` belongs in the profile or normalized input
+- `subject_authority_role` declares whether the subject should be treated as owner-, agent-, or participant-scoped for promotion law
+- owner authority belongs in governance law, not in the profile defaults
 
 ---
 
@@ -105,6 +117,11 @@ Runtime identity records may also be emitted when the source provides identity c
 The intake profile chooses labels inside that output shape.
 
 It does not choose a new output shape.
+
+Current hardening direction:
+
+- the default conversation subject should remain a generic participant unless the source explicitly names another subject
+- a participant-originated claim about the owner should not become owner canon without a later authority step
 
 ---
 

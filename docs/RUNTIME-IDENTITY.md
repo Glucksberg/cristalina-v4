@@ -34,6 +34,14 @@ These are related.
 
 They are not interchangeable.
 
+For the current product line, runtime identity also assumes:
+
+- one durable `owner` per agent lineage
+- one `agent` identity executing on behalf of that owner
+- zero or more non-owner participants sharing the same agent memory context
+
+`speaker` remains an event-level role attached to turns or evidence, not a new durable identity family.
+
 ---
 
 ## 3. Core Families
@@ -46,6 +54,8 @@ Represents a durable identity such as:
 - agent
 - external person
 - external organization
+
+In the current group model, non-owner humans or organizations may participate in interaction without becoming co-owners of the runtime.
 
 ### 3.2 `RuntimeInstance`
 
@@ -62,6 +72,14 @@ Represents a bounded interval of ongoing work or interaction inside a runtime in
 ### 3.4 `ConversationThread`
 
 Represents one interaction branch inside a session.
+
+The thread is still owner-scoped even when many participants speak inside it.
+
+That means:
+
+- memory may be shared across participants in the same owner-controlled context
+- authority still anchors to the runtime's owner identity
+- turn-level attribution must come from provenance, not from thread ownership alone
 
 ---
 
@@ -93,6 +111,8 @@ The runtime layer should reserve first-class space for:
 - `runtime/working-memory`
 
 The canonical identity layer should preserve durable self and owner identity separately from runtime execution state.
+
+It should not silently collapse all group participants into the owner identity just because they share a thread.
 
 ---
 

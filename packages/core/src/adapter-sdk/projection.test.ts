@@ -90,7 +90,7 @@ test("projection read gate suppresses runtime-private records when the thread bi
   assert.equal(decision.reason_code, "runtime_private_conversation_thread_mismatch");
 });
 
-test("projection read gate keeps unscoped owner-private records projectable", () => {
+test("projection read gate suppresses owner-private records without identity bindings", () => {
   const record = {
     id: "wcl_owner_private_global",
     kind: "preference",
@@ -108,8 +108,32 @@ test("projection read gate keeps unscoped owner-private records projectable", ()
     audience: "runtime",
   });
 
+  assert.equal(decision.include, false);
+  assert.equal(decision.reason_code, "owner_private_missing_identity_binding");
+});
+
+test("projection read gate keeps owner-private identity-bound records when the identity context matches", () => {
+  const record = {
+    id: "actor_owner_current",
+    kind: "actor_identity",
+    visibility_state: {
+      privacy_scope: "owner_private" as const,
+    },
+    provenance: {
+      source_type: "runtime_identity",
+      source_ref: "runtime/current#turn-003",
+      actor_ref: "actor_owner_current",
+    },
+  };
+
+  const decision = evaluateProjectionReadDecision(record, {
+    adapter: "openclaw",
+    audience: "runtime",
+    owner_identity_ref: "actor_owner_current",
+  });
+
   assert.equal(decision.include, true);
-  assert.equal(decision.reason_code, "owner_private_unscoped");
+  assert.equal(decision.reason_code, "owner_private_identity_match");
 });
 
 test("projection read gate suppresses owner-private records when the projection context is broader than the record binding", () => {

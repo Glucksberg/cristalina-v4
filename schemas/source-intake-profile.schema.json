@@ -44,6 +44,15 @@
     "subject_label": {
       "type": "string"
     },
+    "subject_authority_role": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "agent",
+        "participant",
+        "external"
+      ]
+    },
     "preference_topic_label": {
       "type": "string"
     },

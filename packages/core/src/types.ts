@@ -120,6 +120,13 @@ export const CONTRADICTION_RESOLUTION_STATUSES = [
   "applied",
 ] as const;
 
+export const SUBJECT_AUTHORITY_ROLES = [
+  "owner",
+  "agent",
+  "participant",
+  "external",
+] as const;
+
 export type MemoryObjectKind = typeof MEMORY_OBJECT_KINDS[number];
 export type EpistemicState = typeof EPISTEMIC_STATES[number];
 export type GovernanceState = typeof GOVERNANCE_STATES[number];
@@ -137,6 +144,7 @@ export type DispositionOutcome = typeof DISPOSITION_OUTCOMES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
+export type SubjectAuthorityRole = typeof SUBJECT_AUTHORITY_ROLES[number];
 
 export const DISPOSITION_OUTCOME_TARGET_LAYER: Record<DispositionOutcome, DispositionTargetLayer> = {
   evidence_only: "governance",
@@ -179,6 +187,7 @@ export interface Provenance {
   source_ref: string;
   evidence_refs?: string[];
   actor_ref?: string | null;
+  speaker_ref?: string | null;
   runtime_ref?: string | null;
   session_ref?: string | null;
   thread_ref?: string | null;
@@ -334,6 +343,8 @@ export interface Proposal extends RecordEnvelope {
   candidate_payload: Record<string, unknown>;
   reason: string;
   evidence_refs: string[];
+  subject_authority_role?: SubjectAuthorityRole;
+  promotion_requirement?: "none" | "owner_ratification_required";
   // This is the proposal's pre-ratification stage, not the canonical record's governance lifecycle.
   governance_state: ProposalStageState;
 }
@@ -344,6 +355,25 @@ export interface CurationPacket extends RecordEnvelope {
   authoritative_home: "governance";
   proposal_refs: string[];
   question_count: number;
+  review_kind?: "owner_ratification";
+  ratification_ref?: string | null;
+  diagnostic_ref?: string | null;
+  canonical_target_ref?: Reference | null;
+  source_record_ref?: string | null;
+  disposition_ref?: string | null;
+  subject_entity_ref?: string | null;
+  preference_entity_ref?: string | null;
+  preference_relation_ref?: string | null;
+  world_claim_ref?: string | null;
+  wiki_page_ref?: string | null;
+  wiki_claim_ref?: string | null;
+  actor_identity_ref?: string | null;
+  owner_identity_ref?: string | null;
+  runtime_instance_ref?: string | null;
+  runtime_session_ref?: string | null;
+  conversation_thread_ref?: string | null;
+  projection_manifest_ref?: string | null;
+  projection_artifact_refs?: string[];
   status: "pending" | "answered" | "expired" | "applied";
 }
 
@@ -437,6 +467,7 @@ export interface ProjectionManifest extends RecordEnvelope {
   audience: string;
   read_policy_version: string;
   actor_identity_ref?: string | null;
+  owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
@@ -449,6 +480,7 @@ export interface ProjectionManifest extends RecordEnvelope {
     reason_code: string;
   }>;
   diagnostic_refs?: string[];
+  review_refs?: string[];
   upstream_refs: string[];
   artifact_refs: string[];
 }

@@ -36,6 +36,8 @@ It does not attempt to solve:
 - all privacy scopes
 - all future projection audiences
 
+For the current product line, this policy also does not define participant-to-participant secrecy inside one owner-controlled group. Group memory is shared; read discipline exists here for context legality and auditability.
+
 It freezes only the current executable baseline for runtime projection.
 
 ---
@@ -73,6 +75,8 @@ If the projection context is broader than the record binding, the record must be
 
 If an `owner_private` record is unscoped, it may still be projected.
 
+This is a compatibility rule for the current executable baseline, not a statement that group participants should have isolated hidden memories.
+
 ### 4.3 Historical and disputed claims
 
 For `audience: runtime`:
@@ -84,6 +88,8 @@ The current OpenClaw projection uses:
 
 - `## World Claims` for active claims
 - `## World Trace` for historical or disputed claims
+- `## Review Queue` for pending governed review items
+- `## Review Trace` for review items already applied, answered, or expired
 
 ### 4.4 Suppression must remain inspectable
 
@@ -91,6 +97,7 @@ Suppression is legal only when the manifest preserves:
 
 - `suppressed_refs`
 - `suppressed_records`
+- `review_refs` when governed review items are visible in the projection
 
 Each suppressed record must retain at least:
 

@@ -11,6 +11,7 @@ import type {
   ContradictionResolution,
   Contradiction,
   ConversationThread,
+  CurationPacket,
   Diagnostic,
   Entity,
   Episode,
@@ -114,6 +115,24 @@ function renderDiagnosticsSection(records: Diagnostic[]): string[] {
   return records.map((record) => `- [diag:${record.id}] (${record.severity}) ${record.code}: ${record.message}`);
 }
 
+function renderReviewQueueSection(records: CurationPacket[]): string[] {
+  const pending = records.filter((record) => record.status === "pending");
+  if (pending.length === 0) return ["- (none)"];
+  return pending.map((record) => {
+    const proposalRef = record.proposal_refs[0] ?? "unknown";
+    return `- [review:${record.id}] (${record.review_kind ?? "review"}; ${record.status}) proposal=${proposalRef}`;
+  });
+}
+
+function renderReviewTraceSection(records: CurationPacket[]): string[] {
+  const trace = records.filter((record) => record.status !== "pending");
+  if (trace.length === 0) return ["- (none)"];
+  return trace.map((record) => {
+    const proposalRef = record.proposal_refs[0] ?? "unknown";
+    return `- [review:${record.id}] (${record.review_kind ?? "review"}; ${record.status}) proposal=${proposalRef}`;
+  });
+}
+
 export interface OpenClawBootstrapCompilationInput {
   now: string;
   visibility_state: VisibilityState;
@@ -127,6 +146,7 @@ export interface OpenClawBootstrapCompilationInput {
   contradiction_resolutions?: ContradictionResolution[];
   wiki_pages: WikiPage[];
   wiki_claims: WikiClaim[];
+  curation_packets?: CurationPacket[];
   diagnostics?: Diagnostic[];
   runtime_identity?: {
     actor_identity?: ActorIdentity;
@@ -137,6 +157,7 @@ export interface OpenClawBootstrapCompilationInput {
   };
   identity_context?: {
     actor_identity_ref?: string | null;
+    owner_identity_ref?: string | null;
     runtime_instance_ref?: string | null;
     runtime_session_ref?: string | null;
     conversation_thread_ref?: string | null;
@@ -160,6 +181,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     adapter: "openclaw" as const,
     audience: "runtime",
     actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
+    owner_identity_ref: input.identity_context?.owner_identity_ref ?? null,
     runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,
     runtime_session_ref: input.identity_context?.runtime_session_ref ?? null,
     conversation_thread_ref: input.identity_context?.conversation_thread_ref ?? null,
@@ -196,6 +218,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const wikiPagesFilter = filterProjectionRecords(input.wiki_pages, projectionContext);
   const wikiClaimsFilter = filterProjectionRecords(input.wiki_claims, projectionContext);
   const diagnosticsFilter = filterProjectionRecords(input.diagnostics ?? [], projectionContext);
+  const curationPacketsFilter = filterProjectionRecords(input.curation_packets ?? [], projectionContext);
   const canonicalFilter = filterProjectionRecords(input.canonical_records, projectionContext);
 
   const runtimeSuppressed = [
@@ -215,6 +238,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const wiki_pages = wikiPagesFilter.included;
   const wiki_claims = wikiClaimsFilter.included;
   const diagnostics = diagnosticsFilter.included;
+  const curation_packets = curationPacketsFilter.included;
   const canonical_records = canonicalFilter.included.filter((record) => record.governance_state === "ratified");
 
   const suppressed_refs = [
@@ -227,6 +251,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     ...contradictionResolutionsFilter.suppressed,
     ...wikiPagesFilter.suppressed,
     ...wikiClaimsFilter.suppressed,
+    ...curationPacketsFilter.suppressed,
     ...diagnosticsFilter.suppressed,
     ...canonicalFilter.suppressed,
   ];
@@ -239,7 +264,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
 
   const runtime_refs = [
     actor_identity?.id ?? input.identity_context?.actor_identity_ref ?? null,
-    owner_identity?.id,
+    owner_identity?.id ?? input.identity_context?.owner_identity_ref ?? null,
     runtime_instance?.id ?? input.identity_context?.runtime_instance_ref ?? null,
     runtime_session?.id ?? input.identity_context?.runtime_session_ref ?? null,
     conversation_thread?.id ?? input.identity_context?.conversation_thread_ref ?? null,
@@ -254,6 +279,27 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const wiki_page_refs = wiki_pages.map((record) => record.id);
   const wiki_claim_refs = wiki_claims.map((record) => record.id);
   const diagnostic_refs = diagnostics.map((record) => record.id);
+  const review_refs = curation_packets.map((record) => record.id);
+  const all_runtime_refs = [
+    input.runtime_identity?.actor_identity?.id ?? input.identity_context?.actor_identity_ref ?? null,
+    input.runtime_identity?.owner_identity?.id ?? input.identity_context?.owner_identity_ref ?? null,
+    input.runtime_identity?.runtime_instance?.id ?? input.identity_context?.runtime_instance_ref ?? null,
+    input.runtime_identity?.runtime_session?.id ?? input.identity_context?.runtime_session_ref ?? null,
+    input.runtime_identity?.conversation_thread?.id ?? input.identity_context?.conversation_thread_ref ?? null,
+  ].filter((value): value is string => typeof value === "string");
+  const all_canon_refs = input.canonical_records
+    .filter((record) => record.governance_state === "ratified")
+    .map((record) => record.id);
+  const all_world_refs = input.world_claims.map((record) => record.id);
+  const all_episode_refs = (input.episodes ?? []).map((record) => record.id);
+  const all_entity_refs = (input.entities ?? []).map((record) => record.id);
+  const all_relation_refs = (input.relations ?? []).map((record) => record.id);
+  const all_contradiction_refs = (input.contradictions ?? []).map((record) => record.id);
+  const all_contradiction_resolution_refs = (input.contradiction_resolutions ?? []).map((record) => record.id);
+  const all_wiki_page_refs = input.wiki_pages.map((record) => record.id);
+  const all_wiki_claim_refs = input.wiki_claims.map((record) => record.id);
+  const all_diagnostic_refs = (input.diagnostics ?? []).map((record) => record.id);
+  const all_review_refs = (input.curation_packets ?? []).map((record) => record.id);
 
   const artifacts: ProjectionArtifact[] = [
     createProjectionArtifact({
@@ -339,6 +385,12 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     "## Diagnostics",
     ...renderDiagnosticsSection(diagnostics),
     "",
+    "## Review Queue",
+    ...renderReviewQueueSection(curation_packets),
+    "",
+    "## Review Trace",
+    ...renderReviewTraceSection(curation_packets),
+    "",
     "## Provenance",
     ...uniqueRefs(
       runtime_refs,
@@ -351,6 +403,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       contradiction_resolution_refs,
       wiki_page_refs,
       wiki_claim_refs,
+      review_refs,
       diagnostic_refs,
     ).map((ref) => `- ${ref}`),
     "",
@@ -363,6 +416,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     audience: "runtime",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
+    owner_identity_ref: input.identity_context?.owner_identity_ref ?? null,
     runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,
     runtime_session_ref: input.identity_context?.runtime_session_ref ?? null,
     conversation_thread_ref: input.identity_context?.conversation_thread_ref ?? null,
@@ -370,19 +424,21 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     suppressed_refs: suppressed_ref_ids,
     suppressed_records,
     diagnostic_refs: diagnostic_refs.length > 0 ? diagnostic_refs : undefined,
+    review_refs: review_refs.length > 0 ? review_refs : undefined,
     artifact_refs: artifacts.map((artifact) => artifact.id),
     upstream_refs: uniqueRefs(
-      runtime_refs,
-      canon_refs,
-      world_refs,
-      episode_refs,
-      entity_refs,
-      relation_refs,
-      contradiction_refs,
-      contradiction_resolution_refs,
-      wiki_page_refs,
-      wiki_claim_refs,
-      diagnostic_refs,
+      all_runtime_refs,
+      all_canon_refs,
+      all_world_refs,
+      all_episode_refs,
+      all_entity_refs,
+      all_relation_refs,
+      all_contradiction_refs,
+      all_contradiction_resolution_refs,
+      all_wiki_page_refs,
+      all_wiki_claim_refs,
+      all_review_refs,
+      all_diagnostic_refs,
     ),
     now: input.now,
     visibility_state: input.visibility_state,

@@ -111,6 +111,7 @@ test("core integrity eval harness passes the baseline identity-aware preference 
     },
     identity_context: {
       actor_identity_ref: intake.agent_identity?.id ?? null,
+      owner_identity_ref: intake.owner_identity?.id ?? null,
       runtime_instance_ref: intake.runtime_instance?.id ?? null,
       runtime_session_ref: intake.runtime_session?.id ?? null,
       conversation_thread_ref: intake.conversation_thread?.id ?? null,

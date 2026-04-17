@@ -26,6 +26,7 @@ import {
   MEMORY_OBJECT_KINDS,
   PROPOSAL_OPERATIONS,
   RUNTIMES,
+  SUBJECT_AUTHORITY_ROLES,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
 } from "./types.js";
@@ -171,7 +172,7 @@ function validateEnvelope(value: unknown): ValidationIssue[] {
     pushRequiredString(issues, value.provenance, "source_type", "provenance.source_type");
     pushRequiredString(issues, value.provenance, "source_ref", "provenance.source_ref");
 
-    for (const optionalKey of ["evidence_refs", "actor_ref", "runtime_ref", "session_ref", "thread_ref"] as const) {
+    for (const optionalKey of ["evidence_refs", "actor_ref", "speaker_ref", "runtime_ref", "session_ref", "thread_ref"] as const) {
       const optionalValue = value.provenance[optionalKey];
       if (optionalValue === undefined || optionalValue === null) continue;
       if (optionalKey.endsWith("_refs")) {
@@ -445,6 +446,18 @@ function validateProposal(value: unknown): ValidationIssue[] {
   if (!isStringArray(value.evidence_refs)) {
     issues.push({ path: "evidence_refs", message: "expected string array" });
   }
+  if (value.subject_authority_role !== undefined && !isEnumValue(value.subject_authority_role, SUBJECT_AUTHORITY_ROLES)) {
+    issues.push({ path: "subject_authority_role", message: `expected one of: ${SUBJECT_AUTHORITY_ROLES.join(", ")}` });
+  }
+  if (
+    value.promotion_requirement !== undefined &&
+    !isEnumValue(value.promotion_requirement, ["none", "owner_ratification_required"] as const)
+  ) {
+    issues.push({
+      path: "promotion_requirement",
+      message: "expected one of: none, owner_ratification_required",
+    });
+  }
   if (!isEnumValue(value.governance_state, ["draft", "proposed", "archived", "rejected"] as const)) {
     issues.push({ path: "governance_state", message: "expected proposal-stage governance state" });
   }
@@ -460,6 +473,38 @@ function validateCurationPacket(value: unknown): ValidationIssue[] {
   pushStringArray(issues, value, "proposal_refs");
   if (typeof value.question_count !== "number") {
     issues.push({ path: "question_count", message: "expected number" });
+  }
+  if (value.review_kind !== undefined && !isEnumValue(value.review_kind, ["owner_ratification"] as const)) {
+    issues.push({ path: "review_kind", message: 'expected one of: owner_ratification' });
+  }
+  for (const optionalKey of [
+    "ratification_ref",
+    "diagnostic_ref",
+    "source_record_ref",
+    "disposition_ref",
+    "subject_entity_ref",
+    "preference_entity_ref",
+    "preference_relation_ref",
+    "world_claim_ref",
+    "wiki_page_ref",
+    "wiki_claim_ref",
+    "actor_identity_ref",
+    "owner_identity_ref",
+    "runtime_instance_ref",
+    "runtime_session_ref",
+    "conversation_thread_ref",
+    "projection_manifest_ref",
+  ] as const) {
+    const optionalValue = value[optionalKey];
+    if (optionalValue !== undefined && optionalValue !== null && typeof optionalValue !== "string") {
+      issues.push({ path: optionalKey, message: "expected string or null" });
+    }
+  }
+  if (value.canonical_target_ref !== undefined && value.canonical_target_ref !== null) {
+    pushReference(issues, value.canonical_target_ref, "canonical_target_ref");
+  }
+  if (value.projection_artifact_refs !== undefined && !isStringArray(value.projection_artifact_refs)) {
+    issues.push({ path: "projection_artifact_refs", message: "expected string array" });
   }
   if (!isEnumValue(value.status, ["pending", "answered", "expired", "applied"] as const)) {
     issues.push({ path: "status", message: 'expected one of: pending, answered, expired, applied' });
@@ -624,7 +669,7 @@ function validateProjectionArtifact(value: unknown): ValidationIssue[] {
 function validateProjectionManifest(value: unknown): ValidationIssue[] {
   const issues = validateAgainstSchema(value, PROJECTION_MANIFEST_SCHEMA_ID);
   if (!isRecord(value)) return issues;
-  for (const optionalKey of ["actor_identity_ref", "runtime_instance_ref", "runtime_session_ref", "conversation_thread_ref"] as const) {
+  for (const optionalKey of ["actor_identity_ref", "owner_identity_ref", "runtime_instance_ref", "runtime_session_ref", "conversation_thread_ref"] as const) {
     const optionalValue = value[optionalKey];
     if (optionalValue !== undefined && optionalValue !== null && typeof optionalValue !== "string") {
       issues.push({ path: optionalKey, message: "expected string or null" });
@@ -638,6 +683,7 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   }
   const declaredContextRefs = [
     value.actor_identity_ref,
+    value.owner_identity_ref,
     value.runtime_instance_ref,
     value.runtime_session_ref,
     value.conversation_thread_ref,
@@ -694,6 +740,9 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   }
   if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
     issues.push({ path: "diagnostic_refs", message: "expected string array" });
+  }
+  if (value.review_refs !== undefined && !isStringArray(value.review_refs)) {
+    issues.push({ path: "review_refs", message: "expected string array" });
   }
   if (!isStringArray(value.upstream_refs) || value.upstream_refs.length === 0) {
     issues.push({ path: "upstream_refs", message: "expected non-empty string array" });

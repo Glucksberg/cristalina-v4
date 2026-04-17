@@ -10,6 +10,7 @@ import type {
   CanonicalMemoryObject,
   Contradiction,
   ContradictionResolution,
+  CurationPacket,
   Diagnostic,
   DispositionRecord,
   Entity,
@@ -132,6 +133,14 @@ function defaultConversationPreferenceReasonCodes(strategy: ConversationPreferen
   return codes;
 }
 
+function uniqueReasonCodes(...groups: Array<Array<string | undefined>>): string[] {
+  return [...new Set(groups.flat().filter((value): value is string => typeof value === "string" && value.length > 0))];
+}
+
+function normalizeClaimStatement(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function normalizeSemanticSlotPart(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -149,6 +158,93 @@ function buildPreferenceSemanticSlot(input: {
     normalizeSemanticSlotPart(input.relation_type),
     normalizeSemanticSlotPart(input.preference_topic_label),
   ].join(":");
+}
+
+function buildAuthorityReviewRequirement(input: {
+  semanticProfile: PreferenceSignalSemanticProfile;
+  owner_identity?: ActorIdentity;
+  source_record: SourceRecord;
+}): {
+  promotion_requirement: "none" | "owner_ratification_required";
+  reason_codes: string[];
+} {
+  if (input.semanticProfile.subject_authority_role !== "owner") {
+    return {
+      promotion_requirement: "none",
+      reason_codes: [],
+    };
+  }
+
+  const ownerRef = input.owner_identity?.id ?? null;
+  const speakerRef = input.source_record.provenance.speaker_ref ?? null;
+
+  if (!ownerRef) {
+    return {
+      promotion_requirement: "owner_ratification_required",
+      reason_codes: ["owner_authority_required", "owner_identity_missing_for_authority_check"],
+    };
+  }
+
+  if (speakerRef === ownerRef) {
+    return {
+      promotion_requirement: "none",
+      reason_codes: [],
+    };
+  }
+
+  return {
+    promotion_requirement: "owner_ratification_required",
+    reason_codes: uniqueReasonCodes(
+      ["owner_authority_required"],
+      [speakerRef ? "speaker_not_owner" : "speaker_unverified"],
+    ),
+  };
+}
+
+function resolveAuthorityScopedDispositionStrategy(input: {
+  strategy?: ConversationPreferenceDispositionStrategy;
+  semanticProfile: PreferenceSignalSemanticProfile;
+  owner_identity?: ActorIdentity;
+  source_record: SourceRecord;
+}): {
+  strategy?: ConversationPreferenceDispositionStrategy;
+  promotion_requirement: "none" | "owner_ratification_required";
+} {
+  const authorityRequirement = buildAuthorityReviewRequirement({
+    semanticProfile: input.semanticProfile,
+    owner_identity: input.owner_identity,
+    source_record: input.source_record,
+  });
+
+  if (authorityRequirement.promotion_requirement === "none") {
+    return {
+      strategy: input.strategy,
+      promotion_requirement: "none",
+    };
+  }
+
+  const base = {
+    ...DEFAULT_CONVERSATION_PREFERENCE_DISPOSITION,
+    ...input.strategy,
+  };
+
+  return {
+    strategy: {
+      ...base,
+      proposal_for_canon: false,
+      queued_review: true,
+      reason_codes: uniqueReasonCodes(
+        defaultConversationPreferenceReasonCodes({
+          ...base,
+          proposal_for_canon: false,
+          queued_review: true,
+        }),
+        authorityRequirement.reason_codes,
+        input.strategy?.reason_codes ?? [],
+      ),
+    },
+    promotion_requirement: authorityRequirement.promotion_requirement,
+  };
 }
 
 function buildRuntimeIdentityArtifacts(
@@ -177,6 +273,7 @@ function buildRuntimeIdentityArtifacts(
     provenance: {
       source_type: "runtime_identity",
       source_ref: input.source_record.provenance.source_ref,
+      actor_ref: context.ids.agent_identity,
     },
     actor_kind: "agent",
     label: context.agent_label,
@@ -197,6 +294,7 @@ function buildRuntimeIdentityArtifacts(
         provenance: {
           source_type: "runtime_identity",
           source_ref: input.source_record.provenance.source_ref,
+          actor_ref: context.ids.owner_identity ?? `${context.ids.runtime_instance}.owner`,
         },
         actor_kind: "owner",
         label: context.owner_label,
@@ -287,6 +385,7 @@ function buildSharedProvenance(
     source_type: input.source_record.provenance.source_type,
     source_ref: input.source_record.provenance.source_ref,
     actor_ref: input.identity_context?.ids.agent_identity,
+    speaker_ref: input.source_record.provenance.speaker_ref ?? null,
     runtime_ref: input.identity_context?.ids.runtime_instance,
     session_ref: input.identity_context?.ids.runtime_session,
     thread_ref: input.identity_context?.ids.conversation_thread,
@@ -349,6 +448,7 @@ export function buildConversationPreferenceDispositionRecord(input: {
       source_ref: input.source_record.provenance.source_ref,
       evidence_refs: [input.observation_id, ...(input.episode_id ? [input.episode_id] : [])],
       actor_ref: input.source_record.provenance.actor_ref ?? null,
+      speaker_ref: input.source_record.provenance.speaker_ref ?? null,
       runtime_ref: input.source_record.provenance.runtime_ref ?? null,
       session_ref: input.source_record.provenance.session_ref ?? null,
       thread_ref: input.source_record.provenance.thread_ref ?? null,
@@ -368,8 +468,13 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
   const provenance = buildSharedProvenance(input);
   const semanticProfile = resolvePreferenceSignalSemanticProfile({
     kind: intake_kind,
-    owner_label: input.identity_context?.owner_label,
     overrides: input.semantic_profile,
+  });
+  const authorityScopedDisposition = resolveAuthorityScopedDispositionStrategy({
+    strategy: input.disposition_strategy,
+    semanticProfile,
+    owner_identity: runtimeIdentity.owner_identity,
+    source_record: input.source_record,
   });
   const semanticSlot = buildPreferenceSemanticSlot({
     subject_entity_kind: semanticProfile.subject_entity_kind,
@@ -598,6 +703,8 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     },
     reason: semanticProfile.proposal_reason,
     evidence_refs: [observation.id, episode.id],
+    subject_authority_role: semanticProfile.subject_authority_role,
+    promotion_requirement: authorityScopedDisposition.promotion_requirement,
     governance_state: "proposed",
   };
 
@@ -611,7 +718,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     episode_id: episode.id,
     disposition_id: input.ids.disposition,
     proposal_id: proposal.id,
-    strategy: input.disposition_strategy,
+    strategy: authorityScopedDisposition.strategy,
   });
 
   return {
@@ -704,7 +811,7 @@ export function findConflictingWorldClaim(
     const isSameSemanticSlot = record.semantic_slot === candidate_claim.semantic_slot;
     const isDifferentRecord = record.id !== candidate_claim.id;
     const isActive = record.temporal_state?.temporal_status === "active";
-    const isDifferentStatement = record.statement !== candidate_claim.statement;
+    const isDifferentStatement = normalizeClaimStatement(record.statement) !== normalizeClaimStatement(candidate_claim.statement);
     return isComparableKind && isSameSemanticSlot && isDifferentRecord && isActive && isDifferentStatement;
   });
 }
@@ -1148,6 +1255,7 @@ export interface OpenClawBootstrapWorkflowInput {
   contradiction_resolutions?: ContradictionResolution[];
   wiki_pages: WikiPage[];
   wiki_claims: WikiClaim[];
+  curation_packets?: CurationPacket[];
   diagnostics?: Diagnostic[];
   runtime_identity?: {
     actor_identity?: ActorIdentity;
@@ -1158,6 +1266,7 @@ export interface OpenClawBootstrapWorkflowInput {
   };
   identity_context?: {
     actor_identity_ref?: string | null;
+    owner_identity_ref?: string | null;
     runtime_instance_ref?: string | null;
     runtime_session_ref?: string | null;
     conversation_thread_ref?: string | null;
@@ -1190,6 +1299,7 @@ export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflo
     contradiction_resolutions: input.contradiction_resolutions ?? [],
     wiki_pages: input.wiki_pages,
     wiki_claims: input.wiki_claims,
+    curation_packets: input.curation_packets,
     diagnostics: input.diagnostics,
     runtime_identity: input.runtime_identity,
     identity_context: input.identity_context,

@@ -15,6 +15,7 @@ import {
   detectWorldClaimContradiction,
   executeCanonicalProposalWorkflow,
   executeOpenClawBootstrapWorkflow,
+  findConflictingWorldClaim,
   proposeContradictionResolution,
   reconcileConversationPreferenceSupersede,
 } from "./pipeline.js";
@@ -140,7 +141,7 @@ test("conversation preference disposition can route to non-canonical outcomes", 
       created_at: now,
       updated_at: now,
       visibility_state: {
-        privacy_scope: "owner_private",
+        privacy_scope: "shareable",
       },
       provenance: {
         source_type: "conversation",
@@ -327,7 +328,7 @@ test("canonical workflow rejects target_ref kind mismatches even when the id exi
       created_at: now,
       updated_at: now,
       visibility_state: {
-        privacy_scope: "owner_private",
+        privacy_scope: "shareable",
       },
       provenance: {
         source_type: "conversation",
@@ -1098,6 +1099,7 @@ test("openclaw projection preserves visibility and renders reconciled statuses",
     ],
     identity_context: {
       actor_identity_ref: intake.agent_identity?.id ?? null,
+      owner_identity_ref: intake.owner_identity?.id ?? null,
       runtime_instance_ref: intake.runtime_instance?.id ?? null,
       runtime_session_ref: intake.runtime_session?.id ?? null,
       conversation_thread_ref: intake.conversation_thread?.id ?? null,
@@ -1119,6 +1121,7 @@ test("openclaw projection preserves visibility and renders reconciled statuses",
 
   assert.equal(projection.manifest.visibility_state.privacy_scope, "shareable");
   assert.equal(projection.manifest.actor_identity_ref, intake.agent_identity?.id);
+  assert.equal(projection.manifest.owner_identity_ref, intake.owner_identity?.id);
   assert.equal(projection.manifest.runtime_instance_ref, intake.runtime_instance?.id);
   assert.equal(projection.manifest.runtime_session_ref, intake.runtime_session?.id);
   assert.equal(projection.manifest.conversation_thread_ref, intake.conversation_thread?.id);
@@ -1237,6 +1240,7 @@ test("openclaw projection suppresses runtime-private records outside the active 
     },
     identity_context: {
       actor_identity_ref: currentIntake.agent_identity?.id ?? null,
+      owner_identity_ref: currentIntake.owner_identity?.id ?? null,
       runtime_instance_ref: currentIntake.runtime_instance?.id ?? null,
       runtime_session_ref: currentIntake.runtime_session?.id ?? null,
       conversation_thread_ref: currentIntake.conversation_thread?.id ?? null,
@@ -1282,6 +1286,7 @@ test("projection manifests require declared context refs and coherent suppressio
     audience: "runtime",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     actor_identity_ref: "actor_agent_test_001",
+    owner_identity_ref: "actor_owner_test_001",
     runtime_instance_ref: "runtime_test_001",
     context_refs: ["runtime_test_001"],
     suppressed_refs: ["foreign_world_claim"],
@@ -1297,6 +1302,7 @@ test("projection manifests require declared context refs and coherent suppressio
   });
 
   assert.ok(issues.some((issue) => issue.path === "context_refs" && issue.message.includes("actor_agent_test_001")));
+  assert.ok(issues.some((issue) => issue.path === "context_refs" && issue.message.includes("actor_owner_test_001")));
   assert.ok(issues.some((issue) => issue.path === "suppressed_refs" && issue.message.includes("foreign_world_claim")));
   assert.ok(issues.some((issue) => issue.path === "suppressed_records" && issue.message.includes("other_world_claim")));
 });
@@ -1449,6 +1455,104 @@ test("structured preference intake can be shaped declaratively without adding a 
   assert.equal(intake.preference_relation.relation_type, "requests_delivery_style");
 });
 
+test("participant-originated owner claims are routed to queued review instead of direct canon promotion", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The owner prefers strategic summaries on Fridays.",
+    source_record: {
+      id: "src_owner_authority_review_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session-owner#turn-001",
+        speaker_ref: "actor_external_person_owner_review_001",
+      },
+      content_ref: "raw/sources/owner-authority-review-001.json",
+    },
+    identity_context: buildIdentityContext("owner_authority_review_001"),
+    semantic_profile: {
+      subject_entity_kind: "owner",
+      subject_authority_role: "owner",
+      subject_label: "Test Owner",
+      wiki_title: "Owner Interaction Preferences",
+      wiki_path: "wiki/pages/owner-interaction-preferences.md",
+      preference_topic_label: "Owner Interaction Preferences",
+      relation_type: "expressed_preference",
+      proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+    },
+    ids: buildIds("owner_authority_review_001"),
+  });
+
+  assert.equal(intake.proposal.subject_authority_role, "owner");
+  assert.equal(intake.proposal.promotion_requirement, "owner_ratification_required");
+  assert.deepEqual(intake.disposition_record.outcomes, ["world_update", "wiki_update", "queued_review"]);
+  assert.equal(intake.disposition_record.proposal_refs, undefined);
+  assert.ok(intake.disposition_record.reason_codes.includes("owner_authority_required"));
+  assert.ok(intake.disposition_record.reason_codes.includes("speaker_not_owner"));
+});
+
+test("canonical workflow rejects owner-scoped proposals that still require owner ratification", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The owner prefers strategic summaries on Fridays.",
+    source_record: {
+      id: "src_owner_authority_gate_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session-owner#turn-002",
+        speaker_ref: "actor_external_person_owner_gate_001",
+      },
+      content_ref: "raw/sources/owner-authority-gate-001.json",
+    },
+    identity_context: buildIdentityContext("owner_authority_gate_001"),
+    semantic_profile: {
+      subject_entity_kind: "owner",
+      subject_authority_role: "owner",
+      subject_label: "Test Owner",
+      wiki_title: "Owner Interaction Preferences",
+      wiki_path: "wiki/pages/owner-interaction-preferences.md",
+      preference_topic_label: "Owner Interaction Preferences",
+      relation_type: "expressed_preference",
+      proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+    },
+    ids: buildIds("owner_authority_gate_001"),
+  });
+
+  const workflow = executeCanonicalProposalWorkflow({
+    proposal: intake.proposal,
+    existing_canon_records: [],
+    now,
+    actor: "system:test",
+    ratification_id: "rat_owner_authority_gate_001",
+    diagnostic_id: "diag_owner_authority_gate_001",
+    canonical_id: "mem_owner_authority_gate_001",
+  });
+
+  assert.equal(workflow.accepted, false);
+  assert.equal(workflow.ratification_record.decision, "deferred");
+  assert.ok(
+    workflow.gate_results.some((gate) => gate.gate === "policy" && gate.reason_code === "owner_ratification_required" && !gate.passed),
+  );
+  assert.equal(workflow.diagnostic?.code, "proposal_deferred");
+});
+
 test("contradiction baseline emits an explicit world contradiction object", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const intake = buildConversationPreferenceIntake({
@@ -1489,6 +1593,41 @@ test("contradiction baseline emits an explicit world contradiction object", () =
   assert.equal(contradiction?.status, "open");
   assert.equal(contradiction?.left_ref.id, "wcl_existing_001");
   assert.equal(contradiction?.right_ref.id, intake.world_claim.id);
+});
+
+test("contradiction detection ignores statement differences that only vary by normalization", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers.",
+    source_record: {
+      id: "src_contra_normalized_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session#turn-contra-normalized-001",
+      },
+      content_ref: "raw/sources/turn-contra-normalized-001.json",
+    },
+    ids: buildIds("contra_normalized_001"),
+  });
+
+  const conflict = findConflictingWorldClaim(intake.world_claim, [
+    {
+      ...intake.world_claim,
+      id: "wcl_existing_normalized_001",
+      statement: "  the user   prefers concise answers.  ",
+    },
+  ]);
+
+  assert.equal(conflict, undefined);
 });
 
 test("contradiction handling can propose and apply a richer resolution path", () => {
@@ -1808,7 +1947,7 @@ test("accepted contradiction resolution compiles into projection with explicit h
       created_at: now,
       updated_at: now,
       visibility_state: {
-        privacy_scope: "owner_private",
+        privacy_scope: "shareable",
       },
       provenance: {
         source_type: "conversation",

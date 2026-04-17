@@ -7,65 +7,21 @@ import test from "node:test";
 import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
 import {
   applyConversationPreferenceResolutionToStore,
+  expireQueuedConversationPreferenceProposalToStore,
+  listConversationPreferenceOwnerRatificationQueue,
   readConversationPreferenceFlowResult,
+  rejectQueuedConversationPreferenceProposalToStore,
+  ratifyDeferredConversationPreferenceProposalToStore,
+  ratifyQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
   writeOpenClawPreferenceFeedbackFlowToStore,
   writeStructuredPreferenceSignalFlowToStore,
   type ConversationPreferenceStoreInput,
 } from "./conversation-preference-store.js";
+import { buildDefaultConversationPreferenceFlowInput } from "../test-support/conversation-preference-fixtures.js";
 
 function buildInput(rootDir: string): ConversationPreferenceStoreInput {
-  return {
-    rootDir,
-    now: "2026-04-12T00:00:00.000Z",
-    actor: "system:test",
-    statement: "The user prefers concise answers unless they explicitly ask for depth.",
-    identity_context: {
-      runtime: "openclaw",
-      ids: {
-        agent_identity: "actor_agent_test_001",
-        owner_identity: "actor_owner_test_001",
-        runtime_instance: "runtime_test_001",
-        runtime_session: "session_test_001",
-        conversation_thread: "thread_test_001",
-      },
-      agent_label: "Cristalina Test Agent",
-      owner_label: "Test Owner",
-      session_objective: "Track stable interaction preferences",
-      session_summary: "Session summary",
-      message_refs: ["msg_test_001"],
-      thread_summary: "OpenClaw thread summary",
-    },
-    source: {
-      id: "src_test_001",
-      source_ref: "runtime/session-test#turn-001",
-      content_ref: "raw/sources/conversation-turn-test-001.json",
-      runtime: "openclaw",
-      message: "The user says they prefer concise answers unless they explicitly ask for depth.",
-    },
-    ids: {
-      observation: "obs_test_001",
-      episode: "ep_test_001",
-      subject_entity: "ent_subject_test_001",
-      preference_entity: "ent_preference_test_001",
-      preference_relation: "rel_preference_test_001",
-      world_claim: "wcl_test_001",
-      contradiction: "contra_test_001",
-      contradiction_resolution: "cres_test_001",
-      wiki_page: "wpg_test_001",
-      wiki_claim: "wclm_test_001",
-      proposal: "prop_test_001",
-      disposition: "disp_test_001",
-      ratification: "rat_test_001",
-      diagnostic: "diag_test_001",
-      canonical: "mem_test_001",
-      canon_artifact: "part_openclaw_canon_test_001",
-      world_artifact: "part_openclaw_world_test_001",
-      wiki_artifact: "part_openclaw_wiki_test_001",
-      projection_manifest: "pmf_openclaw_test_001",
-    },
-    validation_scope: "test:conversation-preference",
-  };
+  return buildDefaultConversationPreferenceFlowInput(rootDir);
 }
 
 test("writeConversationPreferenceFlowToStore materializes and reuses the same flow", async (t) => {
@@ -105,6 +61,274 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
   assert.equal(second.reused, true);
   assert.equal(second.records.canonical_record?.id, first.records.canonical_record?.id);
   assert.equal(auditLogAfter, auditLogBefore);
+});
+
+test("writeConversationPreferenceFlowToStore preserves speaker provenance", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.source.speaker_ref = "actor_external_person_test_001";
+
+  const result = await writeConversationPreferenceFlowToStore(input);
+
+  assert.equal(result.records.source_record.provenance.speaker_ref, input.source.speaker_ref);
+  assert.equal(result.records.intake.observation.provenance.speaker_ref, input.source.speaker_ref);
+  assert.equal(result.records.intake.disposition_record.provenance.speaker_ref, input.source.speaker_ref);
+});
+
+test("writeConversationPreferenceFlowToStore routes participant-originated owner claims to review instead of canon", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  const result = await writeConversationPreferenceFlowToStore(input);
+
+  assert.equal(result.records.intake.proposal.promotion_requirement, "owner_ratification_required");
+  assert.deepEqual(result.records.intake.disposition_record.outcomes, ["world_update", "wiki_update", "queued_review"]);
+  assert.equal(result.records.intake.disposition_record.proposal_refs, undefined);
+  assert.equal(result.records.ratification_record.decision, "deferred");
+  assert.equal(result.records.canonical_record, undefined);
+  assert.equal(result.records.diagnostic?.code, "proposal_deferred");
+  assert.equal(result.records.owner_ratification_queue?.status, "pending");
+  assert.equal(result.records.owner_ratification_queue?.proposal_refs[0], input.ids.proposal);
+
+  const projectionMarkdown = await readFile(result.paths.projection_markdown, "utf8");
+  assert.doesNotMatch(projectionMarkdown, /\[canon:/);
+  assert.match(projectionMarkdown, /## Review Queue/);
+  assert.match(projectionMarkdown, /\[review:cur_owner_ratification_prop_test_001\] \(owner_ratification; pending\)/);
+  assert.ok(result.records.projection_manifest.review_refs?.includes("cur_owner_ratification_prop_test_001"));
+});
+
+test("owner ratification queue lists deferred owner-scoped claims and can ratify them by queue id", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0]!.proposal_id, input.ids.proposal);
+  assert.equal(queue[0]!.owner_identity_ref, input.identity_context?.ids.owner_identity ?? null);
+  assert.equal(queue[0]!.statement, input.statement);
+
+  const ratified = await ratifyQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:05:00.000Z",
+    actor: "owner:test",
+    owner_actor_ref: input.identity_context!.ids.owner_identity!,
+    validation_scope: "test:conversation-preference:owner-ratification",
+  });
+
+  assert.equal(ratified.records.ratification_record.decision, "approved");
+  assert.equal(ratified.records.canonical_record?.statement, input.statement);
+  assert.equal(ratified.records.diagnostic?.code, "proposal_deferred_resolved");
+  assert.equal(ratified.records.owner_ratification_queue?.status, "applied");
+
+  const projectionMarkdown = await readFile(ratified.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /\[canon:/);
+  assert.match(projectionMarkdown, /## Review Trace/);
+  assert.match(projectionMarkdown, /\[review:cur_owner_ratification_prop_test_001\] \(owner_ratification; applied\)/);
+
+  const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  assert.deepEqual(queueAfter, []);
+});
+
+test("owner ratification queue can be explicitly rejected by the owner", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+
+  const rejected = await rejectQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:05:00.000Z",
+    actor: "owner:test",
+    owner_actor_ref: input.identity_context!.ids.owner_identity!,
+    validation_scope: "test:conversation-preference:owner-rejection",
+  });
+
+  assert.equal(rejected.records.ratification_record.decision, "rejected");
+  assert.equal(rejected.records.owner_ratification_queue?.status, "answered");
+  assert.equal(rejected.records.canonical_record, undefined);
+  assert.equal(rejected.records.diagnostic?.code, "proposal_deferred_rejected");
+  const rejectionProjection = await readFile(rejected.paths.projection_markdown, "utf8");
+  assert.match(rejectionProjection, /\[review:cur_owner_ratification_prop_test_001\] \(owner_ratification; answered\)/);
+
+  const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  assert.deepEqual(queueAfter, []);
+});
+
+test("owner ratification queue can expire without owner ratification and blocks later approval", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+
+  const expired = await expireQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:05:00.000Z",
+    actor: "system:test-expirer",
+    validation_scope: "test:conversation-preference:owner-expiration",
+  });
+
+  assert.equal(expired.records.ratification_record.decision, "deferred");
+  assert.equal(expired.records.owner_ratification_queue?.status, "expired");
+  assert.equal(expired.records.canonical_record, undefined);
+  assert.equal(expired.records.diagnostic?.code, "proposal_deferred_expired");
+  const expiredProjection = await readFile(expired.paths.projection_markdown, "utf8");
+  assert.match(expiredProjection, /\[review:cur_owner_ratification_prop_test_001\] \(owner_ratification; expired\)/);
+
+  await assert.rejects(
+    () =>
+      ratifyQueuedConversationPreferenceProposalToStore({
+        rootDir,
+        queue_id: queue[0]!.queue_id,
+        now: "2026-04-12T00:10:00.000Z",
+        actor: "owner:test",
+        owner_actor_ref: input.identity_context!.ids.owner_identity!,
+        validation_scope: "test:conversation-preference:owner-ratification-after-expire",
+      }),
+    /already closed with status expired/,
+  );
+});
+
+test("ratifyDeferredConversationPreferenceProposalToStore remains compatible with the original input-shaped API", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+
+  const ratified = await ratifyDeferredConversationPreferenceProposalToStore({
+    ...input,
+    now: "2026-04-12T00:05:00.000Z",
+    actor: "owner:test",
+    owner_actor_ref: input.identity_context!.ids.owner_identity!,
+    validation_scope: "test:conversation-preference:owner-ratification:compat",
+  });
+
+  assert.equal(ratified.records.ratification_record.decision, "approved");
+  assert.equal(ratified.records.owner_ratification_queue?.status, "applied");
+});
+
+test("writeConversationPreferenceFlowToStore promotes owner-originated owner claims into canon", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "The owner confirms they prefer strategic summaries on Fridays.";
+  input.source.speaker_ref = input.identity_context?.ids.owner_identity;
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Owner-originated preference signal.",
+  };
+
+  const result = await writeConversationPreferenceFlowToStore(input);
+
+  assert.equal(result.records.intake.proposal.promotion_requirement, "none");
+  assert.deepEqual(result.records.intake.disposition_record.outcomes, ["world_update", "wiki_update", "proposal_for_canon"]);
+  assert.equal(result.records.ratification_record.decision, "approved");
+  assert.equal(result.records.canonical_record?.statement, input.statement);
 });
 
 test("writeConversationPreferenceFlowToStore rejects reuse with mismatched input", async (t) => {
@@ -259,7 +483,7 @@ test("writeConversationPreferenceFlowToStore rejects path collisions between raw
   );
 });
 
-test("writeConversationPreferenceFlowToStore preserves persisted runtime identity provenance across distinct flows", async (t) => {
+test("writeConversationPreferenceFlowToStore preserves canonical identity records across distinct flows", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
     await rm(rootDir, { recursive: true, force: true });
@@ -272,6 +496,11 @@ test("writeConversationPreferenceFlowToStore preserves persisted runtime identit
     ...buildInput(rootDir),
     now: "2026-04-13T00:00:00.000Z",
     statement: "The user now asks for terse summaries first.",
+    identity_context: {
+      ...buildInput(rootDir).identity_context!,
+      agent_label: "Changed Agent Label",
+      owner_label: "Changed Owner Label",
+    },
     source: {
       id: "src_test_002",
       source_ref: "runtime/session-test#turn-002",
@@ -309,12 +538,83 @@ test("writeConversationPreferenceFlowToStore preserves persisted runtime identit
   ) as {
     created_at: string;
     updated_at?: string | null;
+    label: string;
     provenance: { source_ref: string };
   };
 
   assert.equal(actorIdentity.created_at, firstInput.now);
-  assert.equal(actorIdentity.updated_at, secondInput.now);
+  assert.equal(actorIdentity.updated_at, firstInput.now);
+  assert.equal(actorIdentity.label, firstInput.identity_context?.agent_label);
   assert.equal(actorIdentity.provenance.source_ref, firstInput.source.source_ref);
+
+  const ownerIdentity = JSON.parse(
+    await readFile(join(rootDir, "canon/identity/actor_owner_test_001.json"), "utf8"),
+  ) as {
+    updated_at?: string | null;
+    label: string;
+  };
+
+  assert.equal(ownerIdentity.updated_at, firstInput.now);
+  assert.equal(ownerIdentity.label, firstInput.identity_context?.owner_label);
+});
+
+test("writeConversationPreferenceFlowToStore does not leak unscoped owner-private records into another runtime projection", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await writeStructuredPreferenceSignalFlowToStore({
+    ...buildInput(rootDir),
+    source: {
+      ...buildInput(rootDir).source,
+      id: "src_structured_scope_001",
+      source_ref: "import/customer-001",
+      content_ref: "raw/imports/customer-001.json",
+      runtime: "generic",
+      message: "Customer 001 prefers weekly status summaries.",
+      source_type: "structured_import",
+    },
+    identity_context: undefined,
+    statement: "Customer 001 prefers weekly status summaries.",
+    semantic_profile: {
+      wiki_title: "Customer Delivery Preferences",
+      wiki_path: "wiki/pages/customer-delivery-preferences.md",
+      subject_entity_kind: "customer",
+      subject_label: "Customer 001",
+      preference_topic_label: "Delivery Preferences",
+      relation_type: "requests_delivery_style",
+      proposal_reason: "Structured import confirms a delivery preference worth governing.",
+    },
+    ids: {
+      observation: "obs_structured_scope_001",
+      episode: "ep_structured_scope_001",
+      subject_entity: "ent_subject_structured_scope_001",
+      preference_entity: "ent_preference_structured_scope_001",
+      preference_relation: "rel_preference_structured_scope_001",
+      world_claim: "wcl_structured_scope_001",
+      contradiction: "contra_structured_scope_001",
+      contradiction_resolution: "cres_structured_scope_001",
+      wiki_page: "wpg_structured_scope_001",
+      wiki_claim: "wclm_structured_scope_001",
+      proposal: "prop_structured_scope_001",
+      disposition: "disp_structured_scope_001",
+      ratification: "rat_structured_scope_001",
+      diagnostic: "diag_structured_scope_001",
+      canonical: "mem_structured_scope_001",
+      canon_artifact: "part_openclaw_canon_structured_scope_001",
+      world_artifact: "part_openclaw_world_structured_scope_001",
+      wiki_artifact: "part_openclaw_wiki_structured_scope_001",
+      projection_manifest: "pmf_openclaw_structured_scope_001",
+    },
+  });
+
+  const runtimeFlow = await writeConversationPreferenceFlowToStore(buildInput(rootDir));
+  const projectionMarkdown = await readFile(runtimeFlow.paths.projection_markdown, "utf8");
+
+  assert.doesNotMatch(projectionMarkdown, /\[canon:mem_structured_scope_001\]/);
+  assert.doesNotMatch(projectionMarkdown, /\[world:wcl_structured_scope_001\]/);
+  assert.doesNotMatch(projectionMarkdown, /\[wiki:wpg_structured_scope_001\]/);
 });
 
 test("writeConversationPreferenceFlowToStore keeps projection markdown isolated per manifest", async (t) => {
@@ -538,6 +838,76 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   });
   assert.equal(appliedAgain.reused, true);
   assert.equal(appliedAgain.records.contradiction_resolution.status, "applied");
+});
+
+test("applyConversationPreferenceResolutionToStore supports supersede_candidate resolutions", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: "2026-04-12T01:00:00.000Z",
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_supersede_candidate_002",
+      source_ref: "runtime/session-test#turn-supersede-candidate-002",
+      content_ref: "raw/sources/conversation-turn-test-supersede-candidate-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_supersede_candidate_002",
+      episode: "ep_test_supersede_candidate_002",
+      subject_entity: "ent_subject_test_supersede_candidate_002",
+      preference_entity: "ent_preference_test_supersede_candidate_002",
+      preference_relation: "rel_preference_test_supersede_candidate_002",
+      world_claim: "wcl_test_supersede_candidate_002",
+      contradiction: "contra_test_supersede_candidate_002",
+      contradiction_resolution: "cres_test_supersede_candidate_002",
+      wiki_page: "wpg_test_supersede_candidate_002",
+      wiki_claim: "wclm_test_supersede_candidate_002",
+      proposal: "prop_test_supersede_candidate_002",
+      disposition: "disp_test_supersede_candidate_002",
+      ratification: "rat_test_supersede_candidate_002",
+      diagnostic: "diag_test_supersede_candidate_002",
+      canonical: "mem_test_supersede_candidate_002",
+      canon_artifact: "part_openclaw_canon_test_supersede_candidate_002",
+      world_artifact: "part_openclaw_world_test_supersede_candidate_002",
+      wiki_artifact: "part_openclaw_wiki_test_supersede_candidate_002",
+      projection_manifest: "pmf_openclaw_test_supersede_candidate_002",
+    },
+  };
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  await writeCoreRecord(rootDir, {
+    ...second.records.contradiction_resolution!,
+    strategy: "supersede_candidate",
+    winning_ref: second.records.contradiction!.left_ref,
+    losing_ref: second.records.contradiction!.right_ref,
+    status: "proposed",
+    rationale: "Reviewer kept the existing claim and retired the candidate.",
+  });
+
+  const applied = await applyConversationPreferenceResolutionToStore({
+    ...secondInput,
+    now: "2026-04-12T01:05:00.000Z",
+    validation_scope: "test:conversation-preference:supersede-candidate",
+  });
+
+  assert.equal(applied.reused, false);
+  assert.equal(applied.records.contradiction_resolution.strategy, "supersede_candidate");
+  assert.equal(applied.records.existing_world_claim.temporal_state?.temporal_status, "active");
+  assert.equal(applied.records.candidate_world_claim.temporal_state?.temporal_status, "historical");
+  assert.equal(applied.records.candidate_world_claim.epistemic_state, "disputed");
+
+  const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /\[contradiction-resolution:cres_test_supersede_candidate_002\] \(applied\) supersede_candidate/);
+  assert.match(projectionMarkdown, /\[world:wcl_test_supersede_candidate_002\] \(disputed; historical\)/);
 });
 
 test("applyConversationPreferenceResolutionToStore blocks auto-application of manual-review resolutions", async (t) => {
@@ -812,6 +1182,11 @@ test("structured preference signal flow reuses the generic intake framework", as
   assert.equal(result.records.intake.observation.provenance.source_type, "structured_import");
   assert.equal(result.records.contradiction, undefined);
   assert.equal(result.records.canonical_record?.id, "mem_structured_store_001");
+
+  const wikiMarkdown = await readFile(result.paths.wiki_page_markdown, "utf8");
+  assert.match(wikiMarkdown, /^page_kind: entity$/m);
+  assert.match(wikiMarkdown, /^title: Customer Delivery Preferences$/m);
+  assert.match(wikiMarkdown, /^# Customer Delivery Preferences$/m);
 
   const replayed = await writeStructuredPreferenceSignalFlowToStore({
     ...input,

@@ -62,6 +62,7 @@ visibility_state:
 provenance:
   source_type: conversation
   source_ref: runtime/session-001#turn-18
+  speaker_ref: actor_external_person_001
   evidence_refs:
     - obs-...
 upstream_refs:
@@ -72,6 +73,8 @@ upstream_refs:
 The exact optional fields may vary by family.
 
 The axes may not disappear.
+
+For the current group interaction model, `visibility_state` should be read as runtime or publication handling metadata, not as a promise of hidden per-participant memory inside one owner-controlled thread.
 
 `upstream_refs` is cumulative state provenance for the current object, not strictly a list of temporally earlier records.
 
