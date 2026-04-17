@@ -100,7 +100,7 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
     rootDir,
     queue_id: queue[0]!.queue_id,
     now: "2026-04-17T02:05:00.000Z",
-    actor: "owner:core-runtime-projection-test",
+    actor: input.identity_context!.ids.owner_identity!,
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:core:runtime-projection:ratified",
   });

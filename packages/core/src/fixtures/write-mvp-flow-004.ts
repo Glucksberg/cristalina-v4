@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     rootDir: outputRoot,
     queue_id: queueEntry.queue_id,
     now: "2026-04-16T00:05:00.000Z",
-    actor: "owner:mvp-004",
+    actor: "actor_owner_mvp_004",
     owner_actor_ref: "actor_owner_mvp_004",
     validation_scope: "fixture:mvp-flow-004:owner-ratification",
   });

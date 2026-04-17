@@ -1,4 +1,4 @@
-import { access, readFile, rm } from "node:fs/promises";
+import { access, mkdir, readFile, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 import {
@@ -174,7 +174,7 @@ export interface ConversationPreferenceStoreResult {
 }
 
 export interface ConversationPreferenceOwnerRatificationInput extends ConversationPreferenceStoreInput {
-  owner_actor_ref: string;
+  owner_actor_ref?: string;
 }
 
 export interface ConversationPreferenceOwnerRatificationQueueEntry {
@@ -199,7 +199,7 @@ export interface ConversationPreferenceQueuedRatificationInput {
   queue_id: string;
   now: string;
   actor: string;
-  owner_actor_ref: string;
+  owner_actor_ref?: string;
   validation_scope?: string;
 }
 
@@ -208,7 +208,7 @@ export interface ConversationPreferenceQueuedRejectionInput {
   queue_id: string;
   now: string;
   actor: string;
-  owner_actor_ref: string;
+  owner_actor_ref?: string;
   validation_scope?: string;
 }
 
@@ -278,6 +278,11 @@ const LEGAL_SOURCE_CONTENT_PREFIXES = [
   "raw/imports/",
   "raw/attachments/",
 ] as const;
+const STORE_WRITE_LOCK_PATH = "audits/snapshots/.store-write.lock";
+const STORE_WRITE_LOCK_METADATA = "owner.json";
+const STORE_WRITE_LOCK_POLL_MS = 25;
+const STORE_WRITE_LOCK_TIMEOUT_MS = 120_000;
+const STORE_WRITE_LOCK_STALE_MS = 120_000;
 
 function ownerRatificationQueueId(proposalId: string): string {
   return `cur_owner_ratification_${proposalId}`;
@@ -317,8 +322,130 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
+function isAlreadyExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function storeWriteLockPath(rootDir: string): string {
+  return resolveStorePath(rootDir, STORE_WRITE_LOCK_PATH);
+}
+
+function storeWriteLockMetadataPath(rootDir: string): string {
+  return resolveStorePath(rootDir, `${STORE_WRITE_LOCK_PATH}/${STORE_WRITE_LOCK_METADATA}`);
+}
+
+async function lockIsStale(rootDir: string, nowMs: number): Promise<boolean> {
+  const lockDir = storeWriteLockPath(rootDir);
+  const metadataPath = storeWriteLockMetadataPath(rootDir);
+
+  const metadataSource = await readFile(metadataPath, "utf8").catch((error) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
+
+  if (metadataSource) {
+    try {
+      const parsed = JSON.parse(metadataSource) as { acquired_at?: unknown };
+      if (typeof parsed.acquired_at === "string") {
+        const acquiredAt = Date.parse(parsed.acquired_at);
+        if (!Number.isNaN(acquiredAt)) {
+          return nowMs - acquiredAt > STORE_WRITE_LOCK_STALE_MS;
+        }
+      }
+    } catch {
+      return true;
+    }
+  }
+
+  const lockStat = await stat(lockDir).catch((error) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
+  if (!lockStat) {
+    return false;
+  }
+
+  return nowMs - lockStat.mtimeMs > STORE_WRITE_LOCK_STALE_MS;
+}
+
+async function acquireStoreWriteLock(rootDir: string, holder: string): Promise<() => Promise<void>> {
+  const lockDir = storeWriteLockPath(rootDir);
+  const metadataPath = storeWriteLockMetadataPath(rootDir);
+  const deadline = Date.now() + STORE_WRITE_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      await mkdir(lockDir, { recursive: false });
+      await writeTextFile(
+        metadataPath,
+        `${JSON.stringify({ holder, acquired_at: new Date().toISOString() }, null, 2)}\n`,
+      );
+
+      return async () => {
+        await rm(lockDir, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw error;
+      }
+
+      const nowMs = Date.now();
+      if (await lockIsStale(rootDir, nowMs)) {
+        await rm(lockDir, { recursive: true, force: true });
+        continue;
+      }
+
+      if (nowMs >= deadline) {
+        throw new Error(`Timed out acquiring store write lock for ${holder}`);
+      }
+
+      await sleep(STORE_WRITE_LOCK_POLL_MS);
+    }
+  }
+}
+
+async function withStoreWriteLock<T>(
+  rootDir: string,
+  holder: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const release = await acquireStoreWriteLock(rootDir, holder);
+
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
 function serializeCoreRecordContent(record: CoreRecord): string {
   return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+function assertAuthorizedOwnerAction(input: {
+  actor: string;
+  owner_actor_ref?: string;
+  owner_identity_ref?: string | null;
+  action: "ratification" | "rejection";
+}): void {
+  if (!input.owner_identity_ref) {
+    throw new Error(`Deferred conversation preference flow does not carry an owner identity`);
+  }
+
+  if (input.actor !== input.owner_identity_ref) {
+    throw new Error(`Explicit owner ${input.action} requires actor ${input.owner_identity_ref}`);
+  }
+
+  if (
+    input.owner_actor_ref !== undefined &&
+    input.owner_actor_ref !== input.owner_identity_ref
+  ) {
+    throw new Error(`Explicit owner ${input.action} requires owner_actor_ref ${input.owner_identity_ref}`);
+  }
 }
 
 async function writeTextFile(filePath: string, content: string): Promise<void> {
@@ -2442,141 +2569,84 @@ export async function writeConversationPreferenceFlowToStore(
   const rootDir = resolve(input.rootDir);
   await initializeStore(rootDir, input.now);
 
-  const source_record = buildSourceRecord(input);
-  const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
-  const previewPaths = buildPaths(rootDir, source_record, buildPreviewIntake(input, source_record, intakeBuilder), input);
-  await recoverOrResetWriteFlow(rootDir, input, previewPaths);
-  const {
-    intake,
-    existingCanonicalRecords,
-    existingWorldClaims,
-    conflicting_world_claim,
-  } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
-  const paths = buildPaths(rootDir, source_record, intake, input);
+  return withStoreWriteLock(rootDir, `conversation_preference_write:${input.ids.proposal}`, async () => {
+    const source_record = buildSourceRecord(input);
+    const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
+    const previewPaths = buildPaths(rootDir, source_record, buildPreviewIntake(input, source_record, intakeBuilder), input);
+    await recoverOrResetWriteFlow(rootDir, input, previewPaths);
+    const {
+      intake,
+      existingCanonicalRecords,
+      existingWorldClaims,
+      conflicting_world_claim,
+    } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
+    const paths = buildPaths(rootDir, source_record, intake, input);
 
-  const existingFlow = await loadExistingFlow(input, paths, source_record, intake);
-  if (existingFlow) {
-    return existingFlow;
-  }
+    const existingFlow = await loadExistingFlow(input, paths, source_record, intake);
+    if (existingFlow) {
+      return existingFlow;
+    }
 
-  const canonicalWorkflow = executeCanonicalProposalWorkflow({
-    proposal: intake.proposal,
-    existing_canon_records: existingCanonicalRecords,
-    blocking_world_conflict_ref: conflicting_world_claim?.id ?? null,
-    now: input.now,
-    actor: input.actor,
-    ratification_id: input.ids.ratification,
-    diagnostic_id: input.ids.diagnostic,
-    canonical_id: input.ids.canonical,
-  });
+    const canonicalWorkflow = executeCanonicalProposalWorkflow({
+      proposal: intake.proposal,
+      existing_canon_records: existingCanonicalRecords,
+      blocking_world_conflict_ref: conflicting_world_claim?.id ?? null,
+      now: input.now,
+      actor: input.actor,
+      ratification_id: input.ids.ratification,
+      diagnostic_id: input.ids.diagnostic,
+      canonical_id: input.ids.canonical,
+    });
 
-  if (canonicalWorkflow.accepted && !canonicalWorkflow.created_record) {
-    throw new Error("Conversation preference workflow produced an accepted proposal without canonical state");
-  }
+    if (canonicalWorkflow.accepted && !canonicalWorkflow.created_record) {
+      throw new Error("Conversation preference workflow produced an accepted proposal without canonical state");
+    }
 
-  const owner_ratification_queue = buildOwnerRatificationQueuePacket({
-    now: input.now,
-    source_record,
-    intake,
-    paths,
-    ratification_record: canonicalWorkflow.ratification_record,
-    diagnostic: canonicalWorkflow.diagnostic,
-  });
+    const owner_ratification_queue = buildOwnerRatificationQueuePacket({
+      now: input.now,
+      source_record,
+      intake,
+      paths,
+      ratification_record: canonicalWorkflow.ratification_record,
+      diagnostic: canonicalWorkflow.diagnostic,
+    });
 
-  const contradiction =
-    input.ids.contradiction && conflicting_world_claim
-      ? detectWorldClaimContradiction({
-          now: input.now,
-          contradiction_id: input.ids.contradiction,
-          candidate_claim: intake.world_claim,
-          existing_world_claims: existingWorldClaims,
-        })
-      : undefined;
-  const contradiction_resolution =
-    contradiction && conflicting_world_claim && input.ids.contradiction_resolution
-      ? proposeContradictionResolution({
-          now: input.now,
-          resolution_id: input.ids.contradiction_resolution,
-          contradiction,
-          existing_claim: conflicting_world_claim,
-          candidate_claim: intake.world_claim,
-        })
-      : undefined;
-  const projection = await buildProjectionFromStoreState(rootDir, paths, input, canonicalWorkflow.created_record, intake, input.now, {
-    canonical_records: canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : [],
-    world_claims: [intake.world_claim],
-    episodes: [intake.episode],
-    entities: [intake.subject_entity, intake.preference_entity],
-    relations: [intake.preference_relation],
-    contradictions: contradiction ? [contradiction] : [],
-    contradiction_resolutions: contradiction_resolution ? [contradiction_resolution] : [],
-    curation_packets: owner_ratification_queue ? [owner_ratification_queue] : [],
-    wiki_pages: [intake.wiki_page],
-    wiki_claims: [intake.wiki_claim],
-    diagnostics: canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : [],
-  });
-  const files = buildConversationPreferenceWriteFiles({
-    rootDir,
-    storeInput: input,
-    paths,
-    source_record,
-    intake,
-    contradiction,
-    contradiction_resolution,
-    owner_ratification_queue,
-    ratification_record: canonicalWorkflow.ratification_record,
-    diagnostic: canonicalWorkflow.diagnostic,
-    canonical_record: canonicalWorkflow.created_record,
-    projection,
-  });
-  const validation_issues = buildConversationPreferenceWriteValidationIssues({
-    source_record,
-    intake,
-    contradiction,
-    contradiction_resolution,
-    owner_ratification_queue,
-    ratification_record: canonicalWorkflow.ratification_record,
-    diagnostic: canonicalWorkflow.diagnostic,
-    canonical_record: canonicalWorkflow.created_record,
-    projection,
-  });
-  assertNoValidationIssues(validation_issues, "conversation preference write flow");
-  const audit_entries = buildConversationPreferenceAuditEntries({
-    now: input.now,
-    source_record,
-    intake,
-    owner_ratification_queue,
-    ratification_record: canonicalWorkflow.ratification_record,
-    canonical_record: canonicalWorkflow.created_record,
-    projection,
-    conflicting_world_claim,
-  });
-  const append_entries = buildConversationPreferenceAppendEntries({
-    now: input.now,
-    validation_scope: input.validation_scope ?? "workflow:conversation-preference",
-    proposal_id: intake.proposal.id,
-    validation_issues,
-    audit_entries,
-  });
-  const journalPath = recoveryJournalPath(rootDir, "conversation_preference_write", input.ids.proposal);
-  await writeRecoveryJournal(
-    journalPath,
-    buildRecoveryJournal({
+    const contradiction =
+      input.ids.contradiction && conflicting_world_claim
+        ? detectWorldClaimContradiction({
+            now: input.now,
+            contradiction_id: input.ids.contradiction,
+            candidate_claim: intake.world_claim,
+            existing_world_claims: existingWorldClaims,
+          })
+        : undefined;
+    const contradiction_resolution =
+      contradiction && conflicting_world_claim && input.ids.contradiction_resolution
+        ? proposeContradictionResolution({
+            now: input.now,
+            resolution_id: input.ids.contradiction_resolution,
+            contradiction,
+            existing_claim: conflicting_world_claim,
+            candidate_claim: intake.world_claim,
+          })
+        : undefined;
+    const projection = await buildProjectionFromStoreState(rootDir, paths, input, canonicalWorkflow.created_record, intake, input.now, {
+      canonical_records: canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : [],
+      world_claims: [intake.world_claim],
+      episodes: [intake.episode],
+      entities: [intake.subject_entity, intake.preference_entity],
+      relations: [intake.preference_relation],
+      contradictions: contradiction ? [contradiction] : [],
+      contradiction_resolutions: contradiction_resolution ? [contradiction_resolution] : [],
+      curation_packets: owner_ratification_queue ? [owner_ratification_queue] : [],
+      wiki_pages: [intake.wiki_page],
+      wiki_claims: [intake.wiki_claim],
+      diagnostics: canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : [],
+    });
+    const files = buildConversationPreferenceWriteFiles({
       rootDir,
-      operation: "conversation_preference_write",
-      created_at: input.now,
-      files,
-      append_entries,
-    }),
-  );
-  await materializeFiles(files);
-  await replayRecoveryJournalEntries(rootDir, append_entries);
-  await rm(journalPath, { force: true });
-
-  return {
-    reused: false,
-    paths,
-    records: {
+      storeInput: input,
+      paths,
       source_record,
       intake,
       contradiction,
@@ -2585,11 +2655,70 @@ export async function writeConversationPreferenceFlowToStore(
       ratification_record: canonicalWorkflow.ratification_record,
       diagnostic: canonicalWorkflow.diagnostic,
       canonical_record: canonicalWorkflow.created_record,
-      projection_artifacts: projection.artifacts,
-      projection_manifest: projection.manifest,
-    },
-    validation_issues,
-  };
+      projection,
+    });
+    const validation_issues = buildConversationPreferenceWriteValidationIssues({
+      source_record,
+      intake,
+      contradiction,
+      contradiction_resolution,
+      owner_ratification_queue,
+      ratification_record: canonicalWorkflow.ratification_record,
+      diagnostic: canonicalWorkflow.diagnostic,
+      canonical_record: canonicalWorkflow.created_record,
+      projection,
+    });
+    assertNoValidationIssues(validation_issues, "conversation preference write flow");
+    const audit_entries = buildConversationPreferenceAuditEntries({
+      now: input.now,
+      source_record,
+      intake,
+      owner_ratification_queue,
+      ratification_record: canonicalWorkflow.ratification_record,
+      canonical_record: canonicalWorkflow.created_record,
+      projection,
+      conflicting_world_claim,
+    });
+    const append_entries = buildConversationPreferenceAppendEntries({
+      now: input.now,
+      validation_scope: input.validation_scope ?? "workflow:conversation-preference",
+      proposal_id: intake.proposal.id,
+      validation_issues,
+      audit_entries,
+    });
+    const journalPath = recoveryJournalPath(rootDir, "conversation_preference_write", input.ids.proposal);
+    await writeRecoveryJournal(
+      journalPath,
+      buildRecoveryJournal({
+        rootDir,
+        operation: "conversation_preference_write",
+        created_at: input.now,
+        files,
+        append_entries,
+      }),
+    );
+    await materializeFiles(files);
+    await replayRecoveryJournalEntries(rootDir, append_entries);
+    await rm(journalPath, { force: true });
+
+    return {
+      reused: false,
+      paths,
+      records: {
+        source_record,
+        intake,
+        contradiction,
+        contradiction_resolution,
+        owner_ratification_queue,
+        ratification_record: canonicalWorkflow.ratification_record,
+        diagnostic: canonicalWorkflow.diagnostic,
+        canonical_record: canonicalWorkflow.created_record,
+        projection_artifacts: projection.artifacts,
+        projection_manifest: projection.manifest,
+      },
+      validation_issues,
+    };
+  });
 }
 
 export async function readConversationPreferenceFlowResult(
@@ -2627,147 +2756,153 @@ export async function applyConversationPreferenceResolutionToStore(
   input: ConversationPreferenceStoreInput,
 ): Promise<ConversationPreferenceResolutionStoreResult> {
   const rootDir = resolve(input.rootDir);
-  await recoverResolutionApplication(rootDir, input);
-  const existingFlow = await readConversationPreferenceFlowResult(input);
-  if (!existingFlow) {
-    throw new Error("Conversation preference flow must exist before applying contradiction resolution");
-  }
+  return withStoreWriteLock(
+    rootDir,
+    `conversation_preference_resolution_apply:${input.ids.contradiction_resolution ?? input.ids.proposal}`,
+    async () => {
+      await recoverResolutionApplication(rootDir, input);
+      const existingFlow = await readConversationPreferenceFlowResult(input);
+      if (!existingFlow) {
+        throw new Error("Conversation preference flow must exist before applying contradiction resolution");
+      }
 
-  const { paths, records } = existingFlow;
-  if (!records.contradiction) {
-    throw new Error("Conversation preference flow does not contain a contradiction to apply");
-  }
-  if (!records.contradiction_resolution) {
-    throw new Error("Conversation preference flow does not contain a contradiction resolution to apply");
-  }
-  if (records.contradiction_resolution.strategy === "manual_review") {
-    throw new Error("Manual-review contradiction resolutions require explicit review before application");
-  }
+      const { paths, records } = existingFlow;
+      if (!records.contradiction) {
+        throw new Error("Conversation preference flow does not contain a contradiction to apply");
+      }
+      if (!records.contradiction_resolution) {
+        throw new Error("Conversation preference flow does not contain a contradiction resolution to apply");
+      }
+      if (records.contradiction_resolution.strategy === "manual_review") {
+        throw new Error("Manual-review contradiction resolutions require explicit review before application");
+      }
 
-  const existing_world_claim = await readCoreRecord<WorldClaim>(
-    coreRecordPath(
-      rootDir,
-      {
-        id: records.contradiction.left_ref.id,
-        kind: "preference",
-        layer: "world",
-      } as WorldClaim,
-    ),
-  );
-  const candidate_world_claim = await readCoreRecord<WorldClaim>(
-    coreRecordPath(
-      rootDir,
-      {
-        id: records.contradiction.right_ref.id,
-        kind: "preference",
-        layer: "world",
-      } as WorldClaim,
-    ),
-  );
+      const existing_world_claim = await readCoreRecord<WorldClaim>(
+        coreRecordPath(
+          rootDir,
+          {
+            id: records.contradiction.left_ref.id,
+            kind: "preference",
+            layer: "world",
+          } as WorldClaim,
+        ),
+      );
+      const candidate_world_claim = await readCoreRecord<WorldClaim>(
+        coreRecordPath(
+          rootDir,
+          {
+            id: records.contradiction.right_ref.id,
+            kind: "preference",
+            layer: "world",
+          } as WorldClaim,
+        ),
+      );
 
-  if (records.contradiction_resolution.status === "applied") {
-    const projection_artifacts = await readProjectionArtifacts(paths);
-    const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+      if (records.contradiction_resolution.status === "applied") {
+        const projection_artifacts = await readProjectionArtifacts(paths);
+        const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
 
-    return {
-      reused: true,
-      paths,
-      records: {
-        ...records,
+        return {
+          reused: true,
+          paths,
+          records: {
+            ...records,
+            contradiction: records.contradiction,
+            contradiction_resolution: records.contradiction_resolution,
+            existing_world_claim,
+            candidate_world_claim,
+            projection_artifacts,
+            projection_manifest,
+          },
+          validation_issues: [
+            ...existingFlow.validation_issues,
+            ...validateCoreRecord(existing_world_claim),
+            ...validateCoreRecord(candidate_world_claim),
+          ],
+        };
+      }
+
+      const applied = applyAcceptedContradictionResolution({
+        now: input.now,
         contradiction: records.contradiction,
-        contradiction_resolution: records.contradiction_resolution,
-        existing_world_claim,
-        candidate_world_claim,
-        projection_artifacts,
-        projection_manifest,
-      },
-      validation_issues: [
-        ...existingFlow.validation_issues,
-        ...validateCoreRecord(existing_world_claim),
-        ...validateCoreRecord(candidate_world_claim),
-      ],
-    };
-  }
+        resolution: acceptContradictionResolution({
+          now: input.now,
+          resolution: records.contradiction_resolution,
+        }),
+        existing_claim: existing_world_claim,
+        candidate_claim: candidate_world_claim,
+      });
 
-  const applied = applyAcceptedContradictionResolution({
-    now: input.now,
-    contradiction: records.contradiction,
-    resolution: acceptContradictionResolution({
-      now: input.now,
-      resolution: records.contradiction_resolution,
-    }),
-    existing_claim: existing_world_claim,
-    candidate_claim: candidate_world_claim,
-  });
-
-  const projection = await buildProjectionFromStoreState(rootDir, paths, input, records.canonical_record, {
-    ...records.intake,
-    world_claim: applied.candidate_claim,
-  }, input.now, {
-    world_claims: [applied.existing_claim, applied.candidate_claim],
-    contradictions: [applied.contradiction],
-    contradiction_resolutions: [applied.resolution],
-  });
-  const files = buildResolutionApplicationFiles({
-    rootDir,
-    paths,
-    applied,
-    projection,
-  });
-  const validation_issues = buildResolutionApplicationValidationIssues({
-    applied,
-    projection,
-  });
-  assertNoValidationIssues(validation_issues, "conversation preference resolution application");
-  const audit_entries = buildResolutionApplicationAuditEntries({
-    now: input.now,
-    applied,
-    projection,
-  });
-  const append_entries = buildResolutionApplicationAppendEntries({
-    now: input.now,
-    validation_scope: input.validation_scope ?? "workflow:conversation-preference:resolution-application",
-    resolution_id: applied.resolution.id,
-    validation_issues,
-    audit_entries,
-  });
-  const journalPath = recoveryJournalPath(
-    rootDir,
-    "conversation_preference_resolution_apply",
-    records.contradiction_resolution.id,
-  );
-  await writeRecoveryJournal(
-    journalPath,
-    buildRecoveryJournal({
-      rootDir,
-      operation: "conversation_preference_resolution_apply",
-      created_at: input.now,
-      files,
-      append_entries,
-    }),
-  );
-  await materializeFiles(files);
-  await replayRecoveryJournalEntries(rootDir, append_entries);
-  await rm(journalPath, { force: true });
-
-  return {
-    reused: false,
-    paths,
-    records: {
-      ...records,
-      intake: {
+      const projection = await buildProjectionFromStoreState(rootDir, paths, input, records.canonical_record, {
         ...records.intake,
         world_claim: applied.candidate_claim,
-      },
-      contradiction: applied.contradiction,
-      contradiction_resolution: applied.resolution,
-      existing_world_claim: applied.existing_claim,
-      candidate_world_claim: applied.candidate_claim,
-      projection_artifacts: projection.artifacts,
-      projection_manifest: projection.manifest,
+      }, input.now, {
+        world_claims: [applied.existing_claim, applied.candidate_claim],
+        contradictions: [applied.contradiction],
+        contradiction_resolutions: [applied.resolution],
+      });
+      const files = buildResolutionApplicationFiles({
+        rootDir,
+        paths,
+        applied,
+        projection,
+      });
+      const validation_issues = buildResolutionApplicationValidationIssues({
+        applied,
+        projection,
+      });
+      assertNoValidationIssues(validation_issues, "conversation preference resolution application");
+      const audit_entries = buildResolutionApplicationAuditEntries({
+        now: input.now,
+        applied,
+        projection,
+      });
+      const append_entries = buildResolutionApplicationAppendEntries({
+        now: input.now,
+        validation_scope: input.validation_scope ?? "workflow:conversation-preference:resolution-application",
+        resolution_id: applied.resolution.id,
+        validation_issues,
+        audit_entries,
+      });
+      const journalPath = recoveryJournalPath(
+        rootDir,
+        "conversation_preference_resolution_apply",
+        records.contradiction_resolution.id,
+      );
+      await writeRecoveryJournal(
+        journalPath,
+        buildRecoveryJournal({
+          rootDir,
+          operation: "conversation_preference_resolution_apply",
+          created_at: input.now,
+          files,
+          append_entries,
+        }),
+      );
+      await materializeFiles(files);
+      await replayRecoveryJournalEntries(rootDir, append_entries);
+      await rm(journalPath, { force: true });
+
+      return {
+        reused: false,
+        paths,
+        records: {
+          ...records,
+          intake: {
+            ...records.intake,
+            world_claim: applied.candidate_claim,
+          },
+          contradiction: applied.contradiction,
+          contradiction_resolution: applied.resolution,
+          existing_world_claim: applied.existing_claim,
+          candidate_world_claim: applied.candidate_claim,
+          projection_artifacts: projection.artifacts,
+          projection_manifest: projection.manifest,
+        },
+        validation_issues,
+      };
     },
-    validation_issues,
-  };
+  );
 }
 
 function buildSyntheticInputForStoredFlow(
@@ -2992,7 +3127,7 @@ async function applyOwnerRatificationToExistingFlow(
   input: {
     now: string;
     actor: string;
-    owner_actor_ref: string;
+    owner_actor_ref?: string;
     validation_scope?: string;
   },
 ): Promise<ConversationPreferenceStoreResult> {
@@ -3009,13 +3144,12 @@ async function applyOwnerRatificationToExistingFlow(
   }
 
   const ownerIdentityRef = existingFlow.records.intake.owner_identity?.id;
-  if (!ownerIdentityRef) {
-    throw new Error("Deferred conversation preference flow does not carry an owner identity");
-  }
-
-  if (input.owner_actor_ref !== ownerIdentityRef) {
-    throw new Error(`Explicit owner ratification requires owner_actor_ref ${ownerIdentityRef}`);
-  }
+  assertAuthorizedOwnerAction({
+    actor: input.actor,
+    owner_actor_ref: input.owner_actor_ref,
+    owner_identity_ref: ownerIdentityRef,
+    action: "ratification",
+  });
 
   if (existingFlow.records.intake.proposal.promotion_requirement !== "owner_ratification_required") {
     throw new Error("Conversation preference flow is not waiting on owner ratification");
@@ -3164,12 +3298,12 @@ async function closeOwnerReviewQueueToExistingFlow(
 
   const ownerIdentityRef = existingFlow.records.intake.owner_identity?.id;
   if (input.queue_status === "answered") {
-    if (!ownerIdentityRef) {
-      throw new Error("Deferred conversation preference flow does not carry an owner identity");
-    }
-    if (input.owner_actor_ref !== ownerIdentityRef) {
-      throw new Error(`Explicit owner rejection requires owner_actor_ref ${ownerIdentityRef}`);
-    }
+    assertAuthorizedOwnerAction({
+      actor: input.actor,
+      owner_actor_ref: input.owner_actor_ref,
+      owner_identity_ref: ownerIdentityRef,
+      action: "rejection",
+    });
   }
 
   const ratification_record: RatificationRecord =
@@ -3340,20 +3474,26 @@ export async function ratifyQueuedConversationPreferenceProposalToStore(
   input: ConversationPreferenceQueuedRatificationInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
-  await recoverOwnerReviewClosure(rootDir, input.queue_id);
-  const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+  return withStoreWriteLock(
     rootDir,
-    input.queue_id,
-  );
-  if (!existingFlow) {
-    throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
-  }
+    `conversation_preference_owner_ratification_queue:${input.queue_id}`,
+    async () => {
+      await recoverOwnerReviewClosure(rootDir, input.queue_id);
+      const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+        rootDir,
+        input.queue_id,
+      );
+      if (!existingFlow) {
+        throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
+      }
 
-  return applyOwnerRatificationToExistingFlow(
-    rootDir,
-    existingFlow,
-    buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
-    input,
+      return applyOwnerRatificationToExistingFlow(
+        rootDir,
+        existingFlow,
+        buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+        input,
+      );
+    },
   );
 }
 
@@ -3361,22 +3501,28 @@ export async function rejectQueuedConversationPreferenceProposalToStore(
   input: ConversationPreferenceQueuedRejectionInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
-  await recoverOwnerReviewClosure(rootDir, input.queue_id);
-  const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+  return withStoreWriteLock(
     rootDir,
-    input.queue_id,
-  );
-  if (!existingFlow) {
-    throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
-  }
+    `conversation_preference_owner_review_close:${input.queue_id}`,
+    async () => {
+      await recoverOwnerReviewClosure(rootDir, input.queue_id);
+      const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+        rootDir,
+        input.queue_id,
+      );
+      if (!existingFlow) {
+        throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
+      }
 
-  return closeOwnerReviewQueueToExistingFlow(
-    rootDir,
-    existingFlow,
-    buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
-    {
-      ...input,
-      queue_status: "answered",
+      return closeOwnerReviewQueueToExistingFlow(
+        rootDir,
+        existingFlow,
+        buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+        {
+          ...input,
+          queue_status: "answered",
+        },
+      );
     },
   );
 }
@@ -3385,22 +3531,28 @@ export async function expireQueuedConversationPreferenceProposalToStore(
   input: ConversationPreferenceQueuedExpirationInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
-  await recoverOwnerReviewClosure(rootDir, input.queue_id);
-  const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+  return withStoreWriteLock(
     rootDir,
-    input.queue_id,
-  );
-  if (!existingFlow) {
-    throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
-  }
+    `conversation_preference_owner_review_close:${input.queue_id}`,
+    async () => {
+      await recoverOwnerReviewClosure(rootDir, input.queue_id);
+      const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+        rootDir,
+        input.queue_id,
+      );
+      if (!existingFlow) {
+        throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
+      }
 
-  return closeOwnerReviewQueueToExistingFlow(
-    rootDir,
-    existingFlow,
-    buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
-    {
-      ...input,
-      queue_status: "expired",
+      return closeOwnerReviewQueueToExistingFlow(
+        rootDir,
+        existingFlow,
+        buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+        {
+          ...input,
+          queue_status: "expired",
+        },
+      );
     },
   );
 }
@@ -3409,11 +3561,17 @@ export async function ratifyDeferredConversationPreferenceProposalToStore(
   input: ConversationPreferenceOwnerRatificationInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
-  await recoverOwnerRatificationApplication(rootDir, input);
+  return withStoreWriteLock(
+    rootDir,
+    `conversation_preference_owner_ratification:${input.ids.proposal}`,
+    async () => {
+      await recoverOwnerRatificationApplication(rootDir, input);
 
-  const existingFlow = await readConversationPreferenceFlowResult(input);
-  if (!existingFlow) {
-    throw new Error("Conversation preference flow must exist before explicit owner ratification");
-  }
-  return applyOwnerRatificationToExistingFlow(rootDir, existingFlow, input, input);
+      const existingFlow = await readConversationPreferenceFlowResult(input);
+      if (!existingFlow) {
+        throw new Error("Conversation preference flow must exist before explicit owner ratification");
+      }
+      return applyOwnerRatificationToExistingFlow(rootDir, existingFlow, input, input);
+    },
+  );
 }

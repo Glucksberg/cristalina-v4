@@ -24,6 +24,24 @@ function buildInput(rootDir: string): ConversationPreferenceStoreInput {
   return buildDefaultConversationPreferenceFlowInput(rootDir);
 }
 
+function cloneInputWithSuffix(
+  rootDir: string,
+  suffix: string,
+  statement: string,
+): ConversationPreferenceStoreInput {
+  const input = buildInput(rootDir);
+  input.statement = statement;
+  input.source.id = `${input.source.id}_${suffix}`;
+  input.source.source_ref = `${input.source.source_ref}-${suffix}`;
+  input.source.content_ref = `raw/sources/conversation-turn-${suffix}.json`;
+  input.source.message = statement;
+  input.ids = Object.fromEntries(
+    Object.entries(input.ids).map(([key, value]) => [key, `${value}_${suffix}`]),
+  ) as unknown as ConversationPreferenceStoreInput["ids"];
+  input.validation_scope = `test:conversation-preference:${suffix}`;
+  return input;
+}
+
 test("writeConversationPreferenceFlowToStore materializes and reuses the same flow", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -151,7 +169,7 @@ test("owner ratification queue lists deferred owner-scoped claims and can ratify
     rootDir,
     queue_id: queue[0]!.queue_id,
     now: "2026-04-12T00:05:00.000Z",
-    actor: "owner:test",
+    actor: input.identity_context!.ids.owner_identity!,
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:conversation-preference:owner-ratification",
   });
@@ -198,7 +216,7 @@ test("owner ratification queue can be explicitly rejected by the owner", async (
     rootDir,
     queue_id: queue[0]!.queue_id,
     now: "2026-04-12T00:05:00.000Z",
-    actor: "owner:test",
+    actor: input.identity_context!.ids.owner_identity!,
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:conversation-preference:owner-rejection",
   });
@@ -212,6 +230,48 @@ test("owner ratification queue can be explicitly rejected by the owner", async (
 
   const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
   assert.deepEqual(queueAfter, []);
+});
+
+test("owner ratification queue rejects a non-owner actor even when owner_actor_ref matches", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+
+  await assert.rejects(
+    () =>
+      ratifyQueuedConversationPreferenceProposalToStore({
+        rootDir,
+        queue_id: queue[0]!.queue_id,
+        now: "2026-04-12T00:05:00.000Z",
+        actor: "actor_intruder_test_001",
+        owner_actor_ref: input.identity_context!.ids.owner_identity!,
+        validation_scope: "test:conversation-preference:owner-ratification-forged-actor",
+      }),
+    /requires actor actor_owner_test_001/,
+  );
+
+  const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  assert.equal(queueAfter.length, 1);
+  assert.equal(queueAfter[0]!.queue_id, queue[0]!.queue_id);
 });
 
 test("owner ratification queue can expire without owner ratification and blocks later approval", async (t) => {
@@ -259,7 +319,7 @@ test("owner ratification queue can expire without owner ratification and blocks 
         rootDir,
         queue_id: queue[0]!.queue_id,
         now: "2026-04-12T00:10:00.000Z",
-        actor: "owner:test",
+        actor: input.identity_context!.ids.owner_identity!,
         owner_actor_ref: input.identity_context!.ids.owner_identity!,
         validation_scope: "test:conversation-preference:owner-ratification-after-expire",
       }),
@@ -293,13 +353,48 @@ test("ratifyDeferredConversationPreferenceProposalToStore remains compatible wit
   const ratified = await ratifyDeferredConversationPreferenceProposalToStore({
     ...input,
     now: "2026-04-12T00:05:00.000Z",
-    actor: "owner:test",
+    actor: input.identity_context!.ids.owner_identity!,
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:conversation-preference:owner-ratification:compat",
   });
 
   assert.equal(ratified.records.ratification_record.decision, "approved");
   assert.equal(ratified.records.owner_ratification_queue?.status, "applied");
+});
+
+test("writeConversationPreferenceFlowToStore serializes concurrent canonical writes for the same semantic slot", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const left = cloneInputWithSuffix(rootDir, "parallel_a", "The user prefers concise answers.");
+  const right = cloneInputWithSuffix(rootDir, "parallel_b", "The user prefers expansive answers.");
+
+  const [leftResult, rightResult] = await Promise.all([
+    writeConversationPreferenceFlowToStore(left),
+    writeConversationPreferenceFlowToStore(right),
+  ]);
+
+  const canonicalRecords = await loadCanonicalRecords(rootDir);
+  const semanticSlot = leftResult.records.intake.world_claim.semantic_slot;
+  const activeCanonical = canonicalRecords.filter(
+    (record) => record.semantic_slot === semanticSlot && record.governance_state === "ratified",
+  );
+
+  assert.equal(activeCanonical.length, 1);
+  assert.equal(
+    [leftResult.records.canonical_record, rightResult.records.canonical_record].filter((record) => record !== undefined).length,
+    1,
+  );
+  assert.equal(
+    [leftResult.records.ratification_record.decision, rightResult.records.ratification_record.decision].filter((decision) => decision === "approved").length,
+    1,
+  );
+  assert.equal(
+    [leftResult.records.ratification_record.decision, rightResult.records.ratification_record.decision].filter((decision) => decision === "rejected").length,
+    1,
+  );
 });
 
 test("writeConversationPreferenceFlowToStore promotes owner-originated owner claims into canon", async (t) => {
