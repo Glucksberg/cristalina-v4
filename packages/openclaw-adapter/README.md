@@ -8,3 +8,10 @@ Planned responsibilities:
 - OpenClaw ingest and drift handling
 - runtime diagnostics feedback
 - projection manifest compatibility
+
+Current executable surface:
+
+- projection runtime loader by manifest id
+- latest projection runtime loader
+- explicit access to `diagnostics`, `reviews`, `pending_reviews`, and `closed_reviews`
+- consumption of `ProjectionManifest.review_refs` and bootstrap review sections without defining new memory law in the adapter

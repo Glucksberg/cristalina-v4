@@ -11,6 +11,7 @@ export * from "./audit/log.js";
 export * from "./governance/engine.js";
 export * from "./canon/engine.js";
 export * from "./adapter-sdk/projection.js";
+export * from "./adapter-sdk/runtime-projection.js";
 export * from "./projection-engine/openclaw.js";
 export * from "./workflow-engine/source-intake.js";
 export * from "./workflow-engine/pipeline.js";

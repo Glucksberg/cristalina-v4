@@ -6,16 +6,23 @@ import { CANONICAL_CLAIM_KINDS } from "../types.js";
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
+  CurationPacket,
   ContradictionResolution,
   Contradiction,
   CoreRecord,
   Diagnostic,
+  DispositionRecord,
   Entity,
   Episode,
+  Proposal,
+  RatificationRecord,
   Relation,
   RuntimeInstance,
   RuntimeSession,
+  SourceRecord,
   ConversationThread,
+  ProjectionManifest,
+  ProjectionArtifact,
   WikiClaim,
   WikiPage,
   WorldClaim,
@@ -278,6 +285,11 @@ export async function loadCanonicalRecordById(rootDir: string, recordId: string)
   return records.find((record) => record.id === recordId);
 }
 
+export async function loadSourceRecords(rootDir: string): Promise<SourceRecord[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.raw.sources);
+  return records.filter((record): record is SourceRecord => record.kind === "source_record");
+}
+
 export async function loadWorldClaims(rootDir: string): Promise<WorldClaim[]> {
   const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.world.claims);
   return records.filter((record): record is WorldClaim => record.layer === "world" && "statement" in record && "support_refs" in record);
@@ -308,6 +320,26 @@ export async function loadContradictionResolutions(rootDir: string): Promise<Con
   return records.filter((record): record is ContradictionResolution => record.kind === "contradiction_resolution");
 }
 
+export async function loadProposals(rootDir: string): Promise<Proposal[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.governance.proposals);
+  return records.filter((record): record is Proposal => record.kind === "proposal");
+}
+
+export async function loadDispositionRecords(rootDir: string): Promise<DispositionRecord[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.governance.dispositions);
+  return records.filter((record): record is DispositionRecord => record.kind === "disposition_record");
+}
+
+export async function loadCurationPackets(rootDir: string): Promise<CurationPacket[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.governance.curation);
+  return records.filter((record): record is CurationPacket => record.kind === "curation_packet");
+}
+
+export async function loadRatificationRecords(rootDir: string): Promise<RatificationRecord[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.governance.ratifications);
+  return records.filter((record): record is RatificationRecord => record.kind === "ratification");
+}
+
 export async function loadWikiPages(rootDir: string): Promise<WikiPage[]> {
   const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.wiki.pages);
   return records.filter((record): record is WikiPage => record.kind === "wiki_page");
@@ -321,6 +353,23 @@ export async function loadWikiClaims(rootDir: string): Promise<WikiClaim[]> {
 export async function loadDiagnostics(rootDir: string): Promise<Diagnostic[]> {
   const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.audits.diagnostics);
   return records.filter((record): record is Diagnostic => record.kind === "diagnostic");
+}
+
+export async function loadProjectionManifests(rootDir: string): Promise<ProjectionManifest[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.derived.manifests);
+  return records.filter((record): record is ProjectionManifest => record.kind === "projection_manifest");
+}
+
+export async function loadProjectionArtifacts(rootDir: string, adapter?: ProjectionArtifact["adapter"]): Promise<ProjectionArtifact[]> {
+  const directories = adapter
+    ? [adapter === "openclaw" ? STORAGE_LAYOUT.derived.openclaw : STORAGE_LAYOUT.derived.hermes]
+    : [STORAGE_LAYOUT.derived.openclaw, STORAGE_LAYOUT.derived.hermes];
+  const records = (await Promise.all(directories.map((directory) => loadLayerRecords(rootDir, directory)))).flat();
+  return records.filter(
+    (record): record is ProjectionArtifact =>
+      record.kind === "projection_artifact" &&
+      (adapter === undefined || record.adapter === adapter),
+  );
 }
 
 export async function loadActorIdentities(rootDir: string): Promise<ActorIdentity[]> {
