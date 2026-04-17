@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,6 +9,7 @@ import {
   loadLatestProjectionRuntimeView,
   loadProjectionRuntimeView,
 } from "./runtime-projection.js";
+import { createProjectionManifest } from "./projection.js";
 import {
   listConversationPreferenceOwnerRatificationQueue,
   ratifyQueuedConversationPreferenceProposalToStore,
@@ -18,6 +19,8 @@ import {
   buildConversationPreferenceFlowInput,
 } from "../test-support/conversation-preference-fixtures.js";
 import { createHermesProjectionFixture } from "../test-support/projection-fixtures.js";
+import { initializeStore, writeCoreRecord } from "../store/io.js";
+import { ValidationError } from "../validation.js";
 
 test("runtime projection helper lists and loads OpenClaw projections from real flow state", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
@@ -167,4 +170,77 @@ test("runtime projection helper resolves Hermes projection markdown from manifes
   assert.equal(direct.markdown, storedMarkdown);
   assert.equal(direct.diagnostics[0]!.id, "diag_hermes_core_runtime_projection_test_001");
   assert.match(direct.markdown, /\(owner_ratification; answered\)/);
+});
+
+test("runtime projection helper rejects stored projection artifacts that escape derived storage", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await initializeStore(rootDir, "2026-04-17T04:00:00.000Z");
+
+  await writeFile(
+    join(rootDir, "derived/hermes/part_hermes_escape_test_001.json"),
+    `${JSON.stringify(
+      {
+        id: "part_hermes_escape_test_001",
+        kind: "projection_artifact",
+        layer: "derived",
+        authoritative_home: "wiki",
+        created_at: "2026-04-17T04:00:00.000Z",
+        updated_at: "2026-04-17T04:00:00.000Z",
+        visibility_state: {
+          privacy_scope: "shareable",
+        },
+        provenance: {
+          source_type: "corrupted_fixture",
+          source_ref: "../outside.md",
+          evidence_refs: ["ref_escape_test_001"],
+        },
+        adapter: "hermes",
+        artifact_kind: "runtime_memory_markdown",
+        path: "../outside.md#reviews",
+        source_layer: "derived",
+        upstream_refs: ["ref_escape_test_001"],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  await writeCoreRecord(
+    rootDir,
+    createProjectionManifest({
+      id: "pmf_hermes_escape_test_001",
+      adapter: "hermes",
+      projection_profile: "hermes/runtime-bootstrap",
+      audience: "runtime",
+      read_policy_version: "projection-read-v2",
+      context_refs: [],
+      artifact_refs: ["part_hermes_escape_test_001"],
+      upstream_refs: ["ref_escape_test_001"],
+      now: "2026-04-17T04:00:00.000Z",
+      visibility_state: {
+        privacy_scope: "shareable",
+      },
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      loadProjectionRuntimeView({
+        rootDir,
+        manifest_id: "pmf_hermes_escape_test_001",
+        adapter: "hermes",
+      }),
+    (error: unknown) =>
+      error instanceof ValidationError &&
+      error.issues.some(
+        (issue) =>
+          issue.path === "path" &&
+          issue.message === "projection artifacts must use a store-relative path inside derived storage",
+      ),
+  );
 });

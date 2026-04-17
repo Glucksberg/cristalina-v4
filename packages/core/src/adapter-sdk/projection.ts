@@ -7,6 +7,7 @@ import type {
   TemporalState,
   VisibilityState,
 } from "../types.js";
+import { isStoreRelativeProjectionArtifactPath } from "./projection-path.js";
 
 export const DEFAULT_PROJECTION_READ_POLICY_VERSION = "projection-read-v2";
 
@@ -284,6 +285,10 @@ export interface ProjectionFragmentInput {
 }
 
 export function createProjectionArtifact(input: ProjectionFragmentInput): ProjectionArtifact {
+  if (!isStoreRelativeProjectionArtifactPath(input.path)) {
+    throw new Error(`Projection artifact path must stay within derived storage: ${input.path}`);
+  }
+
   return {
     id: input.id,
     kind: "projection_artifact",

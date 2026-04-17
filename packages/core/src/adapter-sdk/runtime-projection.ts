@@ -14,6 +14,7 @@ import {
   loadProjectionArtifacts,
   loadProjectionManifests,
 } from "../store/io.js";
+import { resolveProjectionArtifactPath, stripProjectionArtifactFragment } from "./projection-path.js";
 
 type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
 
@@ -43,11 +44,6 @@ function compareProjectionTimestamps(left: ProjectionManifest, right: Projection
   return rightTimestamp - leftTimestamp;
 }
 
-function stripProjectionFragment(path: string): string {
-  const [basePath] = path.split("#", 1);
-  return basePath ?? path;
-}
-
 export function resolveProjectionMarkdownPath(input: {
   rootDir: string;
   manifest: ProjectionManifest;
@@ -56,7 +52,7 @@ export function resolveProjectionMarkdownPath(input: {
   const artifactIds = new Set(input.manifest.artifact_refs);
   const manifestArtifacts = input.artifacts.filter((record) => artifactIds.has(record.id));
   const markdownArtifact = manifestArtifacts.find((record) => {
-    const basePath = stripProjectionFragment(record.path);
+    const basePath = stripProjectionArtifactFragment(record.path);
     return basePath.endsWith(".md");
   });
 
@@ -64,7 +60,7 @@ export function resolveProjectionMarkdownPath(input: {
     throw new Error(`Projection manifest ${input.manifest.id} does not reference a markdown artifact`);
   }
 
-  return resolve(input.rootDir, stripProjectionFragment(markdownArtifact.path));
+  return resolveProjectionArtifactPath(input.rootDir, markdownArtifact.path);
 }
 
 export async function listProjectionRuntimeViews(

@@ -188,6 +188,74 @@ test("owner ratification queue lists deferred owner-scoped claims and can ratify
   assert.deepEqual(queueAfter, []);
 });
 
+test("owner ratification queue refuses stale promotion when a conflicting world claim is still active", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  firstInput.statement = "The owner prefers strategic summaries on Fridays.";
+  firstInput.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  firstInput.source.speaker_ref = "actor_external_person_owner_review_001";
+  firstInput.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput = cloneInputWithSuffix(
+    rootDir,
+    "owner_conflict_002",
+    "The owner prefers tactical summaries on Fridays.",
+  );
+  secondInput.source.message = "A participant says the owner prefers tactical summaries on Fridays.";
+  secondInput.source.speaker_ref = "actor_external_person_owner_review_002";
+  secondInput.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  const secondResult = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(secondResult.records.ratification_record.decision, "rejected");
+  assert.equal(secondResult.records.contradiction?.status, "open");
+
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0]!.proposal_id, firstInput.ids.proposal);
+
+  await assert.rejects(
+    () =>
+      ratifyQueuedConversationPreferenceProposalToStore({
+        rootDir,
+        queue_id: queue[0]!.queue_id,
+        now: "2026-04-12T00:05:00.000Z",
+        actor: firstInput.identity_context!.ids.owner_identity!,
+        owner_actor_ref: firstInput.identity_context!.ids.owner_identity!,
+        validation_scope: "test:conversation-preference:owner-ratification-conflict",
+      }),
+    /conflict:active_world_conflict/,
+  );
+
+  const reloaded = await readConversationPreferenceFlowResult(firstInput);
+  assert.equal(reloaded?.records.ratification_record.decision, "deferred");
+  assert.equal(reloaded?.records.canonical_record, undefined);
+  assert.equal(reloaded?.records.owner_ratification_queue?.status, "pending");
+});
+
 test("owner ratification queue can be explicitly rejected by the owner", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {

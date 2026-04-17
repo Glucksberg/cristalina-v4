@@ -41,6 +41,7 @@ import {
   validateAgainstSchema,
 } from "./schema-runtime.js";
 import type { StoreManifest } from "./store/manifest.js";
+import { isStoreRelativeProjectionArtifactPath } from "./adapter-sdk/projection-path.js";
 
 export interface ValidationIssue {
   path: string;
@@ -659,6 +660,9 @@ function validateProjectionArtifact(value: unknown): ValidationIssue[] {
   }
   pushRequiredString(issues, value, "artifact_kind");
   pushRequiredString(issues, value, "path");
+  if (typeof value.path === "string" && !isStoreRelativeProjectionArtifactPath(value.path)) {
+    issues.push({ path: "path", message: "projection artifacts must use a store-relative path inside derived storage" });
+  }
   pushEnum(issues, value, "source_layer", LAYERS);
   if (!isStringArray(value.upstream_refs)) {
     issues.push({ path: "upstream_refs", message: "expected string array" });

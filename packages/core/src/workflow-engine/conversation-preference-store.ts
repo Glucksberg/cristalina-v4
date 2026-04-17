@@ -3155,12 +3155,22 @@ async function applyOwnerRatificationToExistingFlow(
     throw new Error("Conversation preference flow is not waiting on owner ratification");
   }
 
+  const [existingCanonicalRecords, existingWorldClaims] = await Promise.all([
+    loadCanonicalRecords(rootDir),
+    loadWorldClaims(rootDir),
+  ]);
+  const blockingWorldConflictRef = findConflictingWorldClaim(
+    existingFlow.records.intake.world_claim,
+    existingWorldClaims,
+  )?.id ?? null;
+
   const canonicalWorkflow = executeCanonicalProposalWorkflow({
     proposal: {
       ...existingFlow.records.intake.proposal,
       promotion_requirement: "none",
     },
-    existing_canon_records: await loadCanonicalRecords(rootDir),
+    existing_canon_records: existingCanonicalRecords,
+    blocking_world_conflict_ref: blockingWorldConflictRef,
     now: input.now,
     actor: input.actor,
     ratification_id: existingFlow.records.ratification_record.id,
