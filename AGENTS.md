@@ -70,6 +70,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-17: Conflict and projection hardening only close when deferred promotion replays the current world-conflict gate at approval time and derived artifact paths obey the same root-scoped containment law as authoritative recovery and storage.
 - 2026-04-17: Shared-runtime group support only stays coherent when authority law, review queue state, projection readers, and reusable test fixtures all execute the same contract instead of re-encoding it per adapter or test.
 - 2026-04-17: Core hardening only closes when authoritative writes are serialized and recoverable, audit replay is journaled with the same recovery contract, and promotion executes at the same canon entrypoints that verify the acting principal and preserve canonical uniqueness under concurrency.
 - 2026-04-16: Replay hardening only closes the contract when recovery artifacts stay root-scoped, projection materialization is context-addressable instead of singleton global state, and governance verifies target references by full identity rather than id alone.
