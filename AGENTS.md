@@ -71,7 +71,7 @@ Rules:
 Current session phrases:
 
 - 2026-04-17: Shared-runtime group support only stays coherent when authority law, review queue state, projection readers, and reusable test fixtures all execute the same contract instead of re-encoding it per adapter or test.
-- 2026-04-16: Core hardening only closes when authoritative writes are atomic, audit replay is journaled with the same recovery contract, and promotion laws execute at the same entrypoints that apply canon.
+- 2026-04-17: Core hardening only closes when authoritative writes are serialized and recoverable, audit replay is journaled with the same recovery contract, and promotion executes at the same canon entrypoints that verify the acting principal and preserve canonical uniqueness under concurrency.
 - 2026-04-16: Replay hardening only closes the contract when recovery artifacts stay root-scoped, projection materialization is context-addressable instead of singleton global state, and governance verifies target references by full identity rather than id alone.
 - 2026-04-15: Write-path hardening only closes the contract when authoritative persistence can recover from partial materialization, derived artifacts are replay-verified against source state, and schema validation treats local refs and absent fields with the same semantics as persisted JSON.
 - 2026-04-13: Hardening should first eliminate drift between docs, schemas, and executable core before expanding proposal operations, adapters, or projection surfaces.
