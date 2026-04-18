@@ -29,6 +29,12 @@ export interface ProjectionRuntimeSummary {
   pending_review_count: number;
 }
 
+export interface ProjectionRuntimeFilter {
+  runtime_instance_ref?: string | null;
+  runtime_session_ref?: string | null;
+  conversation_thread_ref?: string | null;
+}
+
 export interface ProjectionRuntimeView {
   manifest: ProjectionManifest;
   markdown: string;
@@ -42,6 +48,27 @@ function compareProjectionTimestamps(left: ProjectionManifest, right: Projection
   const leftTimestamp = Date.parse(left.updated_at ?? left.created_at);
   const rightTimestamp = Date.parse(right.updated_at ?? right.created_at);
   return rightTimestamp - leftTimestamp;
+}
+
+function matchesProjectionRuntimeFilter(
+  manifest: Pick<ProjectionManifest, "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref">,
+  filter?: ProjectionRuntimeFilter,
+): boolean {
+  if (!filter) {
+    return true;
+  }
+
+  if (filter.runtime_instance_ref !== undefined && manifest.runtime_instance_ref !== filter.runtime_instance_ref) {
+    return false;
+  }
+  if (filter.runtime_session_ref !== undefined && manifest.runtime_session_ref !== filter.runtime_session_ref) {
+    return false;
+  }
+  if (filter.conversation_thread_ref !== undefined && manifest.conversation_thread_ref !== filter.conversation_thread_ref) {
+    return false;
+  }
+
+  return true;
 }
 
 export function resolveProjectionMarkdownPath(input: {
@@ -66,6 +93,7 @@ export function resolveProjectionMarkdownPath(input: {
 export async function listProjectionRuntimeViews(
   rootDir: string,
   adapter: ProjectionAdapterKind,
+  filter?: ProjectionRuntimeFilter,
 ): Promise<ProjectionRuntimeSummary[]> {
   const storeRoot = resolve(rootDir);
   const [manifests, diagnostics, reviews] = await Promise.all([
@@ -75,7 +103,7 @@ export async function listProjectionRuntimeViews(
   ]);
 
   return manifests
-    .filter((manifest) => manifest.adapter === adapter)
+    .filter((manifest) => manifest.adapter === adapter && matchesProjectionRuntimeFilter(manifest, filter))
     .sort(compareProjectionTimestamps)
     .map((manifest) => {
       const diagnosticIds = new Set(manifest.diagnostic_refs ?? []);
@@ -136,8 +164,14 @@ export async function loadProjectionRuntimeView(input: {
 export async function loadLatestProjectionRuntimeView(
   rootDir: string,
   adapter: ProjectionAdapterKind,
+  filter?: ProjectionRuntimeFilter,
 ): Promise<ProjectionRuntimeView | undefined> {
-  const summaries = await listProjectionRuntimeViews(rootDir, adapter);
+  const summaries = await listProjectionRuntimeViews(rootDir, adapter, filter);
+  if (!filter && summaries.length > 1) {
+    throw new Error(
+      `Latest ${adapter} projection is ambiguous without runtime context; provide runtime_instance_ref, runtime_session_ref, or conversation_thread_ref`,
+    );
+  }
   const latest = summaries[0];
   if (!latest) {
     return undefined;

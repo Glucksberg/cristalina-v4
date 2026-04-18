@@ -172,6 +172,124 @@ test("runtime projection helper resolves Hermes projection markdown from manifes
   assert.match(direct.markdown, /\(owner_ratification; answered\)/);
 });
 
+test("runtime projection helper requires runtime context when multiple latest manifests exist", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildConversationPreferenceFlowInput({
+    rootDir,
+    now: "2026-04-17T05:00:00.000Z",
+    actor: "system:runtime-projection-ambiguity-test",
+    statement: "The owner prefers concise summaries in thread A.",
+    validation_scope: "test:core:runtime-projection:ambiguity:a",
+    ids: {
+      agent_identity: "actor_agent_runtime_projection_ambiguity_a",
+      owner_identity: "actor_owner_runtime_projection_ambiguity_a",
+      runtime_instance: "runtime_runtime_projection_ambiguity_a",
+      runtime_session: "session_runtime_projection_ambiguity_a",
+      conversation_thread: "thread_runtime_projection_ambiguity_a",
+      source: "src_runtime_projection_ambiguity_a",
+      observation: "obs_runtime_projection_ambiguity_a",
+      episode: "ep_runtime_projection_ambiguity_a",
+      subject_entity: "ent_subject_runtime_projection_ambiguity_a",
+      preference_entity: "ent_preference_runtime_projection_ambiguity_a",
+      preference_relation: "rel_preference_runtime_projection_ambiguity_a",
+      world_claim: "wcl_runtime_projection_ambiguity_a",
+      contradiction: "contra_runtime_projection_ambiguity_a",
+      contradiction_resolution: "cres_runtime_projection_ambiguity_a",
+      wiki_page: "wpg_runtime_projection_ambiguity_a",
+      wiki_claim: "wclm_runtime_projection_ambiguity_a",
+      proposal: "prop_runtime_projection_ambiguity_a",
+      disposition: "disp_runtime_projection_ambiguity_a",
+      ratification: "rat_runtime_projection_ambiguity_a",
+      diagnostic: "diag_runtime_projection_ambiguity_a",
+      canonical: "mem_runtime_projection_ambiguity_a",
+      canon_artifact: "part_openclaw_canon_runtime_projection_ambiguity_a",
+      world_artifact: "part_openclaw_world_runtime_projection_ambiguity_a",
+      wiki_artifact: "part_openclaw_wiki_runtime_projection_ambiguity_a",
+      projection_manifest: "pmf_openclaw_runtime_projection_ambiguity_a",
+    },
+    labels: {
+      agent: "Ambiguity Agent A",
+      owner: "Ambiguity Owner A",
+      session_objective: "Ambiguity runtime projection A",
+      session_summary: "Ambiguity runtime projection A",
+      thread_summary: "Ambiguity thread A",
+    },
+    source: {
+      source_ref: "runtime/ambiguity-a#turn-001",
+      content_ref: "raw/sources/runtime-projection-ambiguity-a.json",
+      runtime: "openclaw",
+      message: "Thread A says the owner prefers concise summaries.",
+      message_refs: ["msg_runtime_projection_ambiguity_a"],
+    },
+  });
+  const secondInput = buildConversationPreferenceFlowInput({
+    rootDir,
+    now: "2026-04-17T05:01:00.000Z",
+    actor: "system:runtime-projection-ambiguity-test",
+    statement: "The owner prefers exhaustive summaries in thread B.",
+    validation_scope: "test:core:runtime-projection:ambiguity:b",
+    ids: {
+      agent_identity: "actor_agent_runtime_projection_ambiguity_b",
+      owner_identity: "actor_owner_runtime_projection_ambiguity_b",
+      runtime_instance: "runtime_runtime_projection_ambiguity_b",
+      runtime_session: "session_runtime_projection_ambiguity_b",
+      conversation_thread: "thread_runtime_projection_ambiguity_b",
+      source: "src_runtime_projection_ambiguity_b",
+      observation: "obs_runtime_projection_ambiguity_b",
+      episode: "ep_runtime_projection_ambiguity_b",
+      subject_entity: "ent_subject_runtime_projection_ambiguity_b",
+      preference_entity: "ent_preference_runtime_projection_ambiguity_b",
+      preference_relation: "rel_preference_runtime_projection_ambiguity_b",
+      world_claim: "wcl_runtime_projection_ambiguity_b",
+      contradiction: "contra_runtime_projection_ambiguity_b",
+      contradiction_resolution: "cres_runtime_projection_ambiguity_b",
+      wiki_page: "wpg_runtime_projection_ambiguity_b",
+      wiki_claim: "wclm_runtime_projection_ambiguity_b",
+      proposal: "prop_runtime_projection_ambiguity_b",
+      disposition: "disp_runtime_projection_ambiguity_b",
+      ratification: "rat_runtime_projection_ambiguity_b",
+      diagnostic: "diag_runtime_projection_ambiguity_b",
+      canonical: "mem_runtime_projection_ambiguity_b",
+      canon_artifact: "part_openclaw_canon_runtime_projection_ambiguity_b",
+      world_artifact: "part_openclaw_world_runtime_projection_ambiguity_b",
+      wiki_artifact: "part_openclaw_wiki_runtime_projection_ambiguity_b",
+      projection_manifest: "pmf_openclaw_runtime_projection_ambiguity_b",
+    },
+    labels: {
+      agent: "Ambiguity Agent B",
+      owner: "Ambiguity Owner B",
+      session_objective: "Ambiguity runtime projection B",
+      session_summary: "Ambiguity runtime projection B",
+      thread_summary: "Ambiguity thread B",
+    },
+    source: {
+      source_ref: "runtime/ambiguity-b#turn-001",
+      content_ref: "raw/sources/runtime-projection-ambiguity-b.json",
+      runtime: "openclaw",
+      message: "Thread B says the owner prefers exhaustive summaries.",
+      message_refs: ["msg_runtime_projection_ambiguity_b"],
+    },
+  });
+
+  await writeConversationPreferenceFlowToStore(firstInput);
+  await writeConversationPreferenceFlowToStore(secondInput);
+
+  await assert.rejects(
+    () => loadLatestProjectionRuntimeView(rootDir, "openclaw"),
+    /ambiguous without runtime context/,
+  );
+
+  const latestForThreadA = await loadLatestProjectionRuntimeView(rootDir, "openclaw", {
+    conversation_thread_ref: "thread_runtime_projection_ambiguity_a",
+  });
+  assert.ok(latestForThreadA);
+  assert.equal(latestForThreadA!.manifest.id, "pmf_openclaw_runtime_projection_ambiguity_a");
+});
+
 test("runtime projection helper rejects stored projection artifacts that escape derived storage", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
   t.after(async () => {

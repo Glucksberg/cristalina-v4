@@ -96,6 +96,11 @@ export async function createHermesProjectionFixture(
     question_count: 1,
     review_kind: "owner_ratification",
     diagnostic_ref: diagnostic.id,
+    canonical_target_ref: {
+      id: `${input.proposal_ref}-canon-target`,
+      kind: "preference",
+      layer: "canon",
+    },
     owner_identity_ref: input.owner_identity_ref,
     runtime_instance_ref: input.runtime_instance_ref,
     runtime_session_ref: input.runtime_session_ref,

@@ -7,7 +7,9 @@ import test from "node:test";
 import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
 import {
   applyConversationPreferenceResolutionToStore,
+  applyQueuedConversationPreferenceManualContradictionReviewToStore,
   expireQueuedConversationPreferenceProposalToStore,
+  listConversationPreferenceManualContradictionReviewQueue,
   listConversationPreferenceOwnerRatificationQueue,
   readConversationPreferenceFlowResult,
   rejectQueuedConversationPreferenceProposalToStore,
@@ -1289,6 +1291,11 @@ test("applyConversationPreferenceResolutionToStore blocks auto-application of ma
 
   const second = await writeConversationPreferenceFlowToStore(secondInput);
   assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+  assert.equal(second.records.manual_contradiction_review_queue?.status, "pending");
+  assert.match(
+    await readFile(second.paths.projection_markdown, "utf8"),
+    /\[review:cur_manual_contradiction_cres_test_manual_002\] \(contradiction_manual_review; pending\)/,
+  );
 
   await assert.rejects(
     () =>
@@ -1298,6 +1305,83 @@ test("applyConversationPreferenceResolutionToStore blocks auto-application of ma
       }),
     /Manual-review contradiction resolutions require explicit review/,
   );
+});
+
+test("manual contradiction review queue lists pending reviews and can apply an explicit resolution strategy", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: firstInput.now,
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_manual_queue_002",
+      source_ref: "runtime/session-test#turn-manual-queue-002",
+      content_ref: "raw/sources/conversation-turn-test-manual-queue-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_manual_queue_002",
+      episode: "ep_test_manual_queue_002",
+      subject_entity: "ent_subject_test_manual_queue_002",
+      preference_entity: "ent_preference_test_manual_queue_002",
+      preference_relation: "rel_preference_test_manual_queue_002",
+      world_claim: "wcl_test_manual_queue_002",
+      contradiction: "contra_test_manual_queue_002",
+      contradiction_resolution: "cres_test_manual_queue_002",
+      wiki_page: "wpg_test_manual_queue_002",
+      wiki_claim: "wclm_test_manual_queue_002",
+      proposal: "prop_test_manual_queue_002",
+      disposition: "disp_test_manual_queue_002",
+      ratification: "rat_test_manual_queue_002",
+      diagnostic: "diag_test_manual_queue_002",
+      canonical: "mem_test_manual_queue_002",
+      canon_artifact: "part_openclaw_canon_test_manual_queue_002",
+      world_artifact: "part_openclaw_world_test_manual_queue_002",
+      wiki_artifact: "part_openclaw_wiki_test_manual_queue_002",
+      projection_manifest: "pmf_openclaw_test_manual_queue_002",
+    },
+  };
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+  assert.equal(second.records.manual_contradiction_review_queue?.status, "pending");
+
+  const queue = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0]!.queue_id, "cur_manual_contradiction_cres_test_manual_queue_002");
+  assert.equal(queue[0]!.contradiction_resolution_id, "cres_test_manual_queue_002");
+  assert.equal(queue[0]!.candidate_statement, secondInput.statement);
+  assert.equal(queue[0]!.strategy, "manual_review");
+
+  const applied = await applyQueuedConversationPreferenceManualContradictionReviewToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:06:00.000Z",
+    actor: "system:manual-contradiction-review",
+    strategy: "supersede_candidate",
+    validation_scope: "test:conversation-preference:manual-contradiction-review",
+  });
+
+  assert.equal(applied.records.contradiction_resolution.status, "applied");
+  assert.equal(applied.records.contradiction_resolution.strategy, "supersede_candidate");
+  assert.equal(applied.records.manual_contradiction_review_queue?.status, "applied");
+  assert.equal(applied.records.candidate_world_claim.epistemic_state, "disputed");
+  assert.equal(applied.records.candidate_world_claim.temporal_state?.temporal_status, "historical");
+
+  const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /\[contradiction-resolution:cres_test_manual_queue_002\] \(applied\) supersede_candidate/);
+  assert.match(projectionMarkdown, /\[review:cur_manual_contradiction_cres_test_manual_queue_002\] \(contradiction_manual_review; applied\)/);
+
+  const queueAfter = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  assert.deepEqual(queueAfter, []);
 });
 
 test("openclaw feedback round-trip preserves runtime identity and recompiles projection", async (t) => {

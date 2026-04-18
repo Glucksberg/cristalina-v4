@@ -37,6 +37,7 @@ import type {
   ActorIdentity,
   CanonicalMemoryObject,
   ContradictionResolution,
+  ContradictionResolutionStrategy,
   Contradiction,
   CoreRecord,
   CurationPacket,
@@ -142,6 +143,7 @@ export interface ConversationPreferenceStorePaths {
   wiki_claim: string;
   proposal: string;
   owner_ratification_queue?: string;
+  manual_contradiction_review_queue?: string;
   disposition_record: string;
   ratification_record: string;
   diagnostic_record?: string;
@@ -161,6 +163,7 @@ export interface ConversationPreferenceStoreRecords {
   contradiction?: Contradiction;
   contradiction_resolution?: ContradictionResolution;
   owner_ratification_queue?: CurationPacket;
+  manual_contradiction_review_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
@@ -222,6 +225,32 @@ export interface ConversationPreferenceQueuedExpirationInput {
   validation_scope?: string;
 }
 
+export interface ConversationPreferenceManualContradictionReviewQueueEntry {
+  queue_id: string;
+  proposal_id: string;
+  contradiction_id: string;
+  contradiction_resolution_id: string;
+  owner_identity_ref?: string | null;
+  runtime_instance_ref?: string | null;
+  runtime_session_ref?: string | null;
+  conversation_thread_ref?: string | null;
+  candidate_statement: string;
+  semantic_slot: string;
+  strategy: ContradictionResolutionStrategy;
+  rationale: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationPreferenceQueuedManualContradictionReviewInput {
+  rootDir: string;
+  queue_id: string;
+  now: string;
+  actor: string;
+  strategy: Exclude<ContradictionResolutionStrategy, "manual_review">;
+  validation_scope?: string;
+}
+
 export interface ConversationPreferenceResolutionStoreResult {
   reused: boolean;
   paths: ConversationPreferenceStorePaths;
@@ -237,7 +266,10 @@ export interface ConversationPreferenceResolutionStoreResult {
 interface LoadedAuthoritativeFlow {
   source_record: SourceRecord;
   intake: ConversationPreferenceIntakeArtifacts;
+  contradiction?: Contradiction;
+  contradiction_resolution?: ContradictionResolution;
   owner_ratification_queue?: CurationPacket;
+  manual_contradiction_review_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
@@ -259,7 +291,8 @@ interface RecoveryJournal {
     | "conversation_preference_write"
     | "conversation_preference_resolution_apply"
     | "conversation_preference_owner_ratification_apply"
-    | "conversation_preference_owner_review_close";
+    | "conversation_preference_owner_review_close"
+    | "conversation_preference_manual_contradiction_review_apply";
   created_at: string;
   files: RecoveryJournalFile[];
   append_entries?: RecoveryJournalAppendEntry[];
@@ -294,6 +327,10 @@ const STORE_WRITE_LOCK_HEARTBEAT_MS = 10_000;
 
 function ownerRatificationQueueId(proposalId: string): string {
   return `cur_owner_ratification_${proposalId}`;
+}
+
+function manualContradictionReviewQueueId(resolutionId: string): string {
+  return `cur_manual_contradiction_${resolutionId}`;
 }
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
@@ -530,6 +567,58 @@ async function withStoreWriteLock<T>(
 
 function serializeCoreRecordContent(record: CoreRecord): string {
   return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+function applyExplicitManualContradictionReview(input: {
+  now: string;
+  contradiction: Contradiction;
+  resolution: ContradictionResolution;
+  existing_claim: WorldClaim;
+  candidate_claim: WorldClaim;
+  strategy: Exclude<ContradictionResolutionStrategy, "manual_review">;
+}): ReturnType<typeof applyAcceptedContradictionResolution> {
+  const reviewedResolution: ContradictionResolution = {
+    ...input.resolution,
+    updated_at: input.now,
+    strategy: input.strategy,
+    status: "accepted",
+    winning_ref:
+      input.strategy === "dismiss_contradiction"
+        ? null
+        : input.strategy === "supersede_candidate"
+          ? {
+              id: input.existing_claim.id,
+              kind: input.existing_claim.kind,
+              layer: input.existing_claim.layer,
+            }
+          : {
+              id: input.candidate_claim.id,
+              kind: input.candidate_claim.kind,
+              layer: input.candidate_claim.layer,
+            },
+    losing_ref:
+      input.strategy === "dismiss_contradiction"
+        ? null
+        : input.strategy === "supersede_candidate"
+          ? {
+              id: input.candidate_claim.id,
+              kind: input.candidate_claim.kind,
+              layer: input.candidate_claim.layer,
+            }
+          : {
+              id: input.existing_claim.id,
+              kind: input.existing_claim.kind,
+              layer: input.existing_claim.layer,
+            },
+  };
+
+  return applyAcceptedContradictionResolution({
+    now: input.now,
+    contradiction: input.contradiction,
+    resolution: reviewedResolution,
+    existing_claim: input.existing_claim,
+    candidate_claim: input.candidate_claim,
+  });
 }
 
 function assertAuthorizedOwnerAction(input: {
@@ -785,6 +874,17 @@ function buildPaths(
             } as CurationPacket,
           )
         : undefined,
+    manual_contradiction_review_queue:
+      input.ids.contradiction_resolution
+        ? coreRecordPath(
+            rootDir,
+            {
+              id: manualContradictionReviewQueueId(input.ids.contradiction_resolution),
+              kind: "curation_packet",
+              layer: "governance",
+            } as CurationPacket,
+          )
+        : undefined,
     disposition_record: coreRecordPath(rootDir, intake.disposition_record),
     ratification_record: coreRecordPath(
       rootDir,
@@ -886,6 +986,9 @@ function definedFlowPaths(paths: ConversationPreferenceStorePaths): Array<[strin
     ...(paths.owner_ratification_queue
       ? [["owner_ratification_queue", paths.owner_ratification_queue] as [string, string]]
       : []),
+    ...(paths.manual_contradiction_review_queue
+      ? [["manual_contradiction_review_queue", paths.manual_contradiction_review_queue] as [string, string]]
+      : []),
     ["disposition_record", paths.disposition_record],
     ["ratification_record", paths.ratification_record],
     ...(paths.diagnostic_record ? [["diagnostic_record", paths.diagnostic_record] as [string, string]] : []),
@@ -934,6 +1037,7 @@ function writeFlowOwnedPaths(paths: ConversationPreferenceStorePaths): string[] 
     ...writeFlowBaselinePaths(paths),
     ...(paths.contradiction ? [paths.contradiction] : []),
     ...(paths.contradiction_resolution ? [paths.contradiction_resolution] : []),
+    ...(paths.manual_contradiction_review_queue ? [paths.manual_contradiction_review_queue] : []),
     paths.wiki_page_markdown,
     ...(paths.diagnostic_record ? [paths.diagnostic_record] : []),
     paths.canonical_record,
@@ -973,9 +1077,25 @@ async function detectPartiallyMaterializedWriteFlow(paths: ConversationPreferenc
   }
 
   const ratification = await readCoreRecord<RatificationRecord>(paths.ratification_record);
+  const contradictionResolutionExists =
+    paths.contradiction_resolution ? await pathExists(paths.contradiction_resolution) : false;
+  const manualReviewQueueExists =
+    paths.manual_contradiction_review_queue ? await pathExists(paths.manual_contradiction_review_queue) : false;
   const canonicalExists = await pathExists(paths.canonical_record);
   const diagnosticExists =
     paths.diagnostic_record ? await pathExists(paths.diagnostic_record) : false;
+
+  if (contradictionResolutionExists) {
+    const contradictionResolution = await readCoreRecord<ContradictionResolution>(paths.contradiction_resolution!);
+    if (contradictionResolution.strategy === "manual_review" && !manualReviewQueueExists) {
+      return true;
+    }
+    if (contradictionResolution.strategy !== "manual_review" && manualReviewQueueExists) {
+      return true;
+    }
+  } else if (manualReviewQueueExists) {
+    return true;
+  }
 
   if (ratification.decision === "approved" && !canonicalExists) {
     return true;
@@ -1038,6 +1158,13 @@ async function recoverOwnerReviewClosure(rootDir: string, queue_id: string): Pro
   await recoverPendingJournal(
     rootDir,
     recoveryJournalPath(rootDir, "conversation_preference_owner_review_close", queue_id),
+  );
+}
+
+async function recoverManualContradictionReviewApplication(rootDir: string, queue_id: string): Promise<void> {
+  await recoverPendingJournal(
+    rootDir,
+    recoveryJournalPath(rootDir, "conversation_preference_manual_contradiction_review_apply", queue_id),
   );
 }
 
@@ -1131,6 +1258,104 @@ function buildOwnerRatificationQueuePacket(input: {
   };
 }
 
+function buildManualContradictionReviewQueuePacket(input: {
+  now: string;
+  source_record: SourceRecord;
+  intake: ConversationPreferenceIntakeArtifacts;
+  contradiction: Contradiction;
+  contradiction_resolution: ContradictionResolution;
+  ratification_record: RatificationRecord;
+  diagnostic?: Diagnostic;
+  paths: ConversationPreferenceStorePaths;
+}): CurationPacket | undefined {
+  if (
+    input.contradiction_resolution.strategy !== "manual_review" ||
+    !input.paths.manual_contradiction_review_queue
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: manualContradictionReviewQueueId(input.contradiction_resolution.id),
+    kind: "curation_packet",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: input.now,
+    updated_at: input.now,
+    visibility_state: input.intake.world_claim.visibility_state,
+    provenance: {
+      ...input.intake.world_claim.provenance,
+      source_type: "contradiction_manual_review_queue",
+      evidence_refs: [
+        ...new Set([
+          ...(input.intake.world_claim.provenance.evidence_refs ?? []),
+        input.contradiction.id,
+        input.contradiction_resolution.id,
+        input.intake.proposal.id,
+        input.ratification_record.id,
+        ...(input.diagnostic ? [input.diagnostic.id] : []),
+      ]),
+    ],
+    },
+    upstream_refs: [
+      ...new Set([
+        input.source_record.id,
+        input.intake.observation.id,
+        input.intake.episode.id,
+        input.intake.subject_entity.id,
+        input.intake.preference_entity.id,
+        input.intake.preference_relation.id,
+        input.intake.world_claim.id,
+        input.contradiction.id,
+        input.contradiction_resolution.id,
+        input.intake.wiki_page.id,
+        input.intake.wiki_claim.id,
+        input.intake.proposal.id,
+        input.intake.disposition_record.id,
+        input.ratification_record.id,
+        ...(input.diagnostic ? [input.diagnostic.id] : []),
+        ...(input.intake.agent_identity ? [input.intake.agent_identity.id] : []),
+        ...(input.intake.owner_identity ? [input.intake.owner_identity.id] : []),
+        ...(input.intake.runtime_instance ? [input.intake.runtime_instance.id] : []),
+        ...(input.intake.runtime_session ? [input.intake.runtime_session.id] : []),
+        ...(input.intake.conversation_thread ? [input.intake.conversation_thread.id] : []),
+      ]),
+    ],
+    proposal_refs: [input.intake.proposal.id],
+    question_count: 1,
+    review_kind: "contradiction_manual_review",
+    ratification_ref: input.ratification_record.id,
+    diagnostic_ref: input.diagnostic?.id ?? null,
+    contradiction_ref: input.contradiction.id,
+    contradiction_resolution_ref: input.contradiction_resolution.id,
+    canonical_target_ref: {
+      id: basename(input.paths.canonical_record, ".json"),
+      kind: "preference",
+      layer: "canon",
+    },
+    source_record_ref: input.source_record.id,
+    disposition_ref: input.intake.disposition_record.id,
+    subject_entity_ref: input.intake.subject_entity.id,
+    preference_entity_ref: input.intake.preference_entity.id,
+    preference_relation_ref: input.intake.preference_relation.id,
+    world_claim_ref: input.intake.world_claim.id,
+    wiki_page_ref: input.intake.wiki_page.id,
+    wiki_claim_ref: input.intake.wiki_claim.id,
+    actor_identity_ref: input.intake.agent_identity?.id ?? null,
+    owner_identity_ref: input.intake.owner_identity?.id ?? null,
+    runtime_instance_ref: input.intake.runtime_instance?.id ?? null,
+    runtime_session_ref: input.intake.runtime_session?.id ?? null,
+    conversation_thread_ref: input.intake.conversation_thread?.id ?? null,
+    projection_manifest_ref: basename(input.paths.projection_manifest, ".json"),
+    projection_artifact_refs: [
+      basename(input.paths.projection_artifacts.canon, ".json"),
+      basename(input.paths.projection_artifacts.world, ".json"),
+      basename(input.paths.projection_artifacts.wiki, ".json"),
+    ],
+    status: "pending",
+  };
+}
+
 function buildConversationPreferenceWriteFiles(input: {
   rootDir: string;
   storeInput: ConversationPreferenceStoreInput;
@@ -1140,12 +1365,25 @@ function buildConversationPreferenceWriteFiles(input: {
   contradiction?: Contradiction;
   contradiction_resolution?: ContradictionResolution;
   owner_ratification_queue?: CurationPacket;
+  manual_contradiction_review_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
   projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
 }): MaterializedFile[] {
-  const { paths, source_record, intake, contradiction, contradiction_resolution, owner_ratification_queue, ratification_record, diagnostic, canonical_record, projection } = input;
+  const {
+    paths,
+    source_record,
+    intake,
+    contradiction,
+    contradiction_resolution,
+    owner_ratification_queue,
+    manual_contradiction_review_queue,
+    ratification_record,
+    diagnostic,
+    canonical_record,
+    projection,
+  } = input;
 
   return [
     {
@@ -1226,6 +1464,12 @@ function buildConversationPreferenceWriteFiles(input: {
     ...(owner_ratification_queue
       ? [{ path: paths.owner_ratification_queue!, content: serializeCoreRecordContent(owner_ratification_queue) }]
       : []),
+    ...(manual_contradiction_review_queue
+      ? [{
+          path: paths.manual_contradiction_review_queue!,
+          content: serializeCoreRecordContent(manual_contradiction_review_queue),
+        }]
+      : []),
     {
       path: paths.disposition_record,
       content: serializeCoreRecordContent(intake.disposition_record),
@@ -1269,6 +1513,7 @@ function buildConversationPreferenceWriteValidationIssues(input: {
   contradiction?: Contradiction;
   contradiction_resolution?: ContradictionResolution;
   owner_ratification_queue?: CurationPacket;
+  manual_contradiction_review_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
@@ -1292,6 +1537,7 @@ function buildConversationPreferenceWriteValidationIssues(input: {
     input.intake.wiki_claim,
     input.intake.proposal,
     ...(input.owner_ratification_queue ? [input.owner_ratification_queue] : []),
+    ...(input.manual_contradiction_review_queue ? [input.manual_contradiction_review_queue] : []),
     input.intake.disposition_record,
     input.ratification_record,
     ...(input.diagnostic ? [input.diagnostic] : []),
@@ -1307,6 +1553,7 @@ function buildConversationPreferenceAuditEntries(input: {
   source_record: SourceRecord;
   intake: ConversationPreferenceIntakeArtifacts;
   owner_ratification_queue?: CurationPacket;
+  manual_contradiction_review_queue?: CurationPacket;
   ratification_record: RatificationRecord;
   canonical_record?: CanonicalMemoryObject;
   projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
@@ -1384,6 +1631,19 @@ function buildConversationPreferenceAuditEntries(input: {
     });
   }
 
+  if (input.manual_contradiction_review_queue) {
+    entries.push({
+      entry_id: `audit:${input.intake.proposal.id}:manual_contradiction_review_queue`,
+      at: input.now,
+      operation: "record_observation",
+      record_id: input.manual_contradiction_review_queue.id,
+      record_kind: input.manual_contradiction_review_queue.kind,
+      record_layer: input.manual_contradiction_review_queue.layer,
+      detail: "Queued contradiction for explicit manual review before resolution application.",
+      related_refs: [input.intake.proposal.id, input.manual_contradiction_review_queue.id],
+    });
+  }
+
   entries.push({
     entry_id: `audit:${input.intake.proposal.id}:projection_compile`,
     at: input.now,
@@ -1402,6 +1662,7 @@ function buildResolutionApplicationFiles(input: {
   rootDir: string;
   paths: ConversationPreferenceStorePaths;
   applied: ReturnType<typeof applyAcceptedContradictionResolution>;
+  manual_contradiction_review_queue?: CurationPacket;
   projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
 }): MaterializedFile[] {
   return [
@@ -1417,6 +1678,12 @@ function buildResolutionApplicationFiles(input: {
       path: input.paths.contradiction_resolution!,
       content: serializeCoreRecordContent(input.applied.resolution),
     },
+    ...(input.manual_contradiction_review_queue
+      ? [{
+          path: input.paths.manual_contradiction_review_queue!,
+          content: serializeCoreRecordContent(input.manual_contradiction_review_queue),
+        }]
+      : []),
     {
       path: coreRecordPath(input.rootDir, input.applied.existing_claim),
       content: serializeCoreRecordContent(input.applied.existing_claim),
@@ -1446,6 +1713,7 @@ function buildResolutionApplicationFiles(input: {
 
 function buildResolutionApplicationValidationIssues(input: {
   applied: ReturnType<typeof applyAcceptedContradictionResolution>;
+  manual_contradiction_review_queue?: CurationPacket;
   projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
 }): ValidationIssue[] {
   return [
@@ -1453,6 +1721,7 @@ function buildResolutionApplicationValidationIssues(input: {
     input.applied.candidate_claim,
     input.applied.contradiction,
     input.applied.resolution,
+    ...(input.manual_contradiction_review_queue ? [input.manual_contradiction_review_queue] : []),
     ...input.projection.artifacts,
     input.projection.manifest,
   ].flatMap((record) => validateCoreRecord(record));
@@ -1461,6 +1730,7 @@ function buildResolutionApplicationValidationIssues(input: {
 function buildResolutionApplicationAuditEntries(input: {
   now: string;
   applied: ReturnType<typeof applyAcceptedContradictionResolution>;
+  manual_contradiction_review_queue?: CurationPacket;
   projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
 }): AuditChangeEntry[] {
   return [
@@ -1479,6 +1749,18 @@ function buildResolutionApplicationAuditEntries(input: {
         input.projection.manifest.id,
       ],
     },
+    ...(input.manual_contradiction_review_queue
+      ? [{
+          entry_id: `audit:${input.applied.resolution.id}:manual_contradiction_review_queue_apply`,
+          at: input.now,
+          operation: "record_observation" as const,
+          record_id: input.manual_contradiction_review_queue.id,
+          record_kind: input.manual_contradiction_review_queue.kind,
+          record_layer: input.manual_contradiction_review_queue.layer,
+          detail: "Marked manual contradiction review queue entry as applied.",
+          related_refs: [input.applied.resolution.id, input.applied.contradiction.id],
+        }]
+      : []),
   ];
 }
 
@@ -1645,6 +1927,42 @@ function closeOwnerRatificationQueuePacket(input: {
           input.proposal.id,
           input.ratification_record.id,
           ...(input.diagnostic ? [input.diagnostic.id] : []),
+        ]),
+      ],
+    },
+  };
+}
+
+function applyManualContradictionReviewQueuePacket(input: {
+  now: string;
+  queue: CurationPacket | undefined;
+  contradiction: Contradiction;
+  contradiction_resolution: ContradictionResolution;
+}): CurationPacket | undefined {
+  if (!input.queue) {
+    return undefined;
+  }
+
+  return {
+    ...input.queue,
+    updated_at: input.now,
+    status: "applied",
+    contradiction_ref: input.contradiction.id,
+    contradiction_resolution_ref: input.contradiction_resolution.id,
+    upstream_refs: [
+      ...new Set([
+        ...(input.queue.upstream_refs ?? []),
+        input.contradiction.id,
+        input.contradiction_resolution.id,
+      ]),
+    ],
+    provenance: {
+      ...input.queue.provenance,
+      evidence_refs: [
+        ...new Set([
+          ...(input.queue.provenance.evidence_refs ?? []),
+          input.contradiction.id,
+          input.contradiction_resolution.id,
         ]),
       ],
     },
@@ -2012,6 +2330,12 @@ async function loadExistingFlow(
   ) {
     throw new Error("Existing conversation preference flow is missing owner ratification queue state");
   }
+  if (
+    loaded.contradiction_resolution?.strategy === "manual_review" &&
+    !loaded.manual_contradiction_review_queue
+  ) {
+    throw new Error("Existing conversation preference flow is missing manual contradiction review queue state");
+  }
 
   assertLoadedFlowMatchesInput(loaded, expectedSourceRecord, expectedIntake);
 
@@ -2058,15 +2382,6 @@ async function loadExistingFlow(
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.wiki),
   ]);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
-  const contradiction =
-    paths.contradiction && (await pathExists(paths.contradiction))
-      ? await readCoreRecord<Contradiction>(paths.contradiction)
-      : undefined;
-  const contradiction_resolution =
-    paths.contradiction_resolution && (await pathExists(paths.contradiction_resolution))
-      ? await readCoreRecord<ContradictionResolution>(paths.contradiction_resolution)
-      : undefined;
-
   const validation_issues = [
     source_record,
     intake.observation,
@@ -2084,12 +2399,13 @@ async function loadExistingFlow(
     intake.wiki_claim,
     intake.proposal,
     ...(loaded.owner_ratification_queue ? [loaded.owner_ratification_queue] : []),
+    ...(loaded.manual_contradiction_review_queue ? [loaded.manual_contradiction_review_queue] : []),
     intake.disposition_record,
     ratification_record,
     ...(diagnostic ? [diagnostic] : []),
     ...(canonical_record ? [canonical_record] : []),
-    ...(contradiction ? [contradiction] : []),
-    ...(contradiction_resolution ? [contradiction_resolution] : []),
+    ...(loaded.contradiction ? [loaded.contradiction] : []),
+    ...(loaded.contradiction_resolution ? [loaded.contradiction_resolution] : []),
     ...projection_artifacts,
     projection_manifest,
   ].flatMap((record) => validateCoreRecord(record));
@@ -2100,9 +2416,10 @@ async function loadExistingFlow(
     records: {
       source_record,
       intake,
-      contradiction,
-      contradiction_resolution,
+      contradiction: loaded.contradiction,
+      contradiction_resolution: loaded.contradiction_resolution,
       owner_ratification_queue: loaded.owner_ratification_queue,
+      manual_contradiction_review_queue: loaded.manual_contradiction_review_queue,
       ratification_record,
       diagnostic,
       canonical_record,
@@ -2152,10 +2469,22 @@ async function loadAuthoritativeFlow(paths: ConversationPreferenceStorePaths): P
       proposal: await readCoreRecord<Proposal>(paths.proposal),
       disposition_record: await readCoreRecord<DispositionRecord>(paths.disposition_record),
     },
+    contradiction:
+      paths.contradiction && (await pathExists(paths.contradiction))
+        ? await readCoreRecord<Contradiction>(paths.contradiction)
+        : undefined,
+    contradiction_resolution:
+      paths.contradiction_resolution && (await pathExists(paths.contradiction_resolution))
+        ? await readCoreRecord<ContradictionResolution>(paths.contradiction_resolution)
+        : undefined,
     ratification_record: await readCoreRecord<RatificationRecord>(paths.ratification_record),
     owner_ratification_queue:
       paths.owner_ratification_queue && (await pathExists(paths.owner_ratification_queue))
         ? await readCoreRecord<CurationPacket>(paths.owner_ratification_queue)
+        : undefined,
+    manual_contradiction_review_queue:
+      paths.manual_contradiction_review_queue && (await pathExists(paths.manual_contradiction_review_queue))
+        ? await readCoreRecord<CurationPacket>(paths.manual_contradiction_review_queue)
         : undefined,
     diagnostic:
       paths.diagnostic_record && (await pathExists(paths.diagnostic_record))
@@ -2759,6 +3088,19 @@ export async function writeConversationPreferenceFlowToStore(
             candidate_claim: intake.world_claim,
           })
         : undefined;
+    const manual_contradiction_review_queue =
+      contradiction && contradiction_resolution
+        ? buildManualContradictionReviewQueuePacket({
+            now: input.now,
+            source_record,
+            intake,
+            contradiction,
+            contradiction_resolution,
+            ratification_record: canonicalWorkflow.ratification_record,
+            diagnostic: canonicalWorkflow.diagnostic,
+            paths,
+          })
+        : undefined;
     const projection = await buildProjectionFromStoreState(rootDir, paths, input, canonicalWorkflow.created_record, intake, input.now, {
       canonical_records: canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : [],
       world_claims: [intake.world_claim],
@@ -2767,7 +3109,10 @@ export async function writeConversationPreferenceFlowToStore(
       relations: [intake.preference_relation],
       contradictions: contradiction ? [contradiction] : [],
       contradiction_resolutions: contradiction_resolution ? [contradiction_resolution] : [],
-      curation_packets: owner_ratification_queue ? [owner_ratification_queue] : [],
+      curation_packets: [
+        ...(owner_ratification_queue ? [owner_ratification_queue] : []),
+        ...(manual_contradiction_review_queue ? [manual_contradiction_review_queue] : []),
+      ],
       wiki_pages: [intake.wiki_page],
       wiki_claims: [intake.wiki_claim],
       diagnostics: canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : [],
@@ -2781,6 +3126,7 @@ export async function writeConversationPreferenceFlowToStore(
       contradiction,
       contradiction_resolution,
       owner_ratification_queue,
+      manual_contradiction_review_queue,
       ratification_record: canonicalWorkflow.ratification_record,
       diagnostic: canonicalWorkflow.diagnostic,
       canonical_record: canonicalWorkflow.created_record,
@@ -2792,6 +3138,7 @@ export async function writeConversationPreferenceFlowToStore(
       contradiction,
       contradiction_resolution,
       owner_ratification_queue,
+      manual_contradiction_review_queue,
       ratification_record: canonicalWorkflow.ratification_record,
       diagnostic: canonicalWorkflow.diagnostic,
       canonical_record: canonicalWorkflow.created_record,
@@ -2803,6 +3150,7 @@ export async function writeConversationPreferenceFlowToStore(
       source_record,
       intake,
       owner_ratification_queue,
+      manual_contradiction_review_queue,
       ratification_record: canonicalWorkflow.ratification_record,
       canonical_record: canonicalWorkflow.created_record,
       projection,
@@ -2840,6 +3188,7 @@ export async function writeConversationPreferenceFlowToStore(
         contradiction,
         contradiction_resolution,
         owner_ratification_queue,
+        manual_contradiction_review_queue,
         ratification_record: canonicalWorkflow.ratification_record,
         diagnostic: canonicalWorkflow.diagnostic,
         canonical_record: canonicalWorkflow.created_record,
@@ -2971,16 +3320,19 @@ export async function applyConversationPreferenceResolutionToStore(
         rootDir,
         paths,
         applied,
+        manual_contradiction_review_queue: records.manual_contradiction_review_queue,
         projection,
       });
       const validation_issues = buildResolutionApplicationValidationIssues({
         applied,
+        manual_contradiction_review_queue: records.manual_contradiction_review_queue,
         projection,
       });
       assertNoValidationIssues(validation_issues, "conversation preference resolution application");
       const audit_entries = buildResolutionApplicationAuditEntries({
         now: input.now,
         applied,
+        manual_contradiction_review_queue: records.manual_contradiction_review_queue,
         projection,
       });
   const append_entries = buildResolutionApplicationAppendEntries({
@@ -3021,6 +3373,7 @@ export async function applyConversationPreferenceResolutionToStore(
           },
           contradiction: applied.contradiction,
           contradiction_resolution: applied.resolution,
+          manual_contradiction_review_queue: records.manual_contradiction_review_queue,
           existing_world_claim: applied.existing_claim,
           candidate_world_claim: applied.candidate_claim,
           projection_artifacts: projection.artifacts,
@@ -3166,6 +3519,7 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
     wiki_claim: coreRecordPath(rootDir, { id: queuePacket.wiki_claim_ref, kind: "wiki_claim", layer: "wiki" } as WikiClaim),
     proposal: proposalPath,
     owner_ratification_queue: coreRecordPath(rootDir, queuePacket),
+    manual_contradiction_review_queue: undefined,
     disposition_record: coreRecordPath(
       rootDir,
       { id: queuePacket.disposition_ref, kind: "disposition_record", layer: "governance" } as DispositionRecord,
@@ -3206,9 +3560,10 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
     records: {
       source_record: loaded.source_record,
       intake: loaded.intake,
-      contradiction: undefined,
-      contradiction_resolution: undefined,
+      contradiction: loaded.contradiction,
+      contradiction_resolution: loaded.contradiction_resolution,
       owner_ratification_queue: loaded.owner_ratification_queue,
+      manual_contradiction_review_queue: loaded.manual_contradiction_review_queue,
       ratification_record: loaded.ratification_record,
       diagnostic: loaded.diagnostic,
       canonical_record: loaded.canonical_record,
@@ -3233,9 +3588,12 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
       loaded.intake.proposal,
       loaded.intake.disposition_record,
       ...(loaded.owner_ratification_queue ? [loaded.owner_ratification_queue] : []),
+      ...(loaded.manual_contradiction_review_queue ? [loaded.manual_contradiction_review_queue] : []),
       loaded.ratification_record,
       ...(loaded.diagnostic ? [loaded.diagnostic] : []),
       ...(loaded.canonical_record ? [loaded.canonical_record] : []),
+      ...(loaded.contradiction ? [loaded.contradiction] : []),
+      ...(loaded.contradiction_resolution ? [loaded.contradiction_resolution] : []),
       ...projection_artifacts,
       projection_manifest,
     ].flatMap((record) => validateCoreRecord(record)),
@@ -3244,6 +3602,190 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
   return {
     ...flow,
     reused: flow.records.ratification_record.decision === "approved",
+  };
+}
+
+async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
+  rootDir: string,
+  queue_id: string,
+): Promise<ConversationPreferenceStoreResult | undefined> {
+  const queuePacket = (await loadCurationPackets(rootDir)).find(
+    (packet) => packet.id === queue_id && packet.review_kind === "contradiction_manual_review",
+  );
+  if (!queuePacket) {
+    return undefined;
+  }
+
+  const proposalId = queuePacket.proposal_refs[0];
+  if (!proposalId) {
+    throw new Error(`Manual contradiction review queue ${queue_id} is missing proposal_refs`);
+  }
+  if (
+    !queuePacket.contradiction_ref ||
+    !queuePacket.contradiction_resolution_ref ||
+    !queuePacket.ratification_ref ||
+    !queuePacket.source_record_ref ||
+    !queuePacket.disposition_ref ||
+    !queuePacket.subject_entity_ref ||
+    !queuePacket.preference_entity_ref ||
+    !queuePacket.preference_relation_ref ||
+    !queuePacket.world_claim_ref ||
+    !queuePacket.wiki_page_ref ||
+    !queuePacket.wiki_claim_ref ||
+    !queuePacket.canonical_target_ref ||
+    !queuePacket.projection_manifest_ref ||
+    (queuePacket.projection_artifact_refs?.length ?? 0) !== 3
+  ) {
+    throw new Error(`Manual contradiction review queue ${queue_id} does not carry enough flow refs`);
+  }
+  const projectionArtifactRefs = queuePacket.projection_artifact_refs as [string, string, string];
+
+  const proposalPath = coreRecordPath(
+    rootDir,
+    {
+      id: proposalId,
+      kind: "proposal",
+      layer: "governance",
+    } as Proposal,
+  );
+  const proposal = await readCoreRecord<Proposal>(proposalPath);
+  const [observationId, episodeId] = proposal.evidence_refs;
+  if (!observationId || !episodeId) {
+    throw new Error(`Proposal ${proposal.id} does not carry observation and episode refs`);
+  }
+
+  const sourceRecordPath = coreRecordPath(
+    rootDir,
+    {
+      id: queuePacket.source_record_ref,
+      kind: "source_record",
+      layer: "raw",
+    } as SourceRecord,
+  );
+  const source_record = await readCoreRecord<SourceRecord>(sourceRecordPath);
+  const paths: ConversationPreferenceStorePaths = {
+    raw_source: resolveStorePath(rootDir, source_record.content_ref),
+    source_record: sourceRecordPath,
+    observation: coreRecordPath(rootDir, { id: observationId, kind: "observation", layer: "runtime" } as Observation),
+    episode: coreRecordPath(rootDir, { id: episodeId, kind: "episode", layer: "world" } as Episode),
+    subject_entity: coreRecordPath(rootDir, { id: queuePacket.subject_entity_ref, kind: "entity", layer: "world" } as Entity),
+    preference_entity: coreRecordPath(rootDir, { id: queuePacket.preference_entity_ref, kind: "entity", layer: "world" } as Entity),
+    preference_relation: coreRecordPath(rootDir, { id: queuePacket.preference_relation_ref, kind: "relation", layer: "world" } as Relation),
+    world_claim: coreRecordPath(rootDir, { id: queuePacket.world_claim_ref, kind: "preference", layer: "world" } as WorldClaim),
+    contradiction: coreRecordPath(
+      rootDir,
+      { id: queuePacket.contradiction_ref, kind: "contradiction", layer: "world" } as Contradiction,
+    ),
+    contradiction_resolution: coreRecordPath(
+      rootDir,
+      {
+        id: queuePacket.contradiction_resolution_ref,
+        kind: "contradiction_resolution",
+        layer: "governance",
+      } as ContradictionResolution,
+    ),
+    actor_identity: queuePacket.actor_identity_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.actor_identity_ref, kind: "actor_identity", layer: "canon" } as ActorIdentity)
+      : undefined,
+    owner_identity: queuePacket.owner_identity_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.owner_identity_ref, kind: "actor_identity", layer: "canon" } as ActorIdentity)
+      : undefined,
+    runtime_instance: queuePacket.runtime_instance_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.runtime_instance_ref, kind: "runtime_instance", layer: "runtime" } as RuntimeInstance)
+      : undefined,
+    runtime_session: queuePacket.runtime_session_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.runtime_session_ref, kind: "runtime_session", layer: "runtime" } as RuntimeSession)
+      : undefined,
+    conversation_thread: queuePacket.conversation_thread_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.conversation_thread_ref, kind: "conversation_thread", layer: "runtime" } as ConversationThread)
+      : undefined,
+    wiki_page_record: coreRecordPath(rootDir, { id: queuePacket.wiki_page_ref, kind: "wiki_page", layer: "wiki" } as WikiPage),
+    wiki_page_markdown: resolveStorePath(
+      rootDir,
+      (await readCoreRecord<WikiPage>(coreRecordPath(rootDir, { id: queuePacket.wiki_page_ref, kind: "wiki_page", layer: "wiki" } as WikiPage))).path,
+    ),
+    wiki_claim: coreRecordPath(rootDir, { id: queuePacket.wiki_claim_ref, kind: "wiki_claim", layer: "wiki" } as WikiClaim),
+    proposal: proposalPath,
+    owner_ratification_queue: undefined,
+    manual_contradiction_review_queue: coreRecordPath(rootDir, queuePacket),
+    disposition_record: coreRecordPath(
+      rootDir,
+      { id: queuePacket.disposition_ref, kind: "disposition_record", layer: "governance" } as DispositionRecord,
+    ),
+    ratification_record: coreRecordPath(
+      rootDir,
+      { id: queuePacket.ratification_ref, kind: "ratification", layer: "governance" } as RatificationRecord,
+    ),
+    diagnostic_record: queuePacket.diagnostic_ref
+      ? coreRecordPath(rootDir, { id: queuePacket.diagnostic_ref, kind: "diagnostic", layer: "audits" } as Diagnostic)
+      : undefined,
+    canonical_record: coreRecordPath(
+      rootDir,
+      {
+        id: queuePacket.canonical_target_ref.id,
+        kind: queuePacket.canonical_target_ref.kind ?? "preference",
+        layer: queuePacket.canonical_target_ref.layer ?? "canon",
+      } as CanonicalMemoryObject,
+    ),
+    projection_markdown: resolveStorePath(rootDir, defaultOpenClawBootstrapProjectionPath(queuePacket.projection_manifest_ref)),
+    projection_manifest: coreRecordPath(
+      rootDir,
+      { id: queuePacket.projection_manifest_ref, kind: "projection_manifest", layer: "derived", adapter: "openclaw" } as ProjectionManifest,
+    ),
+    projection_artifacts: {
+      canon: coreRecordPath(rootDir, { id: projectionArtifactRefs[0]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+      world: coreRecordPath(rootDir, { id: projectionArtifactRefs[1]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+      wiki: coreRecordPath(rootDir, { id: projectionArtifactRefs[2]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+    },
+  };
+
+  const loaded = await loadAuthoritativeFlow(paths);
+  const projection_artifacts = await readProjectionArtifacts(paths);
+  const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+
+  return {
+    reused: loaded.manual_contradiction_review_queue?.status === "applied",
+    paths,
+    records: {
+      source_record: loaded.source_record,
+      intake: loaded.intake,
+      contradiction: loaded.contradiction,
+      contradiction_resolution: loaded.contradiction_resolution,
+      owner_ratification_queue: loaded.owner_ratification_queue,
+      manual_contradiction_review_queue: loaded.manual_contradiction_review_queue,
+      ratification_record: loaded.ratification_record,
+      diagnostic: loaded.diagnostic,
+      canonical_record: loaded.canonical_record,
+      projection_artifacts,
+      projection_manifest,
+    },
+    validation_issues: [
+      loaded.source_record,
+      ...(loaded.intake.agent_identity ? [loaded.intake.agent_identity] : []),
+      ...(loaded.intake.owner_identity ? [loaded.intake.owner_identity] : []),
+      ...(loaded.intake.runtime_instance ? [loaded.intake.runtime_instance] : []),
+      ...(loaded.intake.runtime_session ? [loaded.intake.runtime_session] : []),
+      ...(loaded.intake.conversation_thread ? [loaded.intake.conversation_thread] : []),
+      loaded.intake.observation,
+      loaded.intake.episode,
+      loaded.intake.subject_entity,
+      loaded.intake.preference_entity,
+      loaded.intake.preference_relation,
+      loaded.intake.world_claim,
+      loaded.intake.wiki_page,
+      loaded.intake.wiki_claim,
+      loaded.intake.proposal,
+      loaded.intake.disposition_record,
+      ...(loaded.owner_ratification_queue ? [loaded.owner_ratification_queue] : []),
+      ...(loaded.manual_contradiction_review_queue ? [loaded.manual_contradiction_review_queue] : []),
+      loaded.ratification_record,
+      ...(loaded.diagnostic ? [loaded.diagnostic] : []),
+      ...(loaded.canonical_record ? [loaded.canonical_record] : []),
+      ...(loaded.contradiction ? [loaded.contradiction] : []),
+      ...(loaded.contradiction_resolution ? [loaded.contradiction_resolution] : []),
+      ...projection_artifacts,
+      projection_manifest,
+    ].flatMap((record) => validateCoreRecord(record)),
   };
 }
 
@@ -3402,6 +3944,200 @@ async function applyOwnerRatificationToExistingFlow(
       ratification_record: canonicalWorkflow.ratification_record,
       diagnostic: updatedDiagnostic,
       canonical_record: canonicalWorkflow.created_record,
+      projection_artifacts: projection.artifacts,
+      projection_manifest: projection.manifest,
+    },
+    validation_issues,
+  };
+}
+
+async function applyManualContradictionReviewToExistingFlow(
+  rootDir: string,
+  existingFlow: ConversationPreferenceStoreResult,
+  projectionInput: ConversationPreferenceStoreInput,
+  input: {
+    now: string;
+    actor: string;
+    strategy: Exclude<ContradictionResolutionStrategy, "manual_review">;
+    validation_scope?: string;
+  },
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  const queue = existingFlow.records.manual_contradiction_review_queue;
+  if (!queue) {
+    throw new Error("Conversation preference flow does not have a manual contradiction review queue entry");
+  }
+
+  if (queue.status !== "pending") {
+    if (
+      queue.status === "applied" &&
+      existingFlow.records.contradiction &&
+      existingFlow.records.contradiction_resolution
+    ) {
+      const existing_world_claim = await readCoreRecord<WorldClaim>(
+        coreRecordPath(
+          rootDir,
+          {
+            id: existingFlow.records.contradiction.left_ref.id,
+            kind: "preference",
+            layer: "world",
+          } as WorldClaim,
+        ),
+      );
+      const candidate_world_claim = await readCoreRecord<WorldClaim>(
+        coreRecordPath(
+          rootDir,
+          {
+            id: existingFlow.records.contradiction.right_ref.id,
+            kind: "preference",
+            layer: "world",
+          } as WorldClaim,
+        ),
+      );
+
+      return {
+        reused: true,
+        paths: existingFlow.paths,
+        records: {
+          ...existingFlow.records,
+          contradiction: existingFlow.records.contradiction,
+          contradiction_resolution: existingFlow.records.contradiction_resolution,
+          existing_world_claim,
+          candidate_world_claim,
+        },
+        validation_issues: [
+          ...existingFlow.validation_issues,
+          ...validateCoreRecord(existing_world_claim),
+          ...validateCoreRecord(candidate_world_claim),
+        ],
+      };
+    }
+
+    throw new Error(`Manual contradiction review queue entry is already closed with status ${queue.status}`);
+  }
+
+  if (!existingFlow.records.contradiction) {
+    throw new Error("Conversation preference flow does not contain a contradiction to review");
+  }
+  if (!existingFlow.records.contradiction_resolution) {
+    throw new Error("Conversation preference flow does not contain a contradiction resolution to review");
+  }
+  if (existingFlow.records.contradiction_resolution.strategy !== "manual_review") {
+    throw new Error("Conversation preference flow is not waiting on manual contradiction review");
+  }
+
+  const existing_world_claim = await readCoreRecord<WorldClaim>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: existingFlow.records.contradiction.left_ref.id,
+        kind: "preference",
+        layer: "world",
+      } as WorldClaim,
+    ),
+  );
+  const candidate_world_claim = await readCoreRecord<WorldClaim>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: existingFlow.records.contradiction.right_ref.id,
+        kind: "preference",
+        layer: "world",
+      } as WorldClaim,
+    ),
+  );
+
+  const applied = applyExplicitManualContradictionReview({
+    now: input.now,
+    contradiction: existingFlow.records.contradiction,
+    resolution: existingFlow.records.contradiction_resolution,
+    existing_claim: existing_world_claim,
+    candidate_claim: candidate_world_claim,
+    strategy: input.strategy,
+  });
+  const updatedQueue = applyManualContradictionReviewQueuePacket({
+    now: input.now,
+    queue,
+    contradiction: applied.contradiction,
+    contradiction_resolution: applied.resolution,
+  });
+
+  const projection = await buildProjectionFromStoreState(
+    rootDir,
+    existingFlow.paths,
+    projectionInput,
+    existingFlow.records.canonical_record,
+    {
+      ...existingFlow.records.intake,
+      world_claim: applied.candidate_claim,
+    },
+    input.now,
+    {
+      world_claims: [applied.existing_claim, applied.candidate_claim],
+      contradictions: [applied.contradiction],
+      contradiction_resolutions: [applied.resolution],
+      curation_packets: updatedQueue ? [updatedQueue] : [],
+    },
+  );
+  const files = buildResolutionApplicationFiles({
+    rootDir,
+    paths: existingFlow.paths,
+    applied,
+    manual_contradiction_review_queue: updatedQueue,
+    projection,
+  });
+  const validation_issues = buildResolutionApplicationValidationIssues({
+    applied,
+    manual_contradiction_review_queue: updatedQueue,
+    projection,
+  });
+  assertNoValidationIssues(validation_issues, "conversation preference manual contradiction review");
+  const audit_entries = buildResolutionApplicationAuditEntries({
+    now: input.now,
+    applied,
+    manual_contradiction_review_queue: updatedQueue,
+    projection,
+  });
+  const append_entries = buildResolutionApplicationAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference:manual-contradiction-review",
+    validation_entry_id: `validation:${applied.resolution.id}:manual-contradiction-review`,
+    resolution_id: applied.resolution.id,
+    validation_issues,
+    audit_entries,
+  });
+  const journalPath = recoveryJournalPath(
+    rootDir,
+    "conversation_preference_manual_contradiction_review_apply",
+    queue.id,
+  );
+  await writeRecoveryJournal(
+    journalPath,
+    buildRecoveryJournal({
+      rootDir,
+      operation: "conversation_preference_manual_contradiction_review_apply",
+      created_at: input.now,
+      files,
+      append_entries,
+    }),
+  );
+  await materializeFiles(files);
+  await replayRecoveryJournalEntries(rootDir, append_entries);
+  await rm(journalPath, { force: true });
+
+  return {
+    reused: false,
+    paths: existingFlow.paths,
+    records: {
+      ...existingFlow.records,
+      intake: {
+        ...existingFlow.records.intake,
+        world_claim: applied.candidate_claim,
+      },
+      contradiction: applied.contradiction,
+      contradiction_resolution: applied.resolution,
+      manual_contradiction_review_queue: updatedQueue,
+      existing_world_claim: applied.existing_claim,
+      candidate_world_claim: applied.candidate_claim,
       projection_artifacts: projection.artifacts,
       projection_manifest: projection.manifest,
     },
@@ -3611,6 +4347,54 @@ export async function listConversationPreferenceOwnerRatificationQueue(
     .sort((left, right) => left.created_at.localeCompare(right.created_at));
 }
 
+export async function listConversationPreferenceManualContradictionReviewQueue(
+  rootDir: string,
+): Promise<ConversationPreferenceManualContradictionReviewQueueEntry[]> {
+  const [queuePackets, proposals, resolutions] = await Promise.all([
+    loadCurationPackets(rootDir),
+    loadProposals(rootDir),
+    loadContradictionResolutions(rootDir),
+  ]);
+
+  return queuePackets
+    .filter((packet) => packet.review_kind === "contradiction_manual_review" && packet.status === "pending")
+    .map((packet) => {
+      const proposal = proposals.find((candidate) => candidate.id === packet.proposal_refs[0]);
+      if (!proposal) {
+        throw new Error(`Manual contradiction review queue ${packet.id} references missing proposal ${packet.proposal_refs[0]}`);
+      }
+      const contradictionResolution = resolutions.find((candidate) => candidate.id === packet.contradiction_resolution_ref);
+      if (!contradictionResolution) {
+        throw new Error(
+          `Manual contradiction review queue ${packet.id} references missing contradiction resolution ${packet.contradiction_resolution_ref}`,
+        );
+      }
+      return {
+        queue_id: packet.id,
+        proposal_id: proposal.id,
+        contradiction_id: packet.contradiction_ref!,
+        contradiction_resolution_id: contradictionResolution.id,
+        owner_identity_ref: packet.owner_identity_ref ?? null,
+        runtime_instance_ref: packet.runtime_instance_ref ?? null,
+        runtime_session_ref: packet.runtime_session_ref ?? null,
+        conversation_thread_ref: packet.conversation_thread_ref ?? null,
+        candidate_statement:
+          typeof proposal.candidate_payload.statement === "string"
+            ? proposal.candidate_payload.statement
+            : "(missing statement)",
+        semantic_slot:
+          typeof proposal.candidate_payload.semantic_slot === "string"
+            ? proposal.candidate_payload.semantic_slot
+            : "(missing semantic_slot)",
+        strategy: contradictionResolution.strategy,
+        rationale: contradictionResolution.rationale,
+        created_at: packet.created_at,
+        updated_at: packet.updated_at ?? packet.created_at,
+      };
+    })
+    .sort((left, right) => left.created_at.localeCompare(right.created_at));
+}
+
 export async function ratifyQueuedConversationPreferenceProposalToStore(
   input: ConversationPreferenceQueuedRatificationInput,
 ): Promise<ConversationPreferenceStoreResult> {
@@ -3629,6 +4413,33 @@ export async function ratifyQueuedConversationPreferenceProposalToStore(
       }
 
       return applyOwnerRatificationToExistingFlow(
+        rootDir,
+        existingFlow,
+        buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+        input,
+      );
+    },
+  );
+}
+
+export async function applyQueuedConversationPreferenceManualContradictionReviewToStore(
+  input: ConversationPreferenceQueuedManualContradictionReviewInput,
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  const rootDir = resolve(input.rootDir);
+  return withStoreWriteLock(
+    rootDir,
+    `conversation_preference_manual_contradiction_review:${input.queue_id}`,
+    async () => {
+      await recoverManualContradictionReviewApplication(rootDir, input.queue_id);
+      const existingFlow = await loadConversationPreferenceFlowFromManualContradictionReviewQueue(
+        rootDir,
+        input.queue_id,
+      );
+      if (!existingFlow) {
+        throw new Error(`Manual contradiction review queue entry ${input.queue_id} does not exist`);
+      }
+
+      return applyManualContradictionReviewToExistingFlow(
         rootDir,
         existingFlow,
         buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),

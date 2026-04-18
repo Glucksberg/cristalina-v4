@@ -441,6 +441,11 @@ Minimum fields:
 - `question_count`
 - `status`
 
+When `review_kind` is present, the packet should also carry the refs needed to reopen the exact pending branch without reconstructing input:
+
+- `owner_ratification` review packets require `canonical_target_ref`
+- `contradiction_manual_review` packets require `contradiction_ref` and `contradiction_resolution_ref`
+
 ### 4.15 `RatificationRecord`
 
 Represents an applied governance decision.

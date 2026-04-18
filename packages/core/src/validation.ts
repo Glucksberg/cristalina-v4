@@ -16,6 +16,7 @@ import {
   ACTOR_KINDS,
   AUTHORITATIVE_HOMES,
   CANONICAL_CLAIM_KINDS,
+  CURATION_REVIEW_KINDS,
   DISPOSITION_OUTCOME_REF_REQUIREMENTS,
   DISPOSITION_OUTCOME_TARGET_LAYER,
   DISPOSITION_OUTCOMES,
@@ -476,12 +477,14 @@ function validateCurationPacket(value: unknown): ValidationIssue[] {
   if (typeof value.question_count !== "number") {
     issues.push({ path: "question_count", message: "expected number" });
   }
-  if (value.review_kind !== undefined && !isEnumValue(value.review_kind, ["owner_ratification"] as const)) {
-    issues.push({ path: "review_kind", message: 'expected one of: owner_ratification' });
+  if (value.review_kind !== undefined && !isEnumValue(value.review_kind, CURATION_REVIEW_KINDS)) {
+    issues.push({ path: "review_kind", message: `expected one of: ${CURATION_REVIEW_KINDS.join(", ")}` });
   }
   for (const optionalKey of [
     "ratification_ref",
     "diagnostic_ref",
+    "contradiction_ref",
+    "contradiction_resolution_ref",
     "source_record_ref",
     "disposition_ref",
     "subject_entity_ref",
@@ -507,6 +510,20 @@ function validateCurationPacket(value: unknown): ValidationIssue[] {
   }
   if (value.projection_artifact_refs !== undefined && !isStringArray(value.projection_artifact_refs)) {
     issues.push({ path: "projection_artifact_refs", message: "expected string array" });
+  }
+  if (value.review_kind === "owner_ratification" && (value.canonical_target_ref === undefined || value.canonical_target_ref === null)) {
+    issues.push({ path: "canonical_target_ref", message: "owner ratification reviews require canonical_target_ref" });
+  }
+  if (value.review_kind === "contradiction_manual_review") {
+    if (typeof value.contradiction_ref !== "string" || value.contradiction_ref.length === 0) {
+      issues.push({ path: "contradiction_ref", message: "manual contradiction reviews require contradiction_ref" });
+    }
+    if (typeof value.contradiction_resolution_ref !== "string" || value.contradiction_resolution_ref.length === 0) {
+      issues.push({
+        path: "contradiction_resolution_ref",
+        message: "manual contradiction reviews require contradiction_resolution_ref",
+      });
+    }
   }
   if (!isEnumValue(value.status, ["pending", "answered", "expired", "applied"] as const)) {
     issues.push({ path: "status", message: 'expected one of: pending, answered, expired, applied' });

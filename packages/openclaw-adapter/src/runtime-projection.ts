@@ -2,6 +2,7 @@ import {
   listProjectionRuntimeViews,
   loadLatestProjectionRuntimeView,
   loadProjectionRuntimeView,
+  type ProjectionRuntimeFilter,
   type ProjectionRuntimeSummary,
   type ProjectionRuntimeView,
 } from "../../core/dist/index.js";
@@ -25,6 +26,7 @@ export async function loadOpenClawProjectionRuntimeView(input: {
 
 export async function loadLatestOpenClawProjectionRuntimeView(
   rootDir: string,
+  filter?: ProjectionRuntimeFilter,
 ): Promise<OpenClawProjectionRuntimeView | undefined> {
-  return loadLatestProjectionRuntimeView(rootDir, "openclaw");
+  return loadLatestProjectionRuntimeView(rootDir, "openclaw", filter);
 }

@@ -73,7 +73,9 @@ If a record is `owner_private` and also carries runtime/session/thread binding, 
 
 If the projection context is broader than the record binding, the record must be suppressed instead of becoming active context by omission.
 
-If an `owner_private` record is unscoped, it may still be projected.
+If an `owner_private` record is unscoped, it may enter projection only when identity binding still matches the active owner or actor context.
+
+If an unscoped `owner_private` record lacks identity binding, it must be suppressed rather than treated as broadly readable.
 
 This is a compatibility rule for the current executable baseline, not a statement that group participants should have isolated hidden memories.
 
@@ -122,6 +124,10 @@ The current executable baseline may emit reason codes such as:
 - `owner_private_runtime_session_mismatch`
 - `owner_private_conversation_thread_mismatch`
 - `owner_private_requires_projection_context`
+- `owner_private_requires_identity_context`
+- `owner_private_missing_identity_binding`
+- `owner_private_identity_mismatch`
+- `owner_private_identity_match`
 
 These codes are operational diagnostics.
 

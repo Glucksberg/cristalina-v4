@@ -120,6 +120,11 @@ export const CONTRADICTION_RESOLUTION_STATUSES = [
   "applied",
 ] as const;
 
+export const CURATION_REVIEW_KINDS = [
+  "owner_ratification",
+  "contradiction_manual_review",
+] as const;
+
 export const SUBJECT_AUTHORITY_ROLES = [
   "owner",
   "agent",
@@ -145,6 +150,7 @@ export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki"
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
 export type SubjectAuthorityRole = typeof SUBJECT_AUTHORITY_ROLES[number];
+export type CurationReviewKind = typeof CURATION_REVIEW_KINDS[number];
 
 export const DISPOSITION_OUTCOME_TARGET_LAYER: Record<DispositionOutcome, DispositionTargetLayer> = {
   evidence_only: "governance",
@@ -355,10 +361,12 @@ export interface CurationPacket extends RecordEnvelope {
   authoritative_home: "governance";
   proposal_refs: string[];
   question_count: number;
-  review_kind?: "owner_ratification";
+  review_kind?: CurationReviewKind;
   ratification_ref?: string | null;
   diagnostic_ref?: string | null;
   canonical_target_ref?: Reference | null;
+  contradiction_ref?: string | null;
+  contradiction_resolution_ref?: string | null;
   source_record_ref?: string | null;
   disposition_ref?: string | null;
   subject_entity_ref?: string | null;
