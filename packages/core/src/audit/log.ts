@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { STORAGE_LAYOUT } from "../storage.js";
@@ -40,12 +40,7 @@ export interface SnapshotRecordEntry {
   path: string;
 }
 
-async function hasJsonLineEntry(filePath: string, entryId: string): Promise<boolean> {
-  const source = await readFile(filePath, "utf8").catch((error) => {
-    if (isMissingFileError(error)) return "";
-    throw error;
-  });
-
+function hasJsonLineEntry(source: string, entryId: string): boolean {
   if (source.length === 0) {
     return false;
   }
@@ -64,10 +59,14 @@ async function hasJsonLineEntry(filePath: string, entryId: string): Promise<bool
 async function appendJsonLine(filePath: string, value: { entry_id?: string }): Promise<void> {
   const payload = `${JSON.stringify(value)}\n`;
   await mkdir(dirname(filePath), { recursive: true });
-  if (value.entry_id && await hasJsonLineEntry(filePath, value.entry_id)) {
+  const source = await readFile(filePath, "utf8").catch((error) => {
+    if (isMissingFileError(error)) return "";
+    throw error;
+  });
+  if (value.entry_id && hasJsonLineEntry(source, value.entry_id)) {
     return;
   }
-  await appendFile(filePath, payload, "utf8");
+  await atomicWriteText(filePath, `${source}${payload}`);
 }
 
 export async function appendAuditChange(rootDir: string, entry: AuditChangeEntry): Promise<void> {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -689,6 +689,53 @@ test("writeConversationPreferenceFlowToStore rejects source payloads outside raw
         },
       }),
     /Source content_ref must stay within raw\/ sources, imports, or attachments/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore rejects source payload traversal into another layer", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const escapedPath = join(rootDir, "canon/preferences/foreign-overwrite.json");
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...buildInput(rootDir),
+        source: {
+          ...buildInput(rootDir).source,
+          content_ref: "raw/sources/../../canon/preferences/foreign-overwrite.json",
+        },
+      }),
+    /Source content_ref must stay within raw\/ sources, imports, or attachments/,
+  );
+
+  await assert.rejects(() => access(escapedPath));
+});
+
+test("writeConversationPreferenceFlowToStore normalizes source payload paths that stay within raw", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const result = await writeConversationPreferenceFlowToStore({
+    ...buildInput(rootDir),
+    source: {
+      ...buildInput(rootDir).source,
+      content_ref: "raw/sources/../sources/conversation-turn-test-001.json",
+    },
+  });
+
+  assert.equal(
+    result.records.source_record.content_ref,
+    "raw/sources/conversation-turn-test-001.json",
+  );
+  assert.equal(
+    result.paths.raw_source,
+    join(rootDir, "raw/sources/conversation-turn-test-001.json"),
   );
 });
 

@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as relativePosix } from "node:path/posix";
 
 import {
   appendAuditChange,
@@ -279,6 +280,11 @@ const LEGAL_SOURCE_CONTENT_PREFIXES = [
   "raw/imports/",
   "raw/attachments/",
 ] as const;
+const LEGAL_SOURCE_CONTENT_ROOTS = [
+  "raw/sources",
+  "raw/imports",
+  "raw/attachments",
+] as const;
 const STORE_WRITE_LOCK_PATH = "audits/snapshots/.store-write.lock";
 const STORE_WRITE_LOCK_METADATA = "owner.json";
 const STORE_WRITE_LOCK_POLL_MS = 25;
@@ -306,12 +312,38 @@ function resolveStorePath(rootDir: string, relativePath: string): string {
   return targetPath;
 }
 
-function assertLegalSourceContentRef(contentRef: string): void {
-  if (!LEGAL_SOURCE_CONTENT_PREFIXES.some((prefix) => contentRef.startsWith(prefix))) {
+function normalizeLegalSourceContentRef(contentRef: string): string {
+  const normalized = normalizePosix(contentRef.trim());
+
+  if (
+    normalized.length === 0 ||
+    normalized === "." ||
+    normalized === ".." ||
+    isPosixAbsolute(normalized)
+  ) {
     throw new Error(
       `Source content_ref must stay within raw/ sources, imports, or attachments: ${contentRef}`,
     );
   }
+
+  const isWithinAllowedRoot = LEGAL_SOURCE_CONTENT_ROOTS.some((root) => {
+    const relativePath = relativePosix(root, normalized);
+    return (
+      relativePath !== "" &&
+      relativePath !== "." &&
+      relativePath !== ".." &&
+      !relativePath.startsWith("../") &&
+      !isPosixAbsolute(relativePath)
+    );
+  });
+
+  if (!isWithinAllowedRoot || !LEGAL_SOURCE_CONTENT_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+    throw new Error(
+      `Source content_ref must stay within raw/ sources, imports, or attachments: ${contentRef}`,
+    );
+  }
+
+  return normalized;
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -671,7 +703,7 @@ function selectConversationPreferenceIntakeBuilder(input: ConversationPreference
 }
 
 function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecord {
-  assertLegalSourceContentRef(input.source.content_ref);
+  const content_ref = normalizeLegalSourceContentRef(input.source.content_ref);
 
   return {
     id: input.source.id,
@@ -692,7 +724,7 @@ function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecor
       session_ref: input.identity_context?.ids.runtime_session,
       thread_ref: input.identity_context?.ids.conversation_thread,
     },
-    content_ref: input.source.content_ref,
+    content_ref,
   };
 }
 
