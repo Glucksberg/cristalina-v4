@@ -70,6 +70,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-17: Write-path hardening only closes when raw ingress paths obey the same root-scoped containment law as authoritative storage, durability covers append-style audit replay as well as record replacement, and clean builds prove the current source instead of stale artifacts.
 - 2026-04-17: Governance and recovery hardening only close when terminal review outcomes are explicit in the persisted contract, validation audit phases remain append-only across the same proposal lifecycle, and subject identity is carried by stable authority refs instead of adapter labels.
 - 2026-04-17: Conflict and projection hardening only close when deferred promotion replays the current world-conflict gate at approval time and derived artifact paths obey the same root-scoped containment law as authoritative recovery and storage.
 - 2026-04-17: Shared-runtime group support only stays coherent when authority law, review queue state, projection readers, and reusable test fixtures all execute the same contract instead of re-encoding it per adapter or test.
