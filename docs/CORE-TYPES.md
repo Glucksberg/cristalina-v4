@@ -458,6 +458,7 @@ Minimum fields:
 - `proposal_ref`
 - `decision`
 - `actor`
+- `authenticated_principal`
 - `created_at`
 
 ### 4.16 `Contradiction`

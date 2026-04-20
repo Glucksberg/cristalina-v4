@@ -422,6 +422,7 @@ export interface RatificationRecord extends RecordEnvelope {
   proposal_ref: string;
   decision: "approved" | "rejected" | "deferred" | "expired";
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal | null;
 }
 
 export interface Contradiction extends RecordEnvelope {

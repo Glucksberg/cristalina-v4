@@ -141,6 +141,28 @@ function pushReference(issues: ValidationIssue[], value: unknown, path: string):
   }
 }
 
+function pushAuthenticatedPrincipal(issues: ValidationIssue[], value: unknown, path: string): void {
+  if (!isRecord(value)) {
+    issues.push({ path, message: "expected authenticated principal object" });
+    return;
+  }
+
+  if (!isEnumValue(value.kind, ["owner", "agent", "participant", "system"] as const)) {
+    issues.push({ path: `${path}.kind`, message: "expected one of: owner, agent, participant, system" });
+  }
+
+  pushRequiredString(issues, value, "actor_ref", `${path}.actor_ref`);
+
+  if (value.kind === "system") {
+    pushRequiredString(issues, value, "system_scope", `${path}.system_scope`);
+    return;
+  }
+
+  if (value.system_scope !== undefined) {
+    issues.push({ path: `${path}.system_scope`, message: "non-system principals cannot carry system_scope" });
+  }
+}
+
 function validateEnvelope(value: unknown): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (!isRecord(value)) {
@@ -542,6 +564,9 @@ function validateRatificationRecord(value: unknown): ValidationIssue[] {
     issues.push({ path: "decision", message: 'expected one of: approved, rejected, deferred, expired' });
   }
   pushRequiredString(issues, value, "actor");
+  if (value.authenticated_principal !== undefined && value.authenticated_principal !== null) {
+    pushAuthenticatedPrincipal(issues, value.authenticated_principal, "authenticated_principal");
+  }
   return issues;
 }
 

@@ -252,6 +252,7 @@ export interface ConversationPreferenceQueuedManualContradictionReviewInput {
   queue_id: string;
   now: string;
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   strategy: Exclude<ContradictionResolutionStrategy, "manual_review">;
   validation_scope?: string;
 }
@@ -712,6 +713,37 @@ function assertAuthorizedOwnerReviewExpiration(input: {
   }
 
   throw new Error(`Owner review expiration requires authenticated system principal or owner ${input.owner_identity_ref}`);
+}
+
+function assertAuthorizedManualContradictionReview(input: {
+  actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
+  owner_identity_ref?: string | null;
+}): void {
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
+  });
+
+  if (input.authenticated_principal?.kind === "system") {
+    return;
+  }
+
+  if (
+    input.owner_identity_ref &&
+    input.authenticated_principal?.kind === "owner" &&
+    input.authenticated_principal.actor_ref?.trim() === input.owner_identity_ref
+  ) {
+    return;
+  }
+
+  if (input.owner_identity_ref) {
+    throw new Error(
+      `Manual contradiction review requires authenticated system principal or owner ${input.owner_identity_ref}`,
+    );
+  }
+
+  throw new Error("Manual contradiction review requires authenticated system principal");
 }
 
 async function writeTextFile(filePath: string, content: string): Promise<void> {
@@ -1219,9 +1251,16 @@ async function recoverOwnerRatificationApplication(
   rootDir: string,
   input: ConversationPreferenceOwnerRatificationInput,
 ): Promise<void> {
+  await recoverOwnerRatificationApplicationByProposalId(rootDir, input.ids.proposal);
+}
+
+async function recoverOwnerRatificationApplicationByProposalId(
+  rootDir: string,
+  proposal_id: string,
+): Promise<void> {
   await recoverPendingJournal(
     rootDir,
-    recoveryJournalPath(rootDir, "conversation_preference_owner_ratification_apply", input.ids.proposal),
+    recoveryJournalPath(rootDir, "conversation_preference_owner_ratification_apply", proposal_id),
   );
 }
 
@@ -2409,7 +2448,12 @@ async function loadExistingFlow(
     throw new Error("Existing conversation preference flow is missing manual contradiction review queue state");
   }
 
-  assertLoadedFlowMatchesInput(loaded, expectedSourceRecord, expectedIntake);
+  assertLoadedFlowMatchesInput(
+    loaded,
+    expectedSourceRecord,
+    expectedIntake,
+    input.authenticated_principal,
+  );
 
   await ensureReplayableArtifacts(input, paths, loaded);
 
@@ -2602,6 +2646,7 @@ function assertLoadedFlowMatchesInput(
   loaded: LoadedAuthoritativeFlow,
   expectedSourceRecord: SourceRecord,
   expectedIntake: ConversationPreferenceIntakeArtifacts,
+  expectedAuthenticatedPrincipal?: AuthenticatedPrincipal,
 ): void {
   const mismatches: string[] = [];
   const expectedProposalStatement =
@@ -2648,6 +2693,17 @@ function assertLoadedFlowMatchesInput(
   if (loaded.intake.disposition_record.provenance.source_ref !== expectedIntake.disposition_record.provenance.source_ref) mismatches.push("disposition_record.provenance.source_ref");
   if (loaded.intake.disposition_record.provenance.source_type !== expectedIntake.disposition_record.provenance.source_type) mismatches.push("disposition_record.provenance.source_type");
   if (loaded.ratification_record.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref) mismatches.push("ratification_record.provenance.source_ref");
+  const loadedPrincipal = loaded.ratification_record.authenticated_principal ?? null;
+  const expectedPrincipal = expectedAuthenticatedPrincipal ?? null;
+  if (loadedPrincipal?.kind !== expectedPrincipal?.kind) mismatches.push("ratification_record.authenticated_principal.kind");
+  if (loadedPrincipal?.actor_ref !== expectedPrincipal?.actor_ref) mismatches.push("ratification_record.authenticated_principal.actor_ref");
+  if (loadedPrincipal?.kind === "system" || expectedPrincipal?.kind === "system") {
+    const loadedSystemScope = loadedPrincipal?.kind === "system" ? loadedPrincipal.system_scope : undefined;
+    const expectedSystemScope = expectedPrincipal?.kind === "system" ? expectedPrincipal.system_scope : undefined;
+    if (loadedSystemScope !== expectedSystemScope) {
+      mismatches.push("ratification_record.authenticated_principal.system_scope");
+    }
+  }
   if (
     loaded.canonical_record &&
     loaded.canonical_record.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref
@@ -3161,6 +3217,7 @@ export async function writeConversationPreferenceFlowToStore(
       blocking_world_conflict_ref: conflicting_world_claim?.id ?? null,
       now: input.now,
       actor: input.actor,
+      authenticated_principal: input.authenticated_principal,
       ratification_id: input.ids.ratification,
       diagnostic_id: input.ids.diagnostic,
       canonical_id: input.ids.canonical,
@@ -3954,6 +4011,7 @@ async function applyOwnerRatificationToExistingFlow(
     blocking_world_conflict_ref: blockingWorldConflictRef,
     now: input.now,
     actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
     ratification_id: existingFlow.records.ratification_record.id,
     canonical_id: basename(existingFlow.paths.canonical_record, ".json"),
   });
@@ -4070,6 +4128,7 @@ async function applyManualContradictionReviewToExistingFlow(
   input: {
     now: string;
     actor: string;
+    authenticated_principal?: AuthenticatedPrincipal;
     strategy: Exclude<ContradictionResolutionStrategy, "manual_review">;
     validation_scope?: string;
   },
@@ -4136,6 +4195,12 @@ async function applyManualContradictionReviewToExistingFlow(
   if (existingFlow.records.contradiction_resolution.strategy !== "manual_review") {
     throw new Error("Conversation preference flow is not waiting on manual contradiction review");
   }
+
+  assertAuthorizedManualContradictionReview({
+    actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
+    owner_identity_ref: queue.owner_identity_ref ?? null,
+  });
 
   const existing_world_claim = await readCoreRecord<WorldClaim>(
     coreRecordPath(
@@ -4307,6 +4372,7 @@ async function closeOwnerReviewQueueToExistingFlow(
           updated_at: input.now,
           decision: "rejected",
           actor: input.actor,
+          authenticated_principal: input.authenticated_principal ?? null,
           upstream_refs: [
             ...new Set([
               ...(existingFlow.records.ratification_record.upstream_refs ?? []),
@@ -4320,6 +4386,7 @@ async function closeOwnerReviewQueueToExistingFlow(
           updated_at: input.now,
           decision: "expired",
           actor: input.actor,
+          authenticated_principal: input.authenticated_principal ?? null,
           upstream_refs: [
             ...new Set([
               ...(existingFlow.records.ratification_record.upstream_refs ?? []),
@@ -4523,7 +4590,19 @@ export async function ratifyQueuedConversationPreferenceProposalToStore(
     rootDir,
     `conversation_preference_owner_ratification_queue:${input.queue_id}`,
     async () => {
-      await recoverOwnerReviewClosure(rootDir, input.queue_id);
+      const existingFlowBeforeRecovery = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
+        rootDir,
+        input.queue_id,
+      );
+      if (!existingFlowBeforeRecovery) {
+        throw new Error(`Owner ratification queue entry ${input.queue_id} does not exist`);
+      }
+
+      await recoverOwnerRatificationApplicationByProposalId(
+        rootDir,
+        existingFlowBeforeRecovery.records.intake.proposal.id,
+      );
+
       const existingFlow = await loadConversationPreferenceFlowFromOwnerRatificationQueue(
         rootDir,
         input.queue_id,

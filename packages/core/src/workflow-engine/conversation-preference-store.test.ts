@@ -228,6 +228,7 @@ test("owner ratification queue lists deferred owner-scoped claims and can ratify
   });
 
   assert.equal(ratified.records.ratification_record.decision, "approved");
+  assert.deepEqual(ratified.records.ratification_record.authenticated_principal, ownerPrincipal(input));
   assert.equal(ratified.records.canonical_record?.statement, input.statement);
   assert.equal(ratified.records.diagnostic?.code, "proposal_deferred_resolved");
   assert.equal(ratified.records.owner_ratification_queue?.status, "applied");
@@ -239,6 +240,70 @@ test("owner ratification queue lists deferred owner-scoped claims and can ratify
 
   const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
   assert.deepEqual(queueAfter, []);
+});
+
+test("owner ratification queue recovers pending owner-ratification journals before applying by queue id", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  const recoveryJournalPath = join(
+    rootDir,
+    `audits/snapshots/recovery-conversation_preference_owner_ratification_apply-${input.ids.proposal}.json`,
+  );
+  const recoveryMarkerRelativePath = "audits/snapshots/queued-owner-ratification-recovered.txt";
+  const recoveryMarkerPath = join(rootDir, recoveryMarkerRelativePath);
+
+  await writeFile(
+    recoveryJournalPath,
+    `${JSON.stringify(
+      {
+        version: 1,
+        operation: "conversation_preference_owner_ratification_apply",
+        created_at: "2026-04-12T00:04:30.000Z",
+        files: [
+          {
+            relative_path: recoveryMarkerRelativePath,
+            content: "recovered queued owner ratification\n",
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  await ratifyQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:05:00.000Z",
+    actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: ownerPrincipal(input),
+    owner_actor_ref: input.identity_context!.ids.owner_identity!,
+    validation_scope: "test:conversation-preference:owner-ratification-recovery",
+  });
+
+  assert.equal(await readFile(recoveryMarkerPath, "utf8"), "recovered queued owner ratification\n");
+  await assert.rejects(() => access(recoveryJournalPath), /ENOENT/);
 });
 
 test("owner ratification queue refuses stale promotion when a conflicting world claim is still active", async (t) => {
@@ -432,6 +497,10 @@ test("owner ratification queue can expire without owner ratification and blocks 
   });
 
   assert.equal(expired.records.ratification_record.decision, "expired");
+  assert.deepEqual(
+    expired.records.ratification_record.authenticated_principal,
+    systemPrincipal("system:test-expirer"),
+  );
   assert.equal(expired.records.owner_ratification_queue?.status, "expired");
   assert.equal(expired.records.canonical_record, undefined);
   assert.equal(expired.records.diagnostic?.code, "proposal_deferred_expired");
@@ -1537,6 +1606,7 @@ test("manual contradiction review queue lists pending reviews and can apply an e
     queue_id: queue[0]!.queue_id,
     now: "2026-04-12T00:06:00.000Z",
     actor: "system:manual-contradiction-review",
+    authenticated_principal: systemPrincipal("system:manual-contradiction-review"),
     strategy: "supersede_candidate",
     validation_scope: "test:conversation-preference:manual-contradiction-review",
   });
@@ -1553,6 +1623,68 @@ test("manual contradiction review queue lists pending reviews and can apply an e
 
   const queueAfter = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
   assert.deepEqual(queueAfter, []);
+});
+
+test("manual contradiction review queue rejects calls without an authenticated owner or system principal", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: ConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: firstInput.now,
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_manual_queue_auth_002",
+      source_ref: "runtime/session-test#turn-manual-queue-auth-002",
+      content_ref: "raw/sources/conversation-turn-test-manual-queue-auth-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_manual_queue_auth_002",
+      episode: "ep_test_manual_queue_auth_002",
+      subject_entity: "ent_subject_test_manual_queue_auth_002",
+      preference_entity: "ent_preference_test_manual_queue_auth_002",
+      preference_relation: "rel_preference_test_manual_queue_auth_002",
+      world_claim: "wcl_test_manual_queue_auth_002",
+      contradiction: "contra_test_manual_queue_auth_002",
+      contradiction_resolution: "cres_test_manual_queue_auth_002",
+      wiki_page: "wpg_test_manual_queue_auth_002",
+      wiki_claim: "wclm_test_manual_queue_auth_002",
+      proposal: "prop_test_manual_queue_auth_002",
+      disposition: "disp_test_manual_queue_auth_002",
+      ratification: "rat_test_manual_queue_auth_002",
+      diagnostic: "diag_test_manual_queue_auth_002",
+      canonical: "mem_test_manual_queue_auth_002",
+      canon_artifact: "part_openclaw_canon_test_manual_queue_auth_002",
+      world_artifact: "part_openclaw_world_test_manual_queue_auth_002",
+      wiki_artifact: "part_openclaw_wiki_test_manual_queue_auth_002",
+      projection_manifest: "pmf_openclaw_test_manual_queue_auth_002",
+    },
+  };
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+
+  const queue = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  await assert.rejects(
+    () =>
+      applyQueuedConversationPreferenceManualContradictionReviewToStore({
+        rootDir,
+        queue_id: queue[0]!.queue_id,
+        now: "2026-04-12T00:06:00.000Z",
+        actor: "actor_participant_manual_review_001",
+        authenticated_principal: participantPrincipal("actor_participant_manual_review_001"),
+        strategy: "supersede_candidate",
+        validation_scope: "test:conversation-preference:manual-contradiction-review-auth",
+      }),
+    /Manual contradiction review requires authenticated system principal or owner actor_owner_test_001/,
+  );
 });
 
 test("openclaw feedback round-trip preserves runtime identity and recompiles projection", async (t) => {

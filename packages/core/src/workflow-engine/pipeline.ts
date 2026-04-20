@@ -825,6 +825,7 @@ export interface CanonicalProposalWorkflowInput {
   blocking_world_conflict_ref?: string | null;
   now: string;
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   ratification_id: string;
   diagnostic_id?: string;
   canonical_id: string;
@@ -1273,6 +1274,7 @@ export function executeCanonicalProposalWorkflow(input: CanonicalProposalWorkflo
     blocking_world_conflict_ref: input.blocking_world_conflict_ref,
     now: input.now,
     actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
     ratification_id: input.ratification_id,
     diagnostic_id: input.diagnostic_id,
   });

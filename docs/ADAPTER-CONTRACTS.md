@@ -79,7 +79,7 @@ In particular:
 
 - `speaker_ref` is evidence provenance
 - `authenticated_principal` is the authority-bearing caller
-- queue expiration or owner-ratification actions must arrive with an explicit authenticated principal instead of relying on free-form `actor` strings
+- queue expiration, owner-ratification, and contradiction-manual-review actions must arrive with an explicit authenticated principal instead of relying on free-form `actor` strings
 
 ---
 

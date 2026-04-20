@@ -1094,9 +1094,42 @@ test("ratification records accept explicit expiration as a terminal decision", (
     proposal_ref: "prop_rat_expired_test_001",
     decision: "expired",
     actor: "system:test-expirer",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:test-expirer",
+      system_scope: "test-expirer",
+    },
   });
 
   assert.equal(issues.length, 0);
+});
+
+test("ratification records reject malformed authenticated principals", () => {
+  const issues = validateCoreRecord({
+    id: "rat_invalid_principal_test_001",
+    kind: "ratification",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-04-12T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_rat_invalid_principal_test_001",
+    },
+    proposal_ref: "prop_rat_invalid_principal_test_001",
+    decision: "approved",
+    actor: "actor_owner_invalid_principal_001",
+    authenticated_principal: {
+      kind: "owner",
+      actor_ref: "",
+      system_scope: "should-not-exist",
+    },
+  });
+
+  assert.ok(issues.some((issue) => issue.path === "authenticated_principal.actor_ref"));
+  assert.ok(issues.some((issue) => issue.path === "authenticated_principal.system_scope"));
 });
 
 test("openclaw projection preserves visibility and renders reconciled statuses", () => {

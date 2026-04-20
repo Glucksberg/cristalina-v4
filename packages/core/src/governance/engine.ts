@@ -1,4 +1,11 @@
-import type { CanonicalMemoryObject, Diagnostic, Proposal, RatificationRecord, Reference } from "../types.js";
+import type {
+  AuthenticatedPrincipal,
+  CanonicalMemoryObject,
+  Diagnostic,
+  Proposal,
+  RatificationRecord,
+  Reference,
+} from "../types.js";
 import { CANONICAL_CLAIM_KINDS } from "../types.js";
 import { PROMOTION_GATES, type PromotionGate } from "../transitions.js";
 
@@ -83,6 +90,7 @@ export function evaluateCanonicalProposal(input: {
   blocking_world_conflict_ref?: string | null;
   now: string;
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   ratification_id: string;
   diagnostic_id?: string;
 }): GovernanceEvaluationResult {
@@ -275,6 +283,7 @@ export function evaluateCanonicalProposal(input: {
     proposal_ref: proposal.id,
     decision: accepted ? "approved" : deferred ? "deferred" : "rejected",
     actor: input.actor,
+    authenticated_principal: input.authenticated_principal ?? null,
   };
 
   const diagnostic =
