@@ -207,11 +207,27 @@ export interface Provenance {
   thread_ref?: string | null;
 }
 
-export interface AuthenticatedPrincipal {
-  kind: AuthenticatedPrincipalKind;
-  actor_ref?: string | null;
-  system_scope?: string | null;
-}
+export type AuthenticatedPrincipal =
+  | {
+      kind: "owner";
+      actor_ref: string;
+      system_scope?: never;
+    }
+  | {
+      kind: "agent";
+      actor_ref: string;
+      system_scope?: never;
+    }
+  | {
+      kind: "participant";
+      actor_ref: string;
+      system_scope?: never;
+    }
+  | {
+      kind: "system";
+      actor_ref: string;
+      system_scope: string;
+    };
 
 export interface RecordEnvelope {
   id: string;

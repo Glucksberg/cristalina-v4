@@ -630,10 +630,29 @@ function assertAuthenticatedPrincipalMatchesActor(input: {
   actor: string;
   authenticated_principal?: AuthenticatedPrincipal;
 }): void {
+  const principal = input.authenticated_principal;
+  if (!principal) {
+    return;
+  }
+
+  if (typeof principal.actor_ref !== "string" || principal.actor_ref.trim().length === 0) {
+    throw new Error("Authenticated principal requires a non-empty actor_ref");
+  }
+
+  if (principal.kind === "system") {
+    if (typeof principal.system_scope !== "string" || principal.system_scope.trim().length === 0) {
+      throw new Error("Authenticated system principal requires a non-empty system_scope");
+    }
+  }
+
   const actorRef = input.authenticated_principal?.actor_ref?.trim();
   if (actorRef && actorRef !== input.actor) {
     throw new Error(`Authenticated principal actor_ref ${actorRef} must match actor ${input.actor}`);
   }
+}
+
+function authenticatedActorRef(input: Pick<ConversationPreferenceStoreInput, "actor" | "authenticated_principal">): string {
+  return input.authenticated_principal?.actor_ref?.trim() || input.actor;
 }
 
 function assertAuthorizedOwnerAction(input: {
@@ -859,7 +878,7 @@ function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecor
     provenance: {
       source_type: input.source.source_type ?? "conversation",
       source_ref: input.source.source_ref,
-      actor_ref: input.identity_context?.ids.agent_identity,
+      actor_ref: authenticatedActorRef(input),
       speaker_ref: input.source.speaker_ref ?? null,
       runtime_ref: input.identity_context?.ids.runtime_instance,
       session_ref: input.identity_context?.ids.runtime_session,
@@ -2311,6 +2330,7 @@ async function loadExistingFlow(
   expectedSourceRecord: SourceRecord,
   expectedIntake: ConversationPreferenceIntakeArtifacts,
 ): Promise<ConversationPreferenceStoreResult | undefined> {
+  const rootDir = resolve(input.rootDir);
   const authoritativePaths = [
     paths.raw_source,
     paths.source_record,
@@ -2353,7 +2373,7 @@ async function loadExistingFlow(
     throw new Error("Existing conversation preference flow is partially materialized in authoritative storage");
   }
 
-  const loaded = await loadAuthoritativeFlow(paths);
+  const loaded = await loadAuthoritativeFlow(rootDir, paths);
   if (
     loaded.ratification_record.decision === "approved" &&
     !(await pathExists(paths.canonical_record))
@@ -2501,42 +2521,71 @@ async function readConversationPreferenceFlowResultInternal(
   return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input), source_record, intake);
 }
 
-async function loadAuthoritativeFlow(paths: ConversationPreferenceStorePaths): Promise<LoadedAuthoritativeFlow> {
+async function loadAuthoritativeFlow(
+  rootDir: string,
+  paths: ConversationPreferenceStorePaths,
+): Promise<LoadedAuthoritativeFlow> {
+  const intake = {
+    observation: await readCoreRecord<Observation>(paths.observation),
+    agent_identity: paths.actor_identity ? await readCoreRecord<ActorIdentity>(paths.actor_identity) : undefined,
+    owner_identity: paths.owner_identity ? await readCoreRecord<ActorIdentity>(paths.owner_identity) : undefined,
+    runtime_instance: paths.runtime_instance ? await readCoreRecord<RuntimeInstance>(paths.runtime_instance) : undefined,
+    runtime_session: paths.runtime_session ? await readCoreRecord<RuntimeSession>(paths.runtime_session) : undefined,
+    conversation_thread: paths.conversation_thread ? await readCoreRecord<ConversationThread>(paths.conversation_thread) : undefined,
+    episode: await readCoreRecord<Episode>(paths.episode),
+    subject_entity: await readCoreRecord<Entity>(paths.subject_entity),
+    preference_entity: await readCoreRecord<Entity>(paths.preference_entity),
+    preference_relation: await readCoreRecord<Relation>(paths.preference_relation),
+    world_claim: await readCoreRecord<WorldClaim>(paths.world_claim),
+    wiki_page: await readCoreRecord<WikiPage>(paths.wiki_page_record),
+    wiki_claim: await readCoreRecord<WikiClaim>(paths.wiki_claim),
+    proposal: await readCoreRecord<Proposal>(paths.proposal),
+    disposition_record: await readCoreRecord<DispositionRecord>(paths.disposition_record),
+  };
+  const contradiction =
+    paths.contradiction && (await pathExists(paths.contradiction))
+      ? await readCoreRecord<Contradiction>(paths.contradiction)
+      : undefined;
+  const contradiction_resolution =
+    paths.contradiction_resolution && (await pathExists(paths.contradiction_resolution))
+      ? await readCoreRecord<ContradictionResolution>(paths.contradiction_resolution)
+      : undefined;
+  const ownerRatificationQueuePath =
+    paths.owner_ratification_queue ??
+    coreRecordPath(
+      rootDir,
+      {
+        id: ownerRatificationQueueId(intake.proposal.id),
+        kind: "curation_packet",
+        layer: "governance",
+      } as CurationPacket,
+    );
+  const manualContradictionReviewQueuePath =
+    paths.manual_contradiction_review_queue ??
+    (contradiction_resolution
+      ? coreRecordPath(
+          rootDir,
+          {
+            id: manualContradictionReviewQueueId(contradiction_resolution.id),
+            kind: "curation_packet",
+            layer: "governance",
+          } as CurationPacket,
+        )
+      : undefined);
+
   return {
     source_record: await readCoreRecord<SourceRecord>(paths.source_record),
-    intake: {
-      observation: await readCoreRecord<Observation>(paths.observation),
-      agent_identity: paths.actor_identity ? await readCoreRecord<ActorIdentity>(paths.actor_identity) : undefined,
-      owner_identity: paths.owner_identity ? await readCoreRecord<ActorIdentity>(paths.owner_identity) : undefined,
-      runtime_instance: paths.runtime_instance ? await readCoreRecord<RuntimeInstance>(paths.runtime_instance) : undefined,
-      runtime_session: paths.runtime_session ? await readCoreRecord<RuntimeSession>(paths.runtime_session) : undefined,
-      conversation_thread: paths.conversation_thread ? await readCoreRecord<ConversationThread>(paths.conversation_thread) : undefined,
-      episode: await readCoreRecord<Episode>(paths.episode),
-      subject_entity: await readCoreRecord<Entity>(paths.subject_entity),
-      preference_entity: await readCoreRecord<Entity>(paths.preference_entity),
-      preference_relation: await readCoreRecord<Relation>(paths.preference_relation),
-      world_claim: await readCoreRecord<WorldClaim>(paths.world_claim),
-      wiki_page: await readCoreRecord<WikiPage>(paths.wiki_page_record),
-      wiki_claim: await readCoreRecord<WikiClaim>(paths.wiki_claim),
-      proposal: await readCoreRecord<Proposal>(paths.proposal),
-      disposition_record: await readCoreRecord<DispositionRecord>(paths.disposition_record),
-    },
-    contradiction:
-      paths.contradiction && (await pathExists(paths.contradiction))
-        ? await readCoreRecord<Contradiction>(paths.contradiction)
-        : undefined,
-    contradiction_resolution:
-      paths.contradiction_resolution && (await pathExists(paths.contradiction_resolution))
-        ? await readCoreRecord<ContradictionResolution>(paths.contradiction_resolution)
-        : undefined,
+    intake,
+    contradiction,
+    contradiction_resolution,
     ratification_record: await readCoreRecord<RatificationRecord>(paths.ratification_record),
     owner_ratification_queue:
-      paths.owner_ratification_queue && (await pathExists(paths.owner_ratification_queue))
-        ? await readCoreRecord<CurationPacket>(paths.owner_ratification_queue)
+      await pathExists(ownerRatificationQueuePath)
+        ? await readCoreRecord<CurationPacket>(ownerRatificationQueuePath)
         : undefined,
     manual_contradiction_review_queue:
-      paths.manual_contradiction_review_queue && (await pathExists(paths.manual_contradiction_review_queue))
-        ? await readCoreRecord<CurationPacket>(paths.manual_contradiction_review_queue)
+      manualContradictionReviewQueuePath && (await pathExists(manualContradictionReviewQueuePath))
+        ? await readCoreRecord<CurationPacket>(manualContradictionReviewQueuePath)
         : undefined,
     diagnostic:
       paths.diagnostic_record && (await pathExists(paths.diagnostic_record))
@@ -2564,7 +2613,6 @@ function assertLoadedFlowMatchesInput(
   if (loaded.source_record.content_ref !== expectedSourceRecord.content_ref) mismatches.push("source.content_ref");
   if (loaded.source_record.provenance.source_type !== expectedSourceRecord.provenance.source_type) mismatches.push("source.source_type");
   if (loaded.source_record.provenance.source_ref !== expectedSourceRecord.provenance.source_ref) mismatches.push("source.source_ref");
-  if (loaded.source_record.provenance.actor_ref !== expectedSourceRecord.provenance.actor_ref) mismatches.push("source.actor_ref");
   if (loaded.source_record.provenance.speaker_ref !== expectedSourceRecord.provenance.speaker_ref) mismatches.push("source.speaker_ref");
   if (loaded.source_record.provenance.runtime_ref !== expectedSourceRecord.provenance.runtime_ref) mismatches.push("source.runtime_ref");
   if (loaded.source_record.provenance.session_ref !== expectedSourceRecord.provenance.session_ref) mismatches.push("source.session_ref");
@@ -2594,6 +2642,9 @@ function assertLoadedFlowMatchesInput(
   if (loaded.intake.proposal.provenance.source_type !== expectedIntake.proposal.provenance.source_type) mismatches.push("proposal.provenance.source_type");
   if (loaded.intake.proposal.candidate_payload.semantic_slot !== expectedIntake.proposal.candidate_payload.semantic_slot) mismatches.push("proposal.candidate_payload.semantic_slot");
   if (loaded.intake.proposal.candidate_payload.statement !== expectedProposalStatement) mismatches.push("proposal.candidate_payload.statement");
+  if (loaded.intake.proposal.promotion_requirement !== expectedIntake.proposal.promotion_requirement) {
+    mismatches.push("proposal.promotion_requirement");
+  }
   if (loaded.intake.disposition_record.provenance.source_ref !== expectedIntake.disposition_record.provenance.source_ref) mismatches.push("disposition_record.provenance.source_ref");
   if (loaded.intake.disposition_record.provenance.source_type !== expectedIntake.disposition_record.provenance.source_type) mismatches.push("disposition_record.provenance.source_type");
   if (loaded.ratification_record.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref) mismatches.push("ratification_record.provenance.source_ref");
@@ -3454,7 +3505,7 @@ function buildSyntheticInputForStoredFlow(
   return {
     rootDir,
     now,
-    actor,
+    actor: flow.records.source_record.provenance.actor_ref ?? actor,
     statement: flow.records.intake.world_claim.statement,
     source: {
       id: flow.records.source_record.id,
@@ -3610,7 +3661,7 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
     },
   };
 
-  const loaded = await loadAuthoritativeFlow(paths);
+  const loaded = await loadAuthoritativeFlow(rootDir, paths);
   const projection_artifacts = await readProjectionArtifacts(paths);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
   const flow: ConversationPreferenceStoreResult = {
@@ -3798,7 +3849,7 @@ async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
     },
   };
 
-  const loaded = await loadAuthoritativeFlow(paths);
+  const loaded = await loadAuthoritativeFlow(rootDir, paths);
   const projection_artifacts = await readProjectionArtifacts(paths);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
 

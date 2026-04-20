@@ -722,6 +722,64 @@ test("writeConversationPreferenceFlowToStore rejects reuse with mismatched ident
   );
 });
 
+test("writeConversationPreferenceFlowToStore rejects reuse when authenticated authority changes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.actor = "actor_participant_authority_change_001";
+  input.authenticated_principal = participantPrincipal(input.actor);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = input.identity_context?.ids.owner_identity;
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant-originated owner claim should still require owner ratification.",
+  };
+
+  const first = await writeConversationPreferenceFlowToStore(input);
+  assert.equal(first.records.intake.proposal.promotion_requirement, "owner_ratification_required");
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...input,
+        now: "2026-04-12T00:05:00.000Z",
+        actor: input.identity_context!.ids.owner_identity!,
+        authenticated_principal: ownerPrincipal(input),
+      }),
+    /does not match input/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore rejects authenticated system principals without scope", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.actor = "system:test-missing-scope";
+  input.authenticated_principal = {
+    kind: "system",
+    actor_ref: input.actor,
+    system_scope: "",
+  } as unknown as NonNullable<ConversationPreferenceStoreInput["authenticated_principal"]>;
+
+  await assert.rejects(
+    () => writeConversationPreferenceFlowToStore(input),
+    /requires a non-empty system_scope/,
+  );
+});
+
 test("writeConversationPreferenceFlowToStore repairs missing derived artifacts on rerun", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {

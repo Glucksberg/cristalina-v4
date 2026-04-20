@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
@@ -31,7 +32,7 @@ interface EnumProperty {
 }
 
 async function readSchema(pathFromRepoRoot: string): Promise<JsonSchema> {
-  const schemaPath = resolve(process.cwd(), pathFromRepoRoot);
+  const schemaPath = resolve(dirname(fileURLToPath(import.meta.url)), "..", pathFromRepoRoot);
   const source = await readFile(schemaPath, "utf8");
   return JSON.parse(source) as JsonSchema;
 }

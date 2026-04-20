@@ -435,7 +435,7 @@ function buildSharedProvenance(
   return {
     source_type: input.source_record.provenance.source_type,
     source_ref: input.source_record.provenance.source_ref,
-    actor_ref: input.identity_context?.ids.agent_identity,
+    actor_ref: input.source_record.provenance.actor_ref ?? null,
     speaker_ref: input.source_record.provenance.speaker_ref ?? null,
     runtime_ref: input.identity_context?.ids.runtime_instance,
     session_ref: input.identity_context?.ids.runtime_session,
