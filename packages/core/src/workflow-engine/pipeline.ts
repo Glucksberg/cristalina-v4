@@ -7,6 +7,7 @@ import {
 import { resolvePreferenceSignalSemanticProfile, type PreferenceSignalSemanticProfile } from "./source-intake.js";
 import type {
   ActorIdentity,
+  AuthenticatedPrincipal,
   CanonicalMemoryObject,
   Contradiction,
   ContradictionResolution,
@@ -72,6 +73,7 @@ export interface ConversationPreferenceIntakeInput {
   source_record: SourceRecord;
   statement: string;
   intake_kind?: SourceIntakeKind;
+  authenticated_principal?: AuthenticatedPrincipal;
   ids: ConversationPreferenceIntakeIds;
   identity_context?: ConversationPreferenceRuntimeIdentityContext;
   semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
@@ -181,10 +183,6 @@ function resolvePreferenceSubjectKey(input: {
     return speakerRef;
   }
 
-  if (ownerIdentityRef) {
-    return ownerIdentityRef;
-  }
-
   const runtimeRef = input.source_record.provenance.runtime_ref?.trim();
   if (runtimeRef) {
     return runtimeRef;
@@ -198,9 +196,22 @@ function resolvePreferenceSubjectKey(input: {
   return input.source_record.id;
 }
 
+function isAuthenticatedOwnerPrincipal(
+  principal: AuthenticatedPrincipal | undefined,
+  owner_identity: ActorIdentity | undefined,
+): boolean {
+  const ownerRef = owner_identity?.id?.trim();
+  if (!principal || principal.kind !== "owner" || !ownerRef) {
+    return false;
+  }
+
+  return principal.actor_ref?.trim() === ownerRef;
+}
+
 function buildAuthorityReviewRequirement(input: {
   semanticProfile: PreferenceSignalSemanticProfile;
   owner_identity?: ActorIdentity;
+  authenticated_principal?: AuthenticatedPrincipal;
   source_record: SourceRecord;
 }): {
   promotion_requirement: "none" | "owner_ratification_required";
@@ -223,7 +234,7 @@ function buildAuthorityReviewRequirement(input: {
     };
   }
 
-  if (speakerRef === ownerRef) {
+  if (isAuthenticatedOwnerPrincipal(input.authenticated_principal, input.owner_identity)) {
     return {
       promotion_requirement: "none",
       reason_codes: [],
@@ -234,7 +245,7 @@ function buildAuthorityReviewRequirement(input: {
     promotion_requirement: "owner_ratification_required",
     reason_codes: uniqueReasonCodes(
       ["owner_authority_required"],
-      [speakerRef ? "speaker_not_owner" : "speaker_unverified"],
+      [speakerRef === ownerRef ? "speaker_claim_not_authority" : speakerRef ? "speaker_not_owner" : "speaker_unverified"],
     ),
   };
 }
@@ -243,6 +254,7 @@ function resolveAuthorityScopedDispositionStrategy(input: {
   strategy?: ConversationPreferenceDispositionStrategy;
   semanticProfile: PreferenceSignalSemanticProfile;
   owner_identity?: ActorIdentity;
+  authenticated_principal?: AuthenticatedPrincipal;
   source_record: SourceRecord;
 }): {
   strategy?: ConversationPreferenceDispositionStrategy;
@@ -251,6 +263,7 @@ function resolveAuthorityScopedDispositionStrategy(input: {
   const authorityRequirement = buildAuthorityReviewRequirement({
     semanticProfile: input.semanticProfile,
     owner_identity: input.owner_identity,
+    authenticated_principal: input.authenticated_principal,
     source_record: input.source_record,
   });
 
@@ -512,6 +525,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     strategy: input.disposition_strategy,
     semanticProfile,
     owner_identity: runtimeIdentity.owner_identity,
+    authenticated_principal: input.authenticated_principal,
     source_record: input.source_record,
   });
   const subjectKey = resolvePreferenceSubjectKey({

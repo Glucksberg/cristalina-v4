@@ -56,6 +56,20 @@ function buildIdentityContext(suffix: string) {
   };
 }
 
+function ownerPrincipal(suffix: string) {
+  return {
+    kind: "owner" as const,
+    actor_ref: `actor_owner_${suffix}`,
+  };
+}
+
+function participantPrincipal(actor_ref: string) {
+  return {
+    kind: "participant" as const,
+    actor_ref,
+  };
+}
+
 test("canon records reject pre-ratification governance states", () => {
   const issues = validateCoreRecord({
     id: "mem_test_draft",
@@ -1005,7 +1019,7 @@ test("structured preference intake preserves the source_type across emitted arti
   assert.equal(intake.disposition_record.provenance.source_type, "crm_import");
 });
 
-test("conversation preference intake uses stable subject identity refs in the semantic slot", () => {
+test("conversation preference intake keeps the default participant subject neutral in the semantic slot", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const intake = buildConversationPreferenceIntake({
     now,
@@ -1032,7 +1046,7 @@ test("conversation preference intake uses stable subject identity refs in the se
 
   assert.equal(
     intake.world_claim.semantic_slot,
-    "preference:participant:actor-owner-subject-slot-001:expressed-preference:user-interaction-preferences",
+    "preference:participant:runtime-session-test-turn-subject-slot-001:expressed-preference:user-interaction-preferences",
   );
 });
 
@@ -1577,6 +1591,118 @@ test("participant-originated owner claims are routed to queued review instead of
   assert.equal(intake.disposition_record.proposal_refs, undefined);
   assert.ok(intake.disposition_record.reason_codes.includes("owner_authority_required"));
   assert.ok(intake.disposition_record.reason_codes.includes("speaker_not_owner"));
+});
+
+test("owner speaker_ref alone does not satisfy owner authority", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    authenticated_principal: participantPrincipal("actor_external_person_owner_claim_001"),
+    statement: "The owner prefers strategic summaries on Fridays.",
+    source_record: {
+      id: "src_owner_authority_spoof_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session-owner#turn-claim-001",
+        speaker_ref: "actor_owner_owner_authority_spoof_001",
+      },
+      content_ref: "raw/sources/owner-authority-spoof-001.json",
+    },
+    identity_context: buildIdentityContext("owner_authority_spoof_001"),
+    semantic_profile: {
+      subject_entity_kind: "owner",
+      subject_authority_role: "owner",
+      subject_label: "Test Owner",
+      wiki_title: "Owner Interaction Preferences",
+      wiki_path: "wiki/pages/owner-interaction-preferences.md",
+      preference_topic_label: "Owner Interaction Preferences",
+      relation_type: "expressed_preference",
+      proposal_reason: "Owner claims still require authenticated owner authority.",
+    },
+    ids: buildIds("owner_authority_spoof_001"),
+  });
+
+  assert.equal(intake.proposal.promotion_requirement, "owner_ratification_required");
+  assert.ok(intake.disposition_record.reason_codes.includes("speaker_claim_not_authority"));
+});
+
+test("authenticated owner principal can satisfy owner authority", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    authenticated_principal: ownerPrincipal("owner_authority_direct_001"),
+    statement: "The owner prefers strategic summaries on Fridays.",
+    source_record: {
+      id: "src_owner_authority_direct_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session-owner#turn-direct-001",
+        speaker_ref: "actor_owner_owner_authority_direct_001",
+      },
+      content_ref: "raw/sources/owner-authority-direct-001.json",
+    },
+    identity_context: buildIdentityContext("owner_authority_direct_001"),
+    semantic_profile: {
+      subject_entity_kind: "owner",
+      subject_authority_role: "owner",
+      subject_label: "Test Owner",
+      wiki_title: "Owner Interaction Preferences",
+      wiki_path: "wiki/pages/owner-interaction-preferences.md",
+      preference_topic_label: "Owner Interaction Preferences",
+      relation_type: "expressed_preference",
+      proposal_reason: "Owner-originated preference signal.",
+    },
+    ids: buildIds("owner_authority_direct_001"),
+  });
+
+  assert.equal(intake.proposal.promotion_requirement, "none");
+  assert.deepEqual(intake.disposition_record.outcomes, ["world_update", "wiki_update", "proposal_for_canon"]);
+});
+
+test("default participant subject key falls back to runtime context instead of owner identity", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const intake = buildConversationPreferenceIntake({
+    now,
+    statement: "The user prefers concise answers.",
+    source_record: {
+      id: "src_runtime_subject_fallback_001",
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "runtime/session#turn-runtime-subject-fallback-001",
+        runtime_ref: "runtime_runtime_subject_fallback_001",
+      },
+      content_ref: "raw/sources/runtime-subject-fallback-001.json",
+    },
+    identity_context: buildIdentityContext("runtime_subject_fallback_001"),
+    ids: buildIds("runtime_subject_fallback_001"),
+  });
+
+  assert.match(intake.world_claim.semantic_slot, /runtime-runtime-subject-fallback-001/);
+  assert.doesNotMatch(intake.world_claim.semantic_slot, /actor-owner-runtime-subject-fallback-001/);
 });
 
 test("canonical workflow rejects owner-scoped proposals that still require owner ratification", () => {

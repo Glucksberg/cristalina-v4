@@ -32,6 +32,11 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
     rootDir,
     now: "2026-04-17T02:00:00.000Z",
     actor: "system:core-runtime-projection-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:core-runtime-projection-test",
+      system_scope: "core-runtime-projection-test",
+    },
     statement: "The owner prefers strategic summaries on Fridays.",
     validation_scope: "test:core:runtime-projection",
     ids: {
@@ -104,6 +109,10 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
     queue_id: queue[0]!.queue_id,
     now: "2026-04-17T02:05:00.000Z",
     actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: {
+      kind: "owner",
+      actor_ref: input.identity_context!.ids.owner_identity!,
+    },
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:core:runtime-projection:ratified",
   });

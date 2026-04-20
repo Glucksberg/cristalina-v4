@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { STORAGE_LAYOUT } from "../storage.js";
@@ -56,17 +56,86 @@ function hasJsonLineEntry(source: string, entryId: string): boolean {
   return false;
 }
 
-async function appendJsonLine(filePath: string, value: { entry_id?: string }): Promise<void> {
-  const payload = `${JSON.stringify(value)}\n`;
-  await mkdir(dirname(filePath), { recursive: true });
-  const source = await readFile(filePath, "utf8").catch((error) => {
-    if (isMissingFileError(error)) return "";
+const APPEND_LOCK_TIMEOUT_MS = 5_000;
+const APPEND_LOCK_STALE_MS = 30_000;
+const APPEND_LOCK_POLL_MS = 10;
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+
+function appendLockPath(filePath: string): string {
+  return `${filePath}.lock`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function appendLockIsStale(lockPath: string, nowMs: number): Promise<boolean> {
+  const lockStat = await stat(lockPath).catch((error) => {
+    if (isMissingFileError(error)) return undefined;
     throw error;
   });
-  if (value.entry_id && hasJsonLineEntry(source, value.entry_id)) {
-    return;
+  if (!lockStat) {
+    return false;
   }
-  await atomicWriteText(filePath, `${source}${payload}`);
+  return nowMs - lockStat.mtimeMs > APPEND_LOCK_STALE_MS;
+}
+
+async function acquireAppendLock(filePath: string): Promise<() => Promise<void>> {
+  const lockPath = appendLockPath(filePath);
+  const deadline = Date.now() + APPEND_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      await mkdir(lockPath, { recursive: false });
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw error;
+      }
+
+      const nowMs = Date.now();
+      if (await appendLockIsStale(lockPath, nowMs)) {
+        await rm(lockPath, { recursive: true, force: true });
+        continue;
+      }
+
+      if (nowMs >= deadline) {
+        throw new Error(`Timed out acquiring append lock for ${filePath}`);
+      }
+
+      await sleep(APPEND_LOCK_POLL_MS);
+    }
+  }
+}
+
+async function withAppendLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+  await mkdir(dirname(filePath), { recursive: true });
+  const release = await acquireAppendLock(filePath);
+
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
+async function appendJsonLine(filePath: string, value: { entry_id?: string }): Promise<void> {
+  await withAppendLock(filePath, async () => {
+    const payload = `${JSON.stringify(value)}\n`;
+    const source = await readFile(filePath, "utf8").catch((error) => {
+      if (isMissingFileError(error)) return "";
+      throw error;
+    });
+    if (value.entry_id && hasJsonLineEntry(source, value.entry_id)) {
+      return;
+    }
+    await atomicWriteText(filePath, `${source}${payload}`);
+  });
 }
 
 export async function appendAuditChange(rootDir: string, entry: AuditChangeEntry): Promise<void> {

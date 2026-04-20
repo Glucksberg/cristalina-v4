@@ -44,6 +44,28 @@ function cloneInputWithSuffix(
   return input;
 }
 
+function ownerPrincipal(input: ConversationPreferenceStoreInput) {
+  return {
+    kind: "owner" as const,
+    actor_ref: input.identity_context!.ids.owner_identity!,
+  };
+}
+
+function participantPrincipal(actor_ref = "actor_participant_test_001") {
+  return {
+    kind: "participant" as const,
+    actor_ref,
+  };
+}
+
+function systemPrincipal(actor_ref = "system:test") {
+  return {
+    kind: "system" as const,
+    actor_ref,
+    system_scope: actor_ref.replace(/^system:/, "") || actor_ref,
+  };
+}
+
 test("writeConversationPreferenceFlowToStore materializes and reuses the same flow", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -200,6 +222,7 @@ test("owner ratification queue lists deferred owner-scoped claims and can ratify
     queue_id: queue[0]!.queue_id,
     now: "2026-04-12T00:05:00.000Z",
     actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: ownerPrincipal(input),
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:conversation-preference:owner-ratification",
   });
@@ -274,6 +297,7 @@ test("owner ratification queue refuses stale promotion when a conflicting world 
         queue_id: queue[0]!.queue_id,
         now: "2026-04-12T00:05:00.000Z",
         actor: firstInput.identity_context!.ids.owner_identity!,
+        authenticated_principal: ownerPrincipal(firstInput),
         owner_actor_ref: firstInput.identity_context!.ids.owner_identity!,
         validation_scope: "test:conversation-preference:owner-ratification-conflict",
       }),
@@ -315,6 +339,7 @@ test("owner ratification queue can be explicitly rejected by the owner", async (
     queue_id: queue[0]!.queue_id,
     now: "2026-04-12T00:05:00.000Z",
     actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: ownerPrincipal(input),
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:conversation-preference:owner-rejection",
   });
@@ -361,10 +386,11 @@ test("owner ratification queue rejects a non-owner actor even when owner_actor_r
         queue_id: queue[0]!.queue_id,
         now: "2026-04-12T00:05:00.000Z",
         actor: "actor_intruder_test_001",
+        authenticated_principal: participantPrincipal("actor_intruder_test_001"),
         owner_actor_ref: input.identity_context!.ids.owner_identity!,
         validation_scope: "test:conversation-preference:owner-ratification-forged-actor",
       }),
-    /requires actor actor_owner_test_001/,
+    /requires authenticated owner principal actor_owner_test_001/,
   );
 
   const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
@@ -401,6 +427,7 @@ test("owner ratification queue can expire without owner ratification and blocks 
     queue_id: queue[0]!.queue_id,
     now: "2026-04-12T00:05:00.000Z",
     actor: "system:test-expirer",
+    authenticated_principal: systemPrincipal("system:test-expirer"),
     validation_scope: "test:conversation-preference:owner-expiration",
   });
 
@@ -418,10 +445,49 @@ test("owner ratification queue can expire without owner ratification and blocks 
         queue_id: queue[0]!.queue_id,
         now: "2026-04-12T00:10:00.000Z",
         actor: input.identity_context!.ids.owner_identity!,
+        authenticated_principal: ownerPrincipal(input),
         owner_actor_ref: input.identity_context!.ids.owner_identity!,
         validation_scope: "test:conversation-preference:owner-ratification-after-expire",
       }),
     /already closed with status expired/,
+  );
+});
+
+test("owner ratification queue rejects expiration by a non-owner non-system principal", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+
+  await assert.rejects(
+    () =>
+      expireQueuedConversationPreferenceProposalToStore({
+        rootDir,
+        queue_id: queue[0]!.queue_id,
+        now: "2026-04-12T00:05:00.000Z",
+        actor: "actor_participant_expirer_001",
+        authenticated_principal: participantPrincipal("actor_participant_expirer_001"),
+        validation_scope: "test:conversation-preference:owner-expiration-forbidden",
+      }),
+    /requires authenticated system principal or owner actor_owner_test_001/,
   );
 });
 
@@ -454,6 +520,7 @@ test("owner review terminal actions append distinct validation log entries per p
     queue_id: queue[0]!.queue_id,
     now: "2026-04-12T00:05:00.000Z",
     actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: ownerPrincipal(input),
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:conversation-preference:owner-rejection",
   });
@@ -490,6 +557,7 @@ test("ratifyDeferredConversationPreferenceProposalToStore remains compatible wit
     ...input,
     now: "2026-04-12T00:05:00.000Z",
     actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: ownerPrincipal(input),
     owner_actor_ref: input.identity_context!.ids.owner_identity!,
     validation_scope: "test:conversation-preference:owner-ratification:compat",
   });
@@ -540,6 +608,8 @@ test("writeConversationPreferenceFlowToStore promotes owner-originated owner cla
   });
 
   const input = buildInput(rootDir);
+  input.actor = input.identity_context!.ids.owner_identity!;
+  input.authenticated_principal = ownerPrincipal(input);
   input.statement = "The owner prefers strategic summaries on Fridays.";
   input.source.message = "The owner confirms they prefer strategic summaries on Fridays.";
   input.source.speaker_ref = input.identity_context?.ids.owner_identity;
@@ -560,6 +630,49 @@ test("writeConversationPreferenceFlowToStore promotes owner-originated owner cla
   assert.deepEqual(result.records.intake.disposition_record.outcomes, ["world_update", "wiki_update", "proposal_for_canon"]);
   assert.equal(result.records.ratification_record.decision, "approved");
   assert.equal(result.records.canonical_record?.statement, input.statement);
+});
+
+test("writeConversationPreferenceFlowToStore does not treat owner speaker_ref as owner authority without an authenticated owner principal", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.actor = "actor_participant_owner_spoof_001";
+  input.authenticated_principal = participantPrincipal(input.actor);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant claims the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = input.identity_context?.ids.owner_identity;
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant-originated owner claim should still require owner ratification.",
+  };
+
+  const result = await writeConversationPreferenceFlowToStore(input);
+
+  assert.equal(result.records.intake.proposal.promotion_requirement, "owner_ratification_required");
+  assert.equal(result.records.ratification_record.decision, "deferred");
+  assert.equal(result.records.canonical_record, undefined);
+  assert.ok(result.records.intake.disposition_record.reason_codes.includes("speaker_claim_not_authority"));
+});
+
+test("writeConversationPreferenceFlowToStore keeps default participant subject neutral when speaker_ref is absent", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const result = await writeConversationPreferenceFlowToStore(buildInput(rootDir));
+
+  assert.match(result.records.intake.world_claim.semantic_slot, /runtime-test-001/);
+  assert.doesNotMatch(result.records.intake.world_claim.semantic_slot, /actor_owner_test_001/);
 });
 
 test("writeConversationPreferenceFlowToStore rejects reuse with mismatched input", async (t) => {

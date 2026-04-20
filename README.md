@@ -56,9 +56,10 @@ What runs today:
 - Projection SDK + OpenClaw projection compiler
 - Store IO with reuse and recovery
 - Audit log and 3 executable end-to-end fixture flows
+- Minimal authenticated write-through surfaces in the OpenClaw and Hermes adapters
 
 What's planned:
-- Real `@cristalina-v4/openclaw-adapter` and `@cristalina-v4/hermes-adapter` packages
+- richer runtime adapters beyond the current thin authenticated write-through surfaces
 - Standalone wiki engine, retrieval orchestrator
 - Eval harness
 
@@ -88,8 +89,8 @@ After running a fixture, inspect `examples/mvp-flow-00X/.cristalina-v4/` to see 
 cristalina-v4/
 ├── packages/
 │   ├── core/                      # @cristalina-v4/core — the governed memory kernel
-│   ├── openclaw-adapter/          # planned
-│   └── hermes-adapter/            # planned
+│   ├── openclaw-adapter/          # projection + write-through boundary for OpenClaw
+│   └── hermes-adapter/            # projection + write-through boundary for Hermes
 ├── docs/                          # architecture, contracts, flows, hardening plan
 │   ├── architecture.svg           # diagram embedded above
 │   └── architecture.html          # fully styled version with cards

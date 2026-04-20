@@ -132,6 +132,13 @@ export const SUBJECT_AUTHORITY_ROLES = [
   "external",
 ] as const;
 
+export const AUTHENTICATED_PRINCIPAL_KINDS = [
+  "owner",
+  "agent",
+  "participant",
+  "system",
+] as const;
+
 export type MemoryObjectKind = typeof MEMORY_OBJECT_KINDS[number];
 export type EpistemicState = typeof EPISTEMIC_STATES[number];
 export type GovernanceState = typeof GOVERNANCE_STATES[number];
@@ -151,6 +158,7 @@ export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_ST
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
 export type SubjectAuthorityRole = typeof SUBJECT_AUTHORITY_ROLES[number];
 export type CurationReviewKind = typeof CURATION_REVIEW_KINDS[number];
+export type AuthenticatedPrincipalKind = typeof AUTHENTICATED_PRINCIPAL_KINDS[number];
 
 export const DISPOSITION_OUTCOME_TARGET_LAYER: Record<DispositionOutcome, DispositionTargetLayer> = {
   evidence_only: "governance",
@@ -197,6 +205,12 @@ export interface Provenance {
   runtime_ref?: string | null;
   session_ref?: string | null;
   thread_ref?: string | null;
+}
+
+export interface AuthenticatedPrincipal {
+  kind: AuthenticatedPrincipalKind;
+  actor_ref?: string | null;
+  system_scope?: string | null;
 }
 
 export interface RecordEnvelope {

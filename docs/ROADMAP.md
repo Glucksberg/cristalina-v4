@@ -132,12 +132,14 @@ Phase 1 is complete only when the core can execute an end-to-end flow without an
 
 Goal:
 
-- prove the core against the first runtime adapter
+- prove the core against the first real runtime boundary
 
 Includes:
 
 - OpenClaw projection surfaces
 - OpenClaw ingest path
+- authenticated write-through surface
+- explicit owner/system queue actions across the adapter boundary
 - drift handling
 - runtime diagnostics feedback
 - fixture-driven round-trip tests
@@ -146,12 +148,13 @@ Includes:
 
 Goal:
 
-- prove runtime portability against a second agent runtime
+- prove runtime portability against a second real runtime boundary
 
 Includes:
 
 - Hermes projection surfaces
 - Hermes ingest path
+- authenticated write-through surface
 - Hermes-specific adapter contract
 - runtime-specific constraints and differences
 - round-trip tests matching the same core semantics
@@ -189,21 +192,22 @@ Includes:
 
 ## 3. Immediate Next Focus
 
-The immediate focus should remain inside Phase 1.
+The immediate focus now spans the Phase 1 to Phase 2 boundary.
 
 Specifically:
 
-1. shared object envelope across docs, schemas, and scaffold types
-2. runtime identity and storage convergence
-3. runtime-executable schema depth comparable to the current Cristalina line
-4. disposition record and intake fate baseline
-5. store manifest and reader/writer
-6. canonical object serializer
-7. proposal engine baseline
-8. canonical apply path
-9. common projection manifest
+1. keep the core contracts strong while expanding the first adapter-facing write boundaries
+2. preserve the distinction between `speaker_ref`, normalized subject, and authenticated acting principal
+3. make owner ratification, rejection, and expiration legal across the adapter boundary instead of only inside fixtures or direct core calls
+4. keep OpenClaw and Hermes write-through surfaces thin, explicit, and semantically subordinate to the core
+5. expand round-trip tests so runtime ingress, queue actions, and projection reads all execute the same authority law
+6. continue converging docs, schemas, fixtures, and executable code as the surface area moves beyond the core
 
-Only after these are solid should OpenClaw and Hermes adapters become the main implementation surface.
+The core is now reasonably established.
+
+That does not mean Phase 1 is "done".
+
+It means the next implementation pressure should come from real external boundaries while the core remains the lawmaking layer.
 
 ---
 

@@ -50,6 +50,7 @@ That means the adapter supplies:
 
 - source payload
 - provenance
+- authenticated principal
 - runtime identity context
 - profile-specific semantic overrides when needed
 
@@ -60,6 +61,25 @@ But the core still owns:
 - disposition routing
 - proposal semantics
 - contradiction surfacing
+- owner-authority legality
+
+### Authority rule
+
+Adapters must not treat `speaker_ref` or any other provenance field as proof of owner authority.
+
+They may transport:
+
+- who spoke
+- who is the normalized subject
+- which principal was authenticated for the write
+
+But they must keep those distinct.
+
+In particular:
+
+- `speaker_ref` is evidence provenance
+- `authenticated_principal` is the authority-bearing caller
+- queue expiration or owner-ratification actions must arrive with an explicit authenticated principal instead of relying on free-form `actor` strings
 
 ---
 
@@ -81,6 +101,7 @@ But the core still owns:
 - legality of transitions
 - authority boundaries between world, canon, wiki, and projections
 - distinction between actor identity, runtime instance, session, and thread
+- distinction between authenticated principal and evidence provenance
 
 ---
 

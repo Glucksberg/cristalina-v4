@@ -169,6 +169,22 @@ test("core integrity eval harness passes an applied contradiction-resolution flo
       },
       content_ref: "raw/sources/eval-002.json",
     },
+    identity_context: {
+      runtime: "openclaw",
+      ids: {
+        agent_identity: "actor_agent_eval_002",
+        owner_identity: "actor_owner_eval_002",
+        runtime_instance: "runtime_eval_002",
+        runtime_session: "session_eval_002",
+        conversation_thread: "thread_eval_002",
+      },
+      agent_label: "Cristalina Eval Agent",
+      owner_label: "Eval Owner",
+      session_objective: "Integrity eval contradiction flow",
+      session_summary: "Eval contradiction session",
+      message_refs: ["msg_eval_002"],
+      thread_summary: "Eval contradiction thread",
+    },
     ids: {
       observation: "obs_eval_002",
       episode: "ep_eval_002",
@@ -263,6 +279,20 @@ test("core integrity eval harness passes an applied contradiction-resolution flo
     contradiction_resolutions: [applied.resolution],
     wiki_pages: [intake.wiki_page],
     wiki_claims: [intake.wiki_claim],
+    runtime_identity: {
+      actor_identity: intake.agent_identity,
+      owner_identity: intake.owner_identity,
+      runtime_instance: intake.runtime_instance,
+      runtime_session: intake.runtime_session,
+      conversation_thread: intake.conversation_thread,
+    },
+    identity_context: {
+      actor_identity_ref: intake.agent_identity?.id ?? null,
+      owner_identity_ref: intake.owner_identity?.id ?? null,
+      runtime_instance_ref: intake.runtime_instance?.id ?? null,
+      runtime_session_ref: intake.runtime_session?.id ?? null,
+      conversation_thread_ref: intake.conversation_thread?.id ?? null,
+    },
     ids: {
       canon_artifact: "part_openclaw_canon_eval_002",
       world_artifact: "part_openclaw_world_eval_002",

@@ -87,6 +87,7 @@ That means the profile is semantic configuration, not a permission system.
 For group interaction specifically:
 
 - `speaker` attribution belongs in provenance, not in the profile
+- authenticated authority belongs in the caller contract, not in the profile
 - `subject` belongs in the profile or normalized input
 - `subject_authority_role` declares whether the subject should be treated as owner-, agent-, or participant-scoped for promotion law
 - owner authority belongs in governance law, not in the profile defaults
@@ -122,6 +123,7 @@ Current hardening direction:
 
 - the default conversation subject should remain a generic participant unless the source explicitly names another subject
 - a participant-originated claim about the owner should not become owner canon without a later authority step
+- a claimed owner `speaker_ref` should not bypass owner ratification without an authenticated owner principal
 
 ---
 

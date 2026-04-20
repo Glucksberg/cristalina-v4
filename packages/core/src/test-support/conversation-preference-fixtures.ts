@@ -1,3 +1,4 @@
+import type { AuthenticatedPrincipal } from "../types.js";
 import type { ConversationPreferenceStoreInput } from "../workflow-engine/conversation-preference-store.js";
 
 export interface ConversationPreferenceFlowInputFixtureInput {
@@ -6,6 +7,7 @@ export interface ConversationPreferenceFlowInputFixtureInput {
   actor: string;
   statement: string;
   validation_scope: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   ids: {
     agent_identity: string;
     owner_identity: string;
@@ -50,7 +52,7 @@ export interface ConversationPreferenceFlowInputFixtureInput {
   source: {
     source_ref: string;
     content_ref: string;
-    runtime: "openclaw";
+    runtime: "openclaw" | "hermes";
     message: string;
     speaker_ref?: string;
     message_refs: string[];
@@ -65,8 +67,9 @@ export function buildConversationPreferenceFlowInput(
     now: input.now,
     actor: input.actor,
     statement: input.statement,
+    ...(input.authenticated_principal ? { authenticated_principal: input.authenticated_principal } : {}),
     identity_context: {
-      runtime: "openclaw",
+      runtime: input.source.runtime,
       ids: {
         agent_identity: input.ids.agent_identity,
         owner_identity: input.ids.owner_identity,

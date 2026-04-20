@@ -38,6 +38,23 @@ This project is considered on the right path when:
 - end-to-end flows are executable before integrations become elaborate
 - the core gets stronger before the surface area gets wider
 
+## Deployment Trust Model
+
+For the current product line, Cristalina v4 should be developed under this operating assumption unless a task explicitly says otherwise:
+
+- the server environment is not exposed for arbitrary external-user access
+- the humans who can interact with the agent are known to and authorized by the owner
+- those humans are trusted collaborators of the owner, not hostile tenants or anonymous adversaries
+- those collaborators still do not automatically carry owner authority; governance, ratification, and authority checks must continue to model that distinction explicitly
+
+What this means in practice:
+
+- prioritize correctness, recoverability, replayability, auditability, and authority legality over hardening for hostile multi-tenant abuse
+- treat boundary and path-containment protections as integrity and operational-safety measures first, not as the primary security story
+- do not assume participant-to-participant secrecy as a default product requirement unless a task or spec explicitly introduces it
+- when reviewing or extending projection/read behavior, preserve the distinction between trusted collaboration and owner authority rather than silently collapsing them
+- keep authenticated caller authority separate from event provenance: `speaker_ref` explains who produced evidence, while authenticated principals explain who is legally acting across governance boundaries
+
 ## Anti-Drift Rule
 
 If a new change makes the project more impressive at the surface but weaker in:

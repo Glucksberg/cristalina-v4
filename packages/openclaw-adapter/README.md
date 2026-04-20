@@ -15,3 +15,5 @@ Current executable surface:
 - latest projection runtime loader
 - explicit access to `diagnostics`, `reviews`, `pending_reviews`, and `closed_reviews`
 - consumption of `ProjectionManifest.review_refs` and bootstrap review sections without defining new memory law in the adapter
+- authenticated write-through ingress for conversation preference and OpenClaw feedback flows
+- authenticated owner/system queue actions forwarded to the core without redefining authority law

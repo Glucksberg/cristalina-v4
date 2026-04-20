@@ -35,6 +35,7 @@ import {
 import { atomicWriteText, isMissingFileError } from "../store/atomic-write.js";
 import type {
   ActorIdentity,
+  AuthenticatedPrincipal,
   CanonicalMemoryObject,
   ContradictionResolution,
   ContradictionResolutionStrategy,
@@ -107,6 +108,7 @@ export interface ConversationPreferenceStoreInput {
   actor: string;
   statement: string;
   intake_kind?: SourceIntakeKind;
+  authenticated_principal?: AuthenticatedPrincipal;
   identity_context?: ConversationPreferenceRuntimeIdentityContext;
   semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
   source: {
@@ -204,6 +206,7 @@ export interface ConversationPreferenceQueuedRatificationInput {
   queue_id: string;
   now: string;
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   owner_actor_ref?: string;
   validation_scope?: string;
 }
@@ -213,6 +216,7 @@ export interface ConversationPreferenceQueuedRejectionInput {
   queue_id: string;
   now: string;
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   owner_actor_ref?: string;
   validation_scope?: string;
 }
@@ -222,6 +226,7 @@ export interface ConversationPreferenceQueuedExpirationInput {
   queue_id: string;
   now: string;
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   validation_scope?: string;
 }
 
@@ -621,8 +626,19 @@ function applyExplicitManualContradictionReview(input: {
   });
 }
 
+function assertAuthenticatedPrincipalMatchesActor(input: {
+  actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
+}): void {
+  const actorRef = input.authenticated_principal?.actor_ref?.trim();
+  if (actorRef && actorRef !== input.actor) {
+    throw new Error(`Authenticated principal actor_ref ${actorRef} must match actor ${input.actor}`);
+  }
+}
+
 function assertAuthorizedOwnerAction(input: {
   actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
   owner_actor_ref?: string;
   owner_identity_ref?: string | null;
   action: "ratification" | "rejection";
@@ -631,8 +647,16 @@ function assertAuthorizedOwnerAction(input: {
     throw new Error(`Deferred conversation preference flow does not carry an owner identity`);
   }
 
-  if (input.actor !== input.owner_identity_ref) {
-    throw new Error(`Explicit owner ${input.action} requires actor ${input.owner_identity_ref}`);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
+  });
+
+  if (
+    input.authenticated_principal?.kind !== "owner" ||
+    input.authenticated_principal.actor_ref?.trim() !== input.owner_identity_ref
+  ) {
+    throw new Error(`Explicit owner ${input.action} requires authenticated owner principal ${input.owner_identity_ref}`);
   }
 
   if (
@@ -641,6 +665,34 @@ function assertAuthorizedOwnerAction(input: {
   ) {
     throw new Error(`Explicit owner ${input.action} requires owner_actor_ref ${input.owner_identity_ref}`);
   }
+}
+
+function assertAuthorizedOwnerReviewExpiration(input: {
+  actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
+  owner_identity_ref?: string | null;
+}): void {
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
+  });
+
+  if (input.authenticated_principal?.kind === "system") {
+    return;
+  }
+
+  if (!input.owner_identity_ref) {
+    throw new Error("Deferred conversation preference flow does not carry an owner identity");
+  }
+
+  if (
+    input.authenticated_principal?.kind === "owner" &&
+    input.authenticated_principal.actor_ref?.trim() === input.owner_identity_ref
+  ) {
+    return;
+  }
+
+  throw new Error(`Owner review expiration requires authenticated system principal or owner ${input.owner_identity_ref}`);
 }
 
 async function writeTextFile(filePath: string, content: string): Promise<void> {
@@ -2854,6 +2906,7 @@ function buildPreviewIntake(
       now: string;
       statement: string;
       source_record: SourceRecord;
+      authenticated_principal?: AuthenticatedPrincipal;
       identity_context?: ConversationPreferenceRuntimeIdentityContext;
       semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
       ids: ConversationPreferenceStoreInput["ids"] & {
@@ -2869,6 +2922,7 @@ function buildPreviewIntake(
     now: input.now,
     statement: input.statement,
     source_record,
+    authenticated_principal: input.authenticated_principal,
     identity_context: input.identity_context,
     semantic_profile: input.semantic_profile,
     ids: {
@@ -2904,6 +2958,7 @@ async function buildExpectedIntakeForStore(
       now: string;
       statement: string;
       source_record: SourceRecord;
+      authenticated_principal?: AuthenticatedPrincipal;
       identity_context?: ConversationPreferenceRuntimeIdentityContext;
       semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
       ids: ConversationPreferenceStoreInput["ids"] & {
@@ -3025,6 +3080,10 @@ export async function writeConversationPreferenceFlowToStore(
   input: ConversationPreferenceStoreInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
+  });
   await initializeStore(rootDir, input.now);
 
   return withStoreWriteLock(rootDir, `conversation_preference_write:${input.ids.proposal}`, async () => {
@@ -3796,6 +3855,7 @@ async function applyOwnerRatificationToExistingFlow(
   input: {
     now: string;
     actor: string;
+    authenticated_principal?: AuthenticatedPrincipal;
     owner_actor_ref?: string;
     validation_scope?: string;
   },
@@ -3815,6 +3875,7 @@ async function applyOwnerRatificationToExistingFlow(
   const ownerIdentityRef = existingFlow.records.intake.owner_identity?.id;
   assertAuthorizedOwnerAction({
     actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
     owner_actor_ref: input.owner_actor_ref,
     owner_identity_ref: ownerIdentityRef,
     action: "ratification",
@@ -4152,6 +4213,7 @@ async function closeOwnerReviewQueueToExistingFlow(
   input: {
     now: string;
     actor: string;
+    authenticated_principal?: AuthenticatedPrincipal;
     owner_actor_ref?: string;
     validation_scope?: string;
     queue_status: "answered" | "expired";
@@ -4174,9 +4236,16 @@ async function closeOwnerReviewQueueToExistingFlow(
   if (input.queue_status === "answered") {
     assertAuthorizedOwnerAction({
       actor: input.actor,
+      authenticated_principal: input.authenticated_principal,
       owner_actor_ref: input.owner_actor_ref,
       owner_identity_ref: ownerIdentityRef,
       action: "rejection",
+    });
+  } else {
+    assertAuthorizedOwnerReviewExpiration({
+      actor: input.actor,
+      authenticated_principal: input.authenticated_principal,
+      owner_identity_ref: ownerIdentityRef,
     });
   }
 
@@ -4513,13 +4582,17 @@ export async function ratifyDeferredConversationPreferenceProposalToStore(
   input: ConversationPreferenceOwnerRatificationInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  const flowLookupInput = {
+    ...input,
+    authenticated_principal: undefined,
+  };
   return withStoreWriteLock(
     rootDir,
     `conversation_preference_owner_ratification:${input.ids.proposal}`,
     async () => {
       await recoverOwnerRatificationApplication(rootDir, input);
 
-      const existingFlow = await readConversationPreferenceFlowResultInternal(input, { repair: true });
+      const existingFlow = await readConversationPreferenceFlowResultInternal(flowLookupInput, { repair: true });
       if (!existingFlow) {
         throw new Error("Conversation preference flow must exist before explicit owner ratification");
       }

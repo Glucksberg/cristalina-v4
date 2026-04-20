@@ -42,6 +42,15 @@ For the current product line, runtime identity also assumes:
 
 `speaker` remains an event-level role attached to turns or evidence, not a new durable identity family.
 
+Separately, the executable boundary now also distinguishes an authenticated acting principal:
+
+- owner
+- agent
+- participant
+- system
+
+That acting principal is not the same thing as `speaker`.
+
 ---
 
 ## 3. Core Families
@@ -80,6 +89,7 @@ That means:
 - memory may be shared across participants in the same owner-controlled context
 - authority still anchors to the runtime's owner identity
 - turn-level attribution must come from provenance, not from thread ownership alone
+- owner-scoped promotion must come from an authenticated owner principal, not from a turn merely claiming to be from the owner
 
 ---
 
@@ -113,6 +123,8 @@ The runtime layer should reserve first-class space for:
 The canonical identity layer should preserve durable self and owner identity separately from runtime execution state.
 
 It should not silently collapse all group participants into the owner identity just because they share a thread.
+
+It also should not silently collapse the authenticated caller into the evidence speaker.
 
 ---
 
@@ -154,3 +166,5 @@ They must not redefine:
 The adapter layer may translate.
 
 It may not legislate identity semantics.
+
+It also may not promote provenance into authority.

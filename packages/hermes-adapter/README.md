@@ -15,3 +15,5 @@ Current executable surface:
 - latest projection runtime loader
 - explicit access to `diagnostics`, `reviews`, `pending_reviews`, and `closed_reviews`
 - consumption of `ProjectionManifest.review_refs` and Hermes projection artifacts without defining new memory law in the adapter
+- authenticated write-through ingress for Hermes conversation-preference flows
+- authenticated owner/system queue actions forwarded to the core without redefining authority law
