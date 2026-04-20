@@ -87,6 +87,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-20: Adapter hardening only stays honest when write-through entrypoints require authenticated principals in the public contract, and adapter tests prove that requirement by constructing adapter-typed inputs instead of relying on broader core fixtures.
 - 2026-04-17: Write-path hardening only closes when raw ingress paths obey the same root-scoped containment law as authoritative storage, durability covers append-style audit replay as well as record replacement, and clean builds prove the current source instead of stale artifacts.
 - 2026-04-17: Governance and recovery hardening only close when terminal review outcomes are explicit in the persisted contract, validation audit phases remain append-only across the same proposal lifecycle, and subject identity is carried by stable authority refs instead of adapter labels.
 - 2026-04-17: Conflict and projection hardening only close when deferred promotion replays the current world-conflict gate at approval time, manual-review contradictions persist as explicit queue state with a legal replayable exit, and derived artifact paths and latest-view selection both stay bound to the same root-scoped and context-scoped authority as authoritative recovery and storage.
