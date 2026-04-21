@@ -205,15 +205,24 @@ Attachment refs in this path are references to bounded raw evidence only. They m
 
 ---
 
-## 7. Phase C: Build The Wiki Maintenance Road
+## 7. Phase C: Build The Wiki And Memory Browser Road
 
 ### Goal
 
-Turn the wiki from projected editorial records into a maintained derived/editorial layer.
+Turn the wiki from projected editorial records into a maintained derived/editorial layer, and expose the whole memory store through a read-only Memory Browser projection.
 
 ### Work
 
 - Define `WikiMaintenanceRun` or equivalent minimal workflow contract.
+- Define event-driven wiki maintenance as the product model:
+  - `source_ingested`
+  - `page_refreshed`
+  - `query_captured`
+  - `lint_run`
+  - `claim_superseded`
+  - `session_crystallized`
+  - `retention_reviewed`
+- Keep explicit workflow entrypoints for tests, replay, recovery, and operator-forced repair; manual invocation is an operational fallback, not the expected product model.
 - Define a wiki maintainer contract modeled on the LLM Wiki pattern:
   - immutable raw sources
   - LLM-maintained Markdown pages
@@ -223,6 +232,7 @@ Turn the wiki from projected editorial records into a maintained derived/editori
 - Implement source summary creation for selected source records.
 - Implement page refresh for existing wiki pages from upstream refs, including touched entity/concept/topic/comparison pages.
 - Implement wiki claim extraction with explicit `support_refs`.
+- Add wiki lifecycle and quality metadata: `confidence_score`, `support_count`, `last_confirmed_at`, `last_seen_at`, `staleness_state`, `supersedes_ref`, `superseded_by_ref`, `retention_priority`, and `quality_score`.
 - Maintain `wiki/index.md` as a compact catalog with page links, one-line summaries, page kind, last updated date, and upstream/source counts.
 - Maintain `wiki/log.md` as a parseable chronological record of ingests, refreshes, query captures, lint passes, and review actions.
 - Allow high-value query answers to be filed back into the wiki as analysis, synthesis, comparison, or research-question pages with explicit upstream refs.
@@ -238,6 +248,9 @@ Turn the wiki from projected editorial records into a maintained derived/editori
 - Define when a wiki claim may emit a proposal candidate, without letting wiki become canon.
 - Forbid proposal candidates from wiki prose alone; proposal generation must dereference eligible upstream source/world/canon/governance records.
 - Treat optional wiki search tools as acceleration only; `index.md` remains the baseline navigation contract and embeddings must not become the authority layer.
+- Maintain a derived editorial wiki graph with typed edges such as `mentions`, `summarizes`, `compares`, `supports`, `contradicts`, and `supersedes`; graph edges are navigation/index artifacts, not authority.
+- Add a `memory_browser` projection profile that emits read-only browser artifacts for wiki, canon, world, governance, raw, runtime, audits, and derived records.
+- Keep the browser projection read-only and downstream of core records, manifests, diagnostics, and wiki maintenance runs.
 
 ### Tests
 
@@ -249,6 +262,7 @@ Turn the wiki from projected editorial records into a maintained derived/editori
 - A wiki-claim proposal fixture must prove that wiki-originated proposals still pass through governance.
 - A wiki-claim proposal fixture must reject prose-only proposal extraction when no upstream refs support the claim.
 - Projection must label wiki content as editorial and non-authoritative.
+- Memory Browser projection must expose layer counts, refs, diagnostics, wiki lifecycle state, governance queues, and projection suppression reasons without creating new authority.
 
 ### Acceptance Criteria
 
@@ -257,6 +271,7 @@ Turn the wiki from projected editorial records into a maintained derived/editori
 - Wiki diagnostics are inspectable from projection/runtime views.
 - The wiki compounds knowledge across ingest and query flows without forcing raw-source rereads for every question.
 - Index and log files remain useful to both LLM agents and humans while staying downstream of authoritative records.
+- A read-only Memory Browser projection lets humans inspect the whole memory state while all semantics remain defined by core records and projections.
 
 ---
 

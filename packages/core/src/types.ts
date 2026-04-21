@@ -111,6 +111,33 @@ export const NON_CANONICAL_INTAKE_MODES = [
   "diagnostic_only",
 ] as const;
 
+export const WIKI_MAINTENANCE_EVENTS = [
+  "source_ingested",
+  "page_refreshed",
+  "query_captured",
+  "lint_run",
+  "claim_superseded",
+  "session_crystallized",
+  "retention_reviewed",
+] as const;
+
+export const WIKI_STALENESS_STATES = [
+  "current",
+  "stale",
+  "disputed",
+  "superseded",
+  "needs_review",
+] as const;
+
+export const WIKI_GRAPH_EDGE_TYPES = [
+  "mentions",
+  "summarizes",
+  "compares",
+  "supports",
+  "contradicts",
+  "supersedes",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -160,6 +187,9 @@ export type ProposalOperation = typeof PROPOSAL_OPERATIONS[number];
 export type ProposalStageState = Exclude<GovernanceState, "ratified" | "superseded">;
 export type DispositionOutcome = typeof DISPOSITION_OUTCOMES[number];
 export type NonCanonicalIntakeMode = typeof NON_CANONICAL_INTAKE_MODES[number];
+export type WikiMaintenanceEvent = typeof WIKI_MAINTENANCE_EVENTS[number];
+export type WikiStalenessState = typeof WIKI_STALENESS_STATES[number];
+export type WikiGraphEdgeType = typeof WIKI_GRAPH_EDGE_TYPES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
@@ -479,12 +509,19 @@ export interface WikiPage extends RecordEnvelope {
   kind: "wiki_page";
   layer: "wiki";
   authoritative_home: "wiki";
-  page_kind: "source" | "entity" | "topic" | "comparison" | "synthesis" | "index" | "log";
+  page_kind: "source" | "entity" | "topic" | "comparison" | "synthesis" | "analysis" | "query_answer" | "research_question" | "index" | "log";
   title: string;
   path: string;
   source_refs: string[];
   canonical_refs: string[];
   world_refs: string[];
+  wiki_claim_refs?: string[];
+  outgoing_links?: string[];
+  incoming_links?: string[];
+  index_summary?: string;
+  quality_score?: number;
+  retention_priority?: "low" | "normal" | "high";
+  staleness_state?: WikiStalenessState;
 }
 
 export interface WikiClaim extends RecordEnvelope {
@@ -493,8 +530,40 @@ export interface WikiClaim extends RecordEnvelope {
   authoritative_home: "wiki";
   statement: string;
   page_ref: string;
-  claim_status: "editorial" | "candidate_for_promotion" | "rejected";
+  claim_status: "editorial" | "candidate_for_promotion" | "rejected" | "stale" | "disputed" | "superseded";
   source_refs: string[];
+  support_refs?: string[];
+  confidence_score?: number;
+  support_count?: number;
+  last_confirmed_at?: string | null;
+  last_seen_at?: string | null;
+  staleness_state?: WikiStalenessState;
+  supersedes_ref?: string | null;
+  superseded_by_ref?: string | null;
+  retention_priority?: "low" | "normal" | "high";
+  quality_score?: number;
+}
+
+export interface WikiGraphEdge {
+  edge_type: WikiGraphEdgeType;
+  from_ref: Reference;
+  to_ref: Reference;
+  upstream_refs: string[];
+}
+
+export interface WikiMaintenanceRun extends RecordEnvelope {
+  kind: "wiki_maintenance_run";
+  layer: "wiki";
+  authoritative_home: "wiki";
+  event: WikiMaintenanceEvent;
+  status: "completed" | "completed_with_diagnostics" | "rejected";
+  input_refs: string[];
+  page_refs: string[];
+  claim_refs: string[];
+  diagnostic_refs: string[];
+  graph_edges: WikiGraphEdge[];
+  quality_score?: number;
+  retention_reviewed_refs?: string[];
 }
 
 export interface ProjectionArtifact extends RecordEnvelope {
@@ -578,6 +647,7 @@ export type CoreRecord =
   | PolicySnapshot
   | WikiPage
   | WikiClaim
+  | WikiMaintenanceRun
   | ProjectionArtifact
   | ProjectionManifest
   | Diagnostic

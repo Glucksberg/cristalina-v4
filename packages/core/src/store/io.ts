@@ -24,6 +24,7 @@ import type {
   ProjectionManifest,
   ProjectionArtifact,
   WikiClaim,
+  WikiMaintenanceRun,
   WikiPage,
   WorldClaim,
 } from "../types.js";
@@ -98,6 +99,8 @@ function extensionlessRecordPath(record: CoreRecord): string {
       return join(STORAGE_LAYOUT.wiki.pages, record.id);
     case "wiki_claim":
       return join(STORAGE_LAYOUT.wiki.claims, record.id);
+    case "wiki_maintenance_run":
+      return join(STORAGE_LAYOUT.wiki.runs, record.id);
     case "projection_artifact":
       return join(record.adapter === "openclaw" ? STORAGE_LAYOUT.derived.openclaw : STORAGE_LAYOUT.derived.hermes, record.id);
     case "projection_manifest":
@@ -189,6 +192,7 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
     STORAGE_LAYOUT.wiki.root,
     STORAGE_LAYOUT.wiki.pages,
     STORAGE_LAYOUT.wiki.claims,
+    STORAGE_LAYOUT.wiki.runs,
     STORAGE_LAYOUT.governance.root,
     STORAGE_LAYOUT.governance.proposals,
     STORAGE_LAYOUT.governance.dispositions,
@@ -348,6 +352,11 @@ export async function loadWikiPages(rootDir: string): Promise<WikiPage[]> {
 export async function loadWikiClaims(rootDir: string): Promise<WikiClaim[]> {
   const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.wiki.claims);
   return records.filter((record): record is WikiClaim => record.kind === "wiki_claim");
+}
+
+export async function loadWikiMaintenanceRuns(rootDir: string): Promise<WikiMaintenanceRun[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.wiki.runs);
+  return records.filter((record): record is WikiMaintenanceRun => record.kind === "wiki_maintenance_run");
 }
 
 export async function loadDiagnostics(rootDir: string): Promise<Diagnostic[]> {

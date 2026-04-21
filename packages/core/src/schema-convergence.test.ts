@@ -18,6 +18,8 @@ import {
   SUBJECT_AUTHORITY_ROLES,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
+  WIKI_GRAPH_EDGE_TYPES,
+  WIKI_MAINTENANCE_EVENTS,
 } from "./types.js";
 import { resolvePreferenceSignalSemanticProfile } from "./workflow-engine/source-intake.js";
 
@@ -148,6 +150,15 @@ test("non-canonical intake schema stays aligned with executable disposition mode
   const properties = schema.properties ?? {};
 
   assert.deepEqual(expectEnum(properties.mode), [...NON_CANONICAL_INTAKE_MODES]);
+});
+
+test("wiki maintenance run schema stays aligned with executable wiki events", async () => {
+  const schema = await readSchema("../../schemas/wiki-maintenance-run.schema.json");
+  const properties = schema.properties ?? {};
+  const graphEdgeItems = (properties.graph_edges as { items?: { properties?: Record<string, unknown> } } | undefined)?.items;
+
+  assert.deepEqual(expectEnum(properties.event), [...WIKI_MAINTENANCE_EVENTS]);
+  assert.deepEqual(expectEnum(graphEdgeItems?.properties?.edge_type), [...WIKI_GRAPH_EDGE_TYPES]);
 });
 
 test("projection manifest schema stays aligned with adapter and read-discipline contracts", async () => {

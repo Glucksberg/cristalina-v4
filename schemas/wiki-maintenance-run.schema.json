@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/wiki-maintenance-run.schema.json",
+  "title": "Cristalina v4 Wiki Maintenance Run",
+  "type": "object",
+  "required": [
+    "kind",
+    "layer",
+    "authoritative_home",
+    "event",
+    "status",
+    "input_refs",
+    "page_refs",
+    "claim_refs",
+    "diagnostic_refs",
+    "graph_edges"
+  ],
+  "properties": {
+    "kind": {
+      "const": "wiki_maintenance_run"
+    },
+    "layer": {
+      "const": "wiki"
+    },
+    "authoritative_home": {
+      "const": "wiki"
+    },
+    "event": {
+      "type": "string",
+      "enum": [
+        "source_ingested",
+        "page_refreshed",
+        "query_captured",
+        "lint_run",
+        "claim_superseded",
+        "session_crystallized",
+        "retention_reviewed"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "completed_with_diagnostics",
+        "rejected"
+      ]
+    },
+    "input_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "page_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "claim_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "diagnostic_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "graph_edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "edge_type",
+          "from_ref",
+          "to_ref",
+          "upstream_refs"
+        ],
+        "properties": {
+          "edge_type": {
+            "type": "string",
+            "enum": [
+              "mentions",
+              "summarizes",
+              "compares",
+              "supports",
+              "contradicts",
+              "supersedes"
+            ]
+          },
+          "from_ref": {
+            "type": "object"
+          },
+          "to_ref": {
+            "type": "object"
+          },
+          "upstream_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

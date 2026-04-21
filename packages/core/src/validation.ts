@@ -31,6 +31,9 @@ import {
   SUBJECT_AUTHORITY_ROLES,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
+  WIKI_GRAPH_EDGE_TYPES,
+  WIKI_MAINTENANCE_EVENTS,
+  WIKI_STALENESS_STATES,
 } from "./types.js";
 import {
   CONTRADICTION_RESOLUTION_SCHEMA_ID,
@@ -652,7 +655,7 @@ function validateWikiPage(value: unknown): ValidationIssue[] {
   if (value.kind !== "wiki_page") issues.push({ path: "kind", message: 'expected "wiki_page"' });
   if (value.layer !== "wiki") issues.push({ path: "layer", message: 'expected "wiki"' });
   if (value.authoritative_home !== "wiki") issues.push({ path: "authoritative_home", message: 'expected "wiki"' });
-  if (!isEnumValue(value.page_kind, ["source", "entity", "topic", "comparison", "synthesis", "index", "log"] as const)) {
+  if (!isEnumValue(value.page_kind, ["source", "entity", "topic", "comparison", "synthesis", "analysis", "query_answer", "research_question", "index", "log"] as const)) {
     issues.push({ path: "page_kind", message: "expected legal wiki page kind" });
   }
   pushRequiredString(issues, value, "title");
@@ -663,6 +666,22 @@ function validateWikiPage(value: unknown): ValidationIssue[] {
   pushStringArray(issues, value, "source_refs");
   pushStringArray(issues, value, "canonical_refs");
   pushStringArray(issues, value, "world_refs");
+  for (const optionalArray of ["wiki_claim_refs", "outgoing_links", "incoming_links"] as const) {
+    if (value[optionalArray] !== undefined && !isStringArray(value[optionalArray])) {
+      issues.push({ path: optionalArray, message: "expected string array" });
+    }
+  }
+  for (const numericKey of ["quality_score"] as const) {
+    if (value[numericKey] !== undefined && typeof value[numericKey] !== "number") {
+      issues.push({ path: numericKey, message: "expected number" });
+    }
+  }
+  if (value.retention_priority !== undefined && !isEnumValue(value.retention_priority, ["low", "normal", "high"] as const)) {
+    issues.push({ path: "retention_priority", message: "expected one of: low, normal, high" });
+  }
+  if (value.staleness_state !== undefined && !isEnumValue(value.staleness_state, WIKI_STALENESS_STATES)) {
+    issues.push({ path: "staleness_state", message: `expected one of: ${WIKI_STALENESS_STATES.join(", ")}` });
+  }
   if (value.governance_state !== undefined) {
     issues.push({ path: "governance_state", message: "wiki pages cannot carry canonical governance state" });
   }
@@ -680,10 +699,34 @@ function validateWikiClaim(value: unknown): ValidationIssue[] {
   if (value.authoritative_home !== "wiki") issues.push({ path: "authoritative_home", message: 'expected "wiki"' });
   pushRequiredString(issues, value, "statement");
   pushRequiredString(issues, value, "page_ref");
-  if (!isEnumValue(value.claim_status, ["editorial", "candidate_for_promotion", "rejected"] as const)) {
+  if (!isEnumValue(value.claim_status, ["editorial", "candidate_for_promotion", "rejected", "stale", "disputed", "superseded"] as const)) {
     issues.push({ path: "claim_status", message: "expected legal wiki claim status" });
   }
   pushStringArray(issues, value, "source_refs");
+  if (value.support_refs !== undefined && !isStringArray(value.support_refs)) {
+    issues.push({ path: "support_refs", message: "expected string array" });
+  }
+  for (const numericKey of ["confidence_score", "support_count", "quality_score"] as const) {
+    if (value[numericKey] !== undefined && typeof value[numericKey] !== "number") {
+      issues.push({ path: numericKey, message: "expected number" });
+    }
+  }
+  for (const timestampKey of ["last_confirmed_at", "last_seen_at"] as const) {
+    if (value[timestampKey] !== undefined && value[timestampKey] !== null && !isIsoTimestamp(value[timestampKey])) {
+      issues.push({ path: timestampKey, message: "expected ISO-like timestamp or null" });
+    }
+  }
+  if (value.staleness_state !== undefined && !isEnumValue(value.staleness_state, WIKI_STALENESS_STATES)) {
+    issues.push({ path: "staleness_state", message: `expected one of: ${WIKI_STALENESS_STATES.join(", ")}` });
+  }
+  for (const refKey of ["supersedes_ref", "superseded_by_ref"] as const) {
+    if (value[refKey] !== undefined && value[refKey] !== null && typeof value[refKey] !== "string") {
+      issues.push({ path: refKey, message: "expected string or null" });
+    }
+  }
+  if (value.retention_priority !== undefined && !isEnumValue(value.retention_priority, ["low", "normal", "high"] as const)) {
+    issues.push({ path: "retention_priority", message: "expected one of: low, normal, high" });
+  }
   if (value.governance_state !== undefined) {
     issues.push({ path: "governance_state", message: "wiki claims cannot carry canonical governance state" });
   }
@@ -692,6 +735,44 @@ function validateWikiClaim(value: unknown): ValidationIssue[] {
   }
   if (value.temporal_state !== undefined) {
     issues.push({ path: "temporal_state", message: "wiki claims should reference world/canon temporality instead of defining it" });
+  }
+  return issues;
+}
+
+function validateWikiMaintenanceRun(value: unknown): ValidationIssue[] {
+  const issues = validateEnvelope(value);
+  if (!isRecord(value)) return issues;
+  if (value.kind !== "wiki_maintenance_run") issues.push({ path: "kind", message: 'expected "wiki_maintenance_run"' });
+  if (value.layer !== "wiki") issues.push({ path: "layer", message: 'expected "wiki"' });
+  if (value.authoritative_home !== "wiki") issues.push({ path: "authoritative_home", message: 'expected "wiki"' });
+  pushEnum(issues, value, "event", WIKI_MAINTENANCE_EVENTS);
+  if (!isEnumValue(value.status, ["completed", "completed_with_diagnostics", "rejected"] as const)) {
+    issues.push({ path: "status", message: "expected legal wiki maintenance status" });
+  }
+  for (const key of ["input_refs", "page_refs", "claim_refs", "diagnostic_refs"] as const) {
+    pushStringArray(issues, value, key);
+  }
+  if (!Array.isArray(value.graph_edges)) {
+    issues.push({ path: "graph_edges", message: "expected array" });
+  } else {
+    value.graph_edges.forEach((edge, index) => {
+      if (!isRecord(edge)) {
+        issues.push({ path: `graph_edges.${index}`, message: "expected object" });
+        return;
+      }
+      pushEnum(issues, edge, "edge_type", WIKI_GRAPH_EDGE_TYPES, `graph_edges.${index}.edge_type`);
+      pushReference(issues, edge.from_ref, `graph_edges.${index}.from_ref`);
+      pushReference(issues, edge.to_ref, `graph_edges.${index}.to_ref`);
+      if (!isStringArray(edge.upstream_refs)) {
+        issues.push({ path: `graph_edges.${index}.upstream_refs`, message: "expected string array" });
+      }
+    });
+  }
+  if (value.quality_score !== undefined && typeof value.quality_score !== "number") {
+    issues.push({ path: "quality_score", message: "expected number" });
+  }
+  if (value.retention_reviewed_refs !== undefined && !isStringArray(value.retention_reviewed_refs)) {
+    issues.push({ path: "retention_reviewed_refs", message: "expected string array" });
   }
   return issues;
 }
@@ -956,6 +1037,8 @@ export function validateCoreRecord(value: unknown): ValidationIssue[] {
       return validateWikiPage(value);
     case "wiki_claim":
       return validateWikiClaim(value);
+    case "wiki_maintenance_run":
+      return validateWikiMaintenanceRun(value);
     case "projection_artifact":
       return validateProjectionArtifact(value);
     case "projection_manifest":

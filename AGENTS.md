@@ -87,6 +87,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-21: Wiki memory only stays coherent when maintenance events, lifecycle metadata, lint diagnostics, and browser projections remain downstream of upstream evidence and governance-owned promotion.
 - 2026-04-21: Non-canonical intake only becomes a real road when raw evidence, runtime context, diagnostics, and projection visibility prove their routing without silently creating canon or wiki truth.
 - 2026-04-21: Generic runners only become reusable roadbed when registered profiles declare their semantic fingerprint while shared store machinery owns durability, replay, validation, and reuse law.
 - 2026-04-20: Adapter and governance hardening only stay honest when write-through entrypoints require authenticated principals in the public contract, terminal review paths persist authenticated authority in the durable contract, queued recovery replays the exact journal for the legal action being resumed, manual contradiction review obeys the same explicit authority law as owner-facing queue actions, flow reuse invalidates when authenticated authority changes, system actions carry stable machine identity instead of nominal role labels, and adapter-facing tests prove the contract at the same boundary the workspace validates.

@@ -42,6 +42,7 @@ export const STORAGE_LAYOUT = {
     root: "wiki",
     pages: "wiki/pages",
     claims: "wiki/claims",
+    runs: "wiki/runs",
     index: "wiki/index.md",
     log: "wiki/log.md",
   },
