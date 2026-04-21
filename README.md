@@ -114,6 +114,7 @@ The docs are organized by purpose. Start with the first three if you're new.
 - [docs/RUNTIME-IDENTITY.md](docs/RUNTIME-IDENTITY.md), [docs/DISPOSITION-AND-CONSOLIDATION.md](docs/DISPOSITION-AND-CONSOLIDATION.md)
 - [docs/ADAPTER-CONTRACTS.md](docs/ADAPTER-CONTRACTS.md), [docs/SOURCE-INTAKE-PROFILES.md](docs/SOURCE-INTAKE-PROFILES.md)
 - [docs/PROJECTION-READ-DISCIPLINE.md](docs/PROJECTION-READ-DISCIPLINE.md), [docs/KNOWLEDGE-WIKI-LAYER.md](docs/KNOWLEDGE-WIKI-LAYER.md)
+- [docs/OPERATIONAL-SESSION-MEMORY-RFC-V2.md](docs/OPERATIONAL-SESSION-MEMORY-RFC-V2.md) — continuity contract for checkpoints and derived session packs
 
 **Flows**
 - [docs/INFORMATION-FLOW.md](docs/INFORMATION-FLOW.md), [docs/MODULE-FLOWS.md](docs/MODULE-FLOWS.md)
