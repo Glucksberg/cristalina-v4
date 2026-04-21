@@ -55,6 +55,14 @@ The MVP should begin with these type families:
 - `RetrievalCandidate`
 - `RetrievalResult`
 - `RetrievalTrace`
+- `VectorCorpus`
+- `VectorChunk`
+- `EmbeddingModelManifest`
+- `EmbeddingRecord`
+- `EmbeddingBatchRun`
+- `VectorIndexManifest`
+- `VectorSearchRun`
+- `RetrievalAudit`
 
 These are not all equally mature.
 
@@ -686,6 +694,53 @@ Minimum query/result families:
 Retrieval candidates must preserve layer, authority, provenance-bearing refs, symbol refs, scoring signals, inclusion reasons, suppression reasons, and explicit proposal-support legality.
 
 Wiki/editorial candidates may be useful retrieval results, but proposal support must come from eligible upstream refs rather than score or wiki prose alone.
+
+### 4.28 Vector Artifact Contracts
+
+Vector artifacts represent rebuildable derived records, not a new authority layer.
+
+Minimum vector families:
+
+- `VectorCorpus`
+- `VectorChunk`
+- `EmbeddingModelManifest`
+- `EmbeddingRecord`
+- `EmbeddingBatchRun`
+- `VectorIndexManifest`
+- `VectorSearchRun`
+- `RetrievalAudit`
+
+Minimum chunk fields:
+
+- `id`
+- `kind`
+- `layer`
+- `authoritative_home`
+- `source_ref`
+- `source_layer`
+- `chunk_text_ref`
+- `chunk_hash`
+- `chunk_policy_version`
+- `symbol_refs`
+- `upstream_refs`
+- `corpus_generation`
+- `chunk_generation`
+- `normalized_text_hash`
+- `source_record_hash`
+
+Minimum embedding and index fields:
+
+- `embedding_model_ref`
+- `dimensions`
+- `metric`
+- `vector_encoding`
+- `source_text_hash`
+- `vector_checksum`
+- `corpus_generation`
+- `embedding_generation`
+- `index_generation`
+
+Every vector artifact must be recoverable from upstream records or from schema-validated metadata plus referenced sidecar blobs. Vector score may influence retrieval rank, but it must not decide authority, truth, visibility, or proposal legality.
 
 ---
 

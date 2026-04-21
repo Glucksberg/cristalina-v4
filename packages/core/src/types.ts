@@ -181,6 +181,30 @@ export const RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES = [
   "allow_normalized",
 ] as const;
 
+export const VECTOR_METRICS = [
+  "cosine",
+  "dot",
+  "euclidean",
+] as const;
+
+export const VECTOR_ENCODINGS = [
+  "json_float32",
+  "binary_float32",
+  "binary_float16",
+] as const;
+
+export const VECTOR_INDEX_KINDS = [
+  "exact",
+  "ann",
+] as const;
+
+export const VECTOR_BLOB_ENCODINGS = [
+  "utf8_text",
+  "json_float32",
+  "binary_float32",
+  "binary_float16",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -238,6 +262,10 @@ export type SymbolAnchorLifecycleState = typeof SYMBOL_ANCHOR_LIFECYCLE_STATES[n
 export type RetrievalAuthority = typeof RETRIEVAL_AUTHORITIES[number];
 export type RetrievalSuppressionReason = typeof RETRIEVAL_SUPPRESSION_REASONS[number];
 export type RetrievalExternalCandidatePolicy = typeof RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES[number];
+export type VectorMetric = typeof VECTOR_METRICS[number];
+export type VectorEncoding = typeof VECTOR_ENCODINGS[number];
+export type VectorIndexKind = typeof VECTOR_INDEX_KINDS[number];
+export type VectorBlobEncoding = typeof VECTOR_BLOB_ENCODINGS[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
@@ -411,6 +439,15 @@ export interface RetrievalTrace {
   suppression_reasons: RetrievalSuppressionReason[];
 }
 
+export interface VectorBlobRef {
+  path: string;
+  checksum: string;
+  encoding: VectorBlobEncoding;
+  dimensions?: number;
+  generation_id: string;
+  producing_ref: string;
+}
+
 export interface RecordEnvelope {
   id: string;
   kind: string;
@@ -432,6 +469,134 @@ export interface ClaimEnvelope extends RecordEnvelope {
   governance_state?: GovernanceState;
   temporal_state?: TemporalState;
 }
+
+export interface VectorCorpus extends RecordEnvelope {
+  kind: "vector_corpus";
+  layer: "derived";
+  source_refs: string[];
+  source_layers: Layer[];
+  chunk_policy_version: string;
+  corpus_generation: string;
+  chunk_refs: string[];
+  embedding_model_ref?: string | null;
+}
+
+export interface VectorChunk extends RecordEnvelope {
+  kind: "vector_chunk";
+  layer: "derived";
+  source_ref: string;
+  source_layer: Layer;
+  chunk_text_ref: VectorBlobRef;
+  chunk_hash: string;
+  chunk_policy_version: string;
+  symbol_refs: string[];
+  semantic_slot?: string;
+  temporal_state?: TemporalState;
+  upstream_refs: string[];
+  corpus_generation: string;
+  chunk_generation: string;
+  normalized_text_hash: string;
+  source_record_hash: string;
+}
+
+export interface EmbeddingModelManifest extends RecordEnvelope {
+  kind: "embedding_model_manifest";
+  layer: "derived";
+  provider_id: string;
+  model_id: string;
+  dimensions: number;
+  metric: VectorMetric;
+  normalization_mode: string;
+  vector_encoding: VectorEncoding;
+  deterministic_fixture_mode: boolean;
+  replacement_ref?: string | null;
+  deprecated_at?: string | null;
+}
+
+export interface EmbeddingRecord extends RecordEnvelope {
+  kind: "embedding_record";
+  layer: "derived";
+  chunk_ref: string;
+  embedding_model_ref: string;
+  dimensions: number;
+  metric: VectorMetric;
+  vector_ref: VectorBlobRef;
+  source_text_hash: string;
+  embedding_generation: string;
+  vector_encoding: VectorEncoding;
+  vector_checksum: string;
+}
+
+export interface EmbeddingBatchRun extends RecordEnvelope {
+  kind: "embedding_batch_run";
+  layer: "derived";
+  embedding_model_ref: string;
+  chunk_refs: string[];
+  embedding_refs: string[];
+  dimensions: number;
+  metric: VectorMetric;
+  embedding_generation: string;
+  status: "completed" | "completed_with_diagnostics" | "rejected";
+  diagnostic_refs?: string[];
+}
+
+export interface VectorIndexManifest extends RecordEnvelope {
+  kind: "vector_index_manifest";
+  layer: "derived";
+  index_ref: VectorBlobRef;
+  corpus_ref: string;
+  embedding_model_ref: string;
+  dimensions: number;
+  metric: VectorMetric;
+  index_kind: VectorIndexKind;
+  chunk_policy_version: string;
+  source_refs: string[];
+  stale_chunk_refs?: string[];
+  invalidated_refs?: string[];
+  updated_at?: string | null;
+  corpus_generation: string;
+  embedding_generation: string;
+  index_generation: string;
+  vector_encoding: VectorEncoding;
+  index_checksum?: string;
+}
+
+export interface VectorSearchRun extends RecordEnvelope {
+  kind: "vector_search_run";
+  layer: "derived";
+  query_ref: string;
+  index_manifest_ref: string;
+  recipe_ref?: string | null;
+  requested_layers: Layer[];
+  candidate_refs: string[];
+  suppressed_candidate_refs: string[];
+  metric: VectorMetric;
+  top_k: number;
+  search_generation: string;
+}
+
+export interface RetrievalAudit extends RecordEnvelope {
+  kind: "retrieval_audit";
+  layer: "derived";
+  query_ref: string;
+  recipe_ref: string;
+  result_ref?: string | null;
+  trace_ref?: string | null;
+  vector_search_run_refs: string[];
+  included_candidate_refs: string[];
+  suppressed_candidate_refs: string[];
+  suppression_reasons: RetrievalSuppressionReason[];
+}
+
+export type VectorArtifact =
+  | VectorCorpus
+  | VectorChunk
+  | EmbeddingModelManifest
+  | EmbeddingRecord
+  | EmbeddingBatchRun
+  | VectorIndexManifest
+  | VectorSearchRun
+  | RetrievalAudit;
 
 export interface SourceRecord extends RecordEnvelope {
   kind: "source_record";

@@ -16,6 +16,7 @@ import type {
   RuntimeInstance,
   RuntimeSession,
   SymbolAnchor,
+  VectorArtifact,
   WorldClaim,
 } from "./types.js";
 import { isStoreRelativeWikiPagePath } from "./wiki/path.js";
@@ -39,6 +40,10 @@ import {
   SUBJECT_AUTHORITY_ROLES,
   SYMBOL_ANCHOR_LIFECYCLE_STATES,
   TEMPORAL_STATUSES,
+  VECTOR_BLOB_ENCODINGS,
+  VECTOR_ENCODINGS,
+  VECTOR_INDEX_KINDS,
+  VECTOR_METRICS,
   VISIBILITY_SCOPES,
   WIKI_GRAPH_EDGE_TYPES,
   WIKI_MAINTENANCE_EVENTS,
@@ -54,6 +59,7 @@ import {
   SYMBOL_ANCHOR_SCHEMA_ID,
   STORE_MANIFEST_SCHEMA_ID,
   TEMPORAL_WORLD_RECORD_SCHEMA_ID,
+  VECTOR_ARTIFACTS_SCHEMA_ID,
   validateAgainstSchema,
 } from "./schema-runtime.js";
 import type { StoreManifest } from "./store/manifest.js";
@@ -220,6 +226,48 @@ function pushRetrievalCandidateLegality(issues: ValidationIssue[], value: unknow
     value.suppression_reasons,
     path === "$" ? "suppression_reasons" : `${path}.suppression_reasons`,
   );
+}
+
+function pushPositiveInteger(issues: ValidationIssue[], value: unknown, path: string): void {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    issues.push({ path, message: "expected positive integer" });
+  }
+}
+
+function pushVectorBlobRef(
+  issues: ValidationIssue[],
+  value: unknown,
+  path: string,
+  expectedEncoding?: (typeof VECTOR_BLOB_ENCODINGS)[number],
+  expectedDimensions?: unknown,
+): void {
+  if (!isRecord(value)) {
+    issues.push({ path, message: "expected vector blob ref object" });
+    return;
+  }
+
+  pushRequiredString(issues, value, "path", `${path}.path`);
+  pushRequiredString(issues, value, "checksum", `${path}.checksum`);
+  pushEnum(issues, value, "encoding", VECTOR_BLOB_ENCODINGS, `${path}.encoding`);
+  pushRequiredString(issues, value, "generation_id", `${path}.generation_id`);
+  pushRequiredString(issues, value, "producing_ref", `${path}.producing_ref`);
+
+  if (expectedEncoding !== undefined && value.encoding !== expectedEncoding) {
+    issues.push({ path: `${path}.encoding`, message: `expected ${expectedEncoding}` });
+  }
+
+  if (value.dimensions !== undefined) {
+    pushPositiveInteger(issues, value.dimensions, `${path}.dimensions`);
+  }
+
+  if (
+    typeof expectedDimensions === "number" &&
+    Number.isInteger(expectedDimensions) &&
+    value.dimensions !== undefined &&
+    value.dimensions !== expectedDimensions
+  ) {
+    issues.push({ path: `${path}.dimensions`, message: `expected dimensions to match ${expectedDimensions}` });
+  }
 }
 
 function validateEnvelope(value: unknown): ValidationIssue[] {
@@ -1116,6 +1164,92 @@ export function assertRetrievalContract(
   const issues = validateRetrievalContract(value);
   if (issues.length > 0) {
     throw new ValidationError("Invalid retrieval contract", issues);
+  }
+}
+
+export function validateVectorArtifact(value: unknown): ValidationIssue[] {
+  const issues = validateAgainstSchema(value, VECTOR_ARTIFACTS_SCHEMA_ID);
+  if (!isRecord(value)) return issues;
+
+  if (value.layer !== "derived") {
+    issues.push({ path: "layer", message: 'vector artifacts must live in the "derived" layer' });
+  }
+
+  switch (value.kind) {
+    case "vector_chunk":
+      pushVectorBlobRef(issues, value.chunk_text_ref, "chunk_text_ref", "utf8_text");
+      if (isStringArray(value.upstream_refs) && typeof value.source_ref === "string" && !value.upstream_refs.includes(value.source_ref)) {
+        issues.push({ path: "upstream_refs", message: "vector chunks must include source_ref in upstream_refs" });
+      }
+      break;
+    case "embedding_model_manifest":
+      pushPositiveInteger(issues, value.dimensions, "dimensions");
+      pushEnum(issues, value, "metric", VECTOR_METRICS);
+      pushEnum(issues, value, "vector_encoding", VECTOR_ENCODINGS);
+      break;
+    case "embedding_record":
+      pushPositiveInteger(issues, value.dimensions, "dimensions");
+      pushEnum(issues, value, "metric", VECTOR_METRICS);
+      pushEnum(issues, value, "vector_encoding", VECTOR_ENCODINGS);
+      pushVectorBlobRef(
+        issues,
+        value.vector_ref,
+        "vector_ref",
+        isEnumValue(value.vector_encoding, VECTOR_ENCODINGS) ? value.vector_encoding : undefined,
+        value.dimensions,
+      );
+      if (isRecord(value.vector_ref) && value.vector_checksum !== value.vector_ref.checksum) {
+        issues.push({ path: "vector_checksum", message: "vector_checksum must match vector_ref.checksum" });
+      }
+      break;
+    case "embedding_batch_run":
+      pushPositiveInteger(issues, value.dimensions, "dimensions");
+      pushEnum(issues, value, "metric", VECTOR_METRICS);
+      if (value.status === "completed" && Array.isArray(value.chunk_refs) && Array.isArray(value.embedding_refs) && value.chunk_refs.length !== value.embedding_refs.length) {
+        issues.push({ path: "embedding_refs", message: "completed embedding batches require one embedding ref per chunk ref" });
+      }
+      break;
+    case "vector_index_manifest":
+      pushPositiveInteger(issues, value.dimensions, "dimensions");
+      pushEnum(issues, value, "metric", VECTOR_METRICS);
+      pushEnum(issues, value, "index_kind", VECTOR_INDEX_KINDS);
+      pushEnum(issues, value, "vector_encoding", VECTOR_ENCODINGS);
+      pushVectorBlobRef(
+        issues,
+        value.index_ref,
+        "index_ref",
+        isEnumValue(value.vector_encoding, VECTOR_ENCODINGS) ? value.vector_encoding : undefined,
+        value.dimensions,
+      );
+      if (value.index_kind === "exact" && value.index_checksum === undefined) {
+        issues.push({ path: "index_checksum", message: "exact vector indexes require index_checksum" });
+      }
+      break;
+    case "vector_search_run":
+      pushEnum(issues, value, "metric", VECTOR_METRICS);
+      if (typeof value.top_k !== "number" || !Number.isInteger(value.top_k) || value.top_k < 0) {
+        issues.push({ path: "top_k", message: "expected non-negative integer" });
+      }
+      break;
+    case "retrieval_audit":
+      pushRetrievalSuppressionReasons(issues, value.suppression_reasons, "suppression_reasons");
+      break;
+    case "vector_corpus":
+      if (isStringArray(value.source_refs) && value.source_refs.length === 0) {
+        issues.push({ path: "source_refs", message: "vector corpora require at least one source ref" });
+      }
+      break;
+    default:
+      break;
+  }
+
+  return issues;
+}
+
+export function assertVectorArtifact(value: unknown): asserts value is VectorArtifact {
+  const issues = validateVectorArtifact(value);
+  if (issues.length > 0) {
+    throw new ValidationError("Invalid vector artifact", issues);
   }
 }
 

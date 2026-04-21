@@ -17,6 +17,7 @@ Planned schema families:
 - wiki maintenance run contracts
 - symbol anchor contracts
 - retrieval query, recipe, candidate, result, and trace contracts
+- vector artifact contracts
 - projection manifests
 - OpenClaw adapter contracts
 - Hermes adapter contracts

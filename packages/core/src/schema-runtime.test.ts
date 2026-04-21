@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { validateValueAgainstJsonSchema, type JsonSchema } from "./schema-runtime.js";
-import { validateRetrievalContract, validateSymbolAnchor } from "./validation.js";
+import { validateRetrievalContract, validateSymbolAnchor, validateVectorArtifact } from "./validation.js";
 
 test("schema runtime supports broader object, array, and local-ref features", () => {
   const schema: JsonSchema = {
@@ -214,4 +214,74 @@ test("retrieval contract validation requires upstream refs for proposal support"
   });
 
   assert.deepEqual(valid, []);
+});
+
+test("vector artifact validation keeps vector metadata derived and source-bound", () => {
+  const validChunk = validateVectorArtifact({
+    id: "vchunk_001",
+    kind: "vector_chunk",
+    layer: "derived",
+    authoritative_home: "raw",
+    created_at: "2026-04-21T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "vector_chunking_fixture",
+      source_ref: "source_001",
+    },
+    source_ref: "source_001",
+    source_layer: "raw",
+    chunk_text_ref: {
+      path: "derived/vector/chunks/vchunk_001.txt",
+      checksum: "sha256:text",
+      encoding: "utf8_text",
+      generation_id: "chunk_gen_001",
+      producing_ref: "vchunk_001",
+    },
+    chunk_hash: "sha256:chunk",
+    chunk_policy_version: "chunk_policy.v1",
+    symbol_refs: ["sym:concept/user-interaction-preferences"],
+    upstream_refs: ["source_001"],
+    corpus_generation: "corpus_gen_001",
+    chunk_generation: "chunk_gen_001",
+    normalized_text_hash: "sha256:normalized",
+    source_record_hash: "sha256:source",
+  });
+
+  assert.deepEqual(validChunk, []);
+
+  const invalidEmbedding = validateVectorArtifact({
+    id: "embed_001",
+    kind: "embedding_record",
+    layer: "derived",
+    authoritative_home: "raw",
+    created_at: "2026-04-21T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "deterministic_embedding_fixture",
+      source_ref: "vchunk_001",
+    },
+    chunk_ref: "vchunk_001",
+    embedding_model_ref: "embedding_model_fixture_001",
+    dimensions: 3,
+    metric: "cosine",
+    vector_ref: {
+      path: "derived/vector/embeddings/embed_001.json",
+      checksum: "sha256:vector",
+      encoding: "json_float32",
+      dimensions: 2,
+      generation_id: "embedding_gen_001",
+      producing_ref: "embed_001",
+    },
+    source_text_hash: "sha256:chunk",
+    embedding_generation: "embedding_gen_001",
+    vector_encoding: "json_float32",
+    vector_checksum: "sha256:different",
+  });
+
+  assert.ok(invalidEmbedding.some((issue) => issue.path === "vector_ref.dimensions"));
+  assert.ok(invalidEmbedding.some((issue) => issue.path === "vector_checksum"));
 });

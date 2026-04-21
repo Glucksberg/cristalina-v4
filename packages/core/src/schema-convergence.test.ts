@@ -24,6 +24,10 @@ import {
   SYMBOL_ANCHOR_KINDS,
   SYMBOL_ANCHOR_LIFECYCLE_STATES,
   TEMPORAL_STATUSES,
+  VECTOR_BLOB_ENCODINGS,
+  VECTOR_ENCODINGS,
+  VECTOR_INDEX_KINDS,
+  VECTOR_METRICS,
   VISIBILITY_SCOPES,
   WIKI_GRAPH_EDGE_TYPES,
   WIKI_MAINTENANCE_EVENTS,
@@ -53,6 +57,21 @@ function expectEnum(property: unknown): string[] {
   assert.ok(property && typeof property === "object", "schema property must be an object");
   assert.ok(Array.isArray((property as EnumProperty).enum), "schema property must expose an enum");
   return (property as EnumProperty).enum as string[];
+}
+
+function expectOneOfLocalDefs(schema: JsonSchema): string[] {
+  const defs = schema.$defs ?? {};
+  const refs = (schema.oneOf ?? []).map((entry) => {
+    const ref = (entry as { $ref?: string }).$ref;
+    if (typeof ref !== "string" || !ref.startsWith("#/$defs/")) {
+      assert.fail("oneOf branch must point at a local definition");
+    }
+    return ref.slice("#/$defs/".length);
+  });
+  for (const ref of refs) {
+    assert.ok(defs[ref], `missing local definition for ${ref}`);
+  }
+  return refs;
 }
 
 test("object envelope schema enums stay aligned with runtime validation enums", async () => {
@@ -189,12 +208,41 @@ test("retrieval contracts schema stays aligned with core retrieval enums", async
   const recipe = defs.RetrievalRecipe;
   const suppressionReason = defs.RetrievalSuppressionReason;
 
+  assert.deepEqual(expectOneOfLocalDefs(schema), [
+    "RetrievalQuery",
+    "RetrievalRecipe",
+    "RetrievalCandidate",
+    "RetrievalResult",
+    "RetrievalTrace",
+  ]);
   assert.deepEqual(expectEnum(layer), [...LAYERS]);
   assert.deepEqual(expectEnum(visibility?.properties?.privacy_scope), [...VISIBILITY_SCOPES]);
   assert.deepEqual(expectEnum(authenticatedPrincipal?.properties?.kind), [...AUTHENTICATED_PRINCIPAL_KINDS]);
   assert.deepEqual(expectEnum(candidate?.properties?.authority), [...RETRIEVAL_AUTHORITIES]);
   assert.deepEqual(expectEnum(suppressionReason), [...RETRIEVAL_SUPPRESSION_REASONS]);
   assert.deepEqual(expectEnum(recipe?.properties?.external_candidate_policy), [...RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES]);
+});
+
+test("vector artifact schema stays aligned with vector object enums", async () => {
+  const schema = await readSchema("../../schemas/vector-artifacts.schema.json");
+  const defs = schema.$defs ?? {};
+
+  assert.deepEqual(expectOneOfLocalDefs(schema), [
+    "VectorCorpus",
+    "VectorChunk",
+    "EmbeddingModelManifest",
+    "EmbeddingRecord",
+    "EmbeddingBatchRun",
+    "VectorIndexManifest",
+    "VectorSearchRun",
+    "RetrievalAudit",
+  ]);
+  assert.deepEqual(expectEnum(defs.Layer), [...LAYERS]);
+  assert.deepEqual(expectEnum(defs.VectorMetric), [...VECTOR_METRICS]);
+  assert.deepEqual(expectEnum(defs.VectorEncoding), [...VECTOR_ENCODINGS]);
+  assert.deepEqual(expectEnum(defs.VectorBlobEncoding), [...VECTOR_BLOB_ENCODINGS]);
+  assert.deepEqual(expectEnum(defs.VectorIndexKind), [...VECTOR_INDEX_KINDS]);
+  assert.deepEqual(expectEnum(defs.RetrievalSuppressionReason), [...RETRIEVAL_SUPPRESSION_REASONS]);
 });
 
 test("projection manifest schema stays aligned with adapter and read-discipline contracts", async () => {

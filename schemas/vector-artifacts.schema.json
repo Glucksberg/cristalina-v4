@@ -1,0 +1,740 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/vector-artifacts.schema.json",
+  "title": "Cristalina v4 Vector Artifacts",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/VectorCorpus"
+    },
+    {
+      "$ref": "#/$defs/VectorChunk"
+    },
+    {
+      "$ref": "#/$defs/EmbeddingModelManifest"
+    },
+    {
+      "$ref": "#/$defs/EmbeddingRecord"
+    },
+    {
+      "$ref": "#/$defs/EmbeddingBatchRun"
+    },
+    {
+      "$ref": "#/$defs/VectorIndexManifest"
+    },
+    {
+      "$ref": "#/$defs/VectorSearchRun"
+    },
+    {
+      "$ref": "#/$defs/RetrievalAudit"
+    }
+  ],
+  "$defs": {
+    "Layer": {
+      "type": "string",
+      "enum": [
+        "raw",
+        "runtime",
+        "world",
+        "canon",
+        "wiki",
+        "governance",
+        "derived",
+        "audits"
+      ]
+    },
+    "VectorMetric": {
+      "type": "string",
+      "enum": [
+        "cosine",
+        "dot",
+        "euclidean"
+      ]
+    },
+    "VectorEncoding": {
+      "type": "string",
+      "enum": [
+        "json_float32",
+        "binary_float32",
+        "binary_float16"
+      ]
+    },
+    "VectorBlobEncoding": {
+      "type": "string",
+      "enum": [
+        "utf8_text",
+        "json_float32",
+        "binary_float32",
+        "binary_float16"
+      ]
+    },
+    "VectorIndexKind": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "ann"
+      ]
+    },
+    "RetrievalSuppressionReason": {
+      "type": "string",
+      "enum": [
+        "visibility_scope_mismatch",
+        "authority_mismatch",
+        "stale_record",
+        "contradicted_record",
+        "unsupported_wiki_claim",
+        "missing_upstream_ref",
+        "projection_budget_exceeded",
+        "invalid_external_candidate",
+        "embedding_generation_mismatch"
+      ]
+    },
+    "VectorBlobRef": {
+      "type": "object",
+      "required": [
+        "path",
+        "checksum",
+        "encoding",
+        "generation_id",
+        "producing_ref"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checksum": {
+          "type": "string",
+          "minLength": 1
+        },
+        "encoding": {
+          "$ref": "#/$defs/VectorBlobEncoding"
+        },
+        "dimensions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "generation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "producing_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "VectorCorpus": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "source_refs",
+            "source_layers",
+            "chunk_policy_version",
+            "corpus_generation",
+            "chunk_refs"
+          ],
+          "properties": {
+            "kind": {
+              "const": "vector_corpus"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "source_layers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Layer"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "chunk_policy_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "corpus_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "chunk_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "embedding_model_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "VectorChunk": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "source_ref",
+            "source_layer",
+            "chunk_text_ref",
+            "chunk_hash",
+            "chunk_policy_version",
+            "symbol_refs",
+            "upstream_refs",
+            "corpus_generation",
+            "chunk_generation",
+            "normalized_text_hash",
+            "source_record_hash"
+          ],
+          "properties": {
+            "kind": {
+              "const": "vector_chunk"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "source_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_layer": {
+              "$ref": "#/$defs/Layer"
+            },
+            "chunk_text_ref": {
+              "$ref": "#/$defs/VectorBlobRef"
+            },
+            "chunk_hash": {
+              "type": "string",
+              "minLength": 1
+            },
+            "chunk_policy_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "symbol_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "semantic_slot": {
+              "type": "string"
+            },
+            "upstream_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "corpus_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "chunk_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "normalized_text_hash": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_record_hash": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "EmbeddingModelManifest": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "provider_id",
+            "model_id",
+            "dimensions",
+            "metric",
+            "normalization_mode",
+            "vector_encoding",
+            "deterministic_fixture_mode"
+          ],
+          "properties": {
+            "kind": {
+              "const": "embedding_model_manifest"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "provider_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dimensions": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "metric": {
+              "$ref": "#/$defs/VectorMetric"
+            },
+            "normalization_mode": {
+              "type": "string",
+              "minLength": 1
+            },
+            "vector_encoding": {
+              "$ref": "#/$defs/VectorEncoding"
+            },
+            "deterministic_fixture_mode": {
+              "type": "boolean"
+            },
+            "replacement_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "deprecated_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "EmbeddingRecord": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "chunk_ref",
+            "embedding_model_ref",
+            "dimensions",
+            "metric",
+            "vector_ref",
+            "source_text_hash",
+            "embedding_generation",
+            "vector_encoding",
+            "vector_checksum"
+          ],
+          "properties": {
+            "kind": {
+              "const": "embedding_record"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "chunk_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "embedding_model_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dimensions": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "metric": {
+              "$ref": "#/$defs/VectorMetric"
+            },
+            "vector_ref": {
+              "$ref": "#/$defs/VectorBlobRef"
+            },
+            "source_text_hash": {
+              "type": "string",
+              "minLength": 1
+            },
+            "embedding_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "vector_encoding": {
+              "$ref": "#/$defs/VectorEncoding"
+            },
+            "vector_checksum": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "EmbeddingBatchRun": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "embedding_model_ref",
+            "chunk_refs",
+            "embedding_refs",
+            "dimensions",
+            "metric",
+            "embedding_generation",
+            "status"
+          ],
+          "properties": {
+            "kind": {
+              "const": "embedding_batch_run"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "embedding_model_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "chunk_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "embedding_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "dimensions": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "metric": {
+              "$ref": "#/$defs/VectorMetric"
+            },
+            "embedding_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "completed_with_diagnostics",
+                "rejected"
+              ]
+            },
+            "diagnostic_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "VectorIndexManifest": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "index_ref",
+            "corpus_ref",
+            "embedding_model_ref",
+            "dimensions",
+            "metric",
+            "index_kind",
+            "chunk_policy_version",
+            "source_refs",
+            "corpus_generation",
+            "embedding_generation",
+            "index_generation",
+            "vector_encoding"
+          ],
+          "properties": {
+            "kind": {
+              "const": "vector_index_manifest"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "index_ref": {
+              "$ref": "#/$defs/VectorBlobRef"
+            },
+            "corpus_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "embedding_model_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dimensions": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "metric": {
+              "$ref": "#/$defs/VectorMetric"
+            },
+            "index_kind": {
+              "$ref": "#/$defs/VectorIndexKind"
+            },
+            "chunk_policy_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "stale_chunk_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "invalidated_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "corpus_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "embedding_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "index_generation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "vector_encoding": {
+              "$ref": "#/$defs/VectorEncoding"
+            },
+            "index_checksum": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "VectorSearchRun": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "query_ref",
+            "index_manifest_ref",
+            "requested_layers",
+            "candidate_refs",
+            "suppressed_candidate_refs",
+            "metric",
+            "top_k",
+            "search_generation"
+          ],
+          "properties": {
+            "kind": {
+              "const": "vector_search_run"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "query_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "index_manifest_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "recipe_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "requested_layers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Layer"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "suppressed_candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "metric": {
+              "$ref": "#/$defs/VectorMetric"
+            },
+            "top_k": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "search_generation": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "RetrievalAudit": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "query_ref",
+            "recipe_ref",
+            "vector_search_run_refs",
+            "included_candidate_refs",
+            "suppressed_candidate_refs",
+            "suppression_reasons"
+          ],
+          "properties": {
+            "kind": {
+              "const": "retrieval_audit"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "query_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "recipe_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "result_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trace_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vector_search_run_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "included_candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "suppressed_candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "suppression_reasons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RetrievalSuppressionReason"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    }
+  }
+}
