@@ -256,6 +256,9 @@ export interface SourceRecord extends RecordEnvelope {
   layer: "raw";
   authoritative_home: "raw";
   content_ref: string;
+  intake_profile_ref?: string;
+  intake_runner_contract_version?: string;
+  semantic_profile_fingerprint?: string;
 }
 
 export interface Observation extends RecordEnvelope {

@@ -76,9 +76,10 @@ import {
   executeCanonicalProposalWorkflow,
   executeOpenClawBootstrapWorkflow,
   type ConversationPreferenceIntakeArtifacts,
+  type ConversationPreferenceDispositionStrategy,
   type ConversationPreferenceRuntimeIdentityContext,
 } from "./pipeline.js";
-import type { PreferenceSignalSemanticProfile } from "./source-intake.js";
+import { resolvePreferenceSignalSemanticProfile, type PreferenceSignalSemanticProfile, type RegisteredIntakeProfile } from "./source-intake.js";
 
 export interface ConversationPreferenceStoreIds {
   observation: string;
@@ -316,6 +317,13 @@ interface MaterializedFile {
   content: string;
 }
 
+interface RegisteredIntakeWorkflowPlan<Result> {
+  files: MaterializedFile[];
+  append_entries?: RecoveryJournalAppendEntry[];
+  validation_issues: ValidationIssue[];
+  result: Result;
+}
+
 interface RecoveryJournalFile {
   relative_path: string;
   content: string;
@@ -362,6 +370,33 @@ const STORE_WRITE_LOCK_STALE_MS = 120_000;
 const STORE_WRITE_LOCK_HEARTBEAT_MS = 10_000;
 
 type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
+type ConversationPreferenceIntakeBuilder = (
+  input: {
+    now: string;
+    statement: string;
+    source_record: SourceRecord;
+    authenticated_principal?: AuthenticatedPrincipal;
+    identity_context?: ConversationPreferenceRuntimeIdentityContext;
+    semantic_profile?: Partial<PreferenceSignalSemanticProfile>;
+    ids: ConversationPreferenceStoreInput["ids"] & {
+      wiki_page: string;
+      wiki_claim: string;
+      proposal: string;
+      disposition: string;
+    };
+  },
+) => ConversationPreferenceIntakeArtifacts;
+type ConversationPreferenceRegisteredIntakeProfile = RegisteredIntakeProfile<
+  ConversationPreferenceStoreInput,
+  SourceRecord,
+  PreferenceSignalSemanticProfile,
+  ConversationPreferenceIntakeArtifacts,
+  ConversationPreferenceDispositionStrategy | undefined,
+  WorldClaim | undefined,
+  {
+    required_layers: string[];
+  }
+>;
 
 function ownerRatificationQueueId(proposalId: string): string {
   return `cur_owner_ratification_${proposalId}`;
@@ -699,6 +734,55 @@ function projectionAdapterForRuntime(runtime: RuntimeKind): ProjectionAdapterKin
   return runtime === "hermes" ? "hermes" : "openclaw";
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function semanticProfileFingerprint(profile: PreferenceSignalSemanticProfile): string {
+  return `preference_signal:${stableStringify(profile)}`;
+}
+
+function registeredPreferenceProfile(intake_kind: SourceIntakeKind): ConversationPreferenceRegisteredIntakeProfile {
+  const profile: ConversationPreferenceRegisteredIntakeProfile = {
+    profile_id: `preference_signal/${intake_kind}`,
+    intake_kind,
+    runner_contract_version: "registered_intake_profile.v1",
+    source_normalization: (input) => buildSourceRecord(input, profile),
+    semantic_profile: {
+      kind: "preference_signal",
+      resolve: (input) =>
+        resolvePreferenceSignalSemanticProfile({
+          kind: intake_kind,
+          overrides: input.semantic_profile,
+        }),
+      fingerprint: semanticProfileFingerprint,
+    },
+    disposition_routing: () => undefined,
+    proposal_emission: ({ input, source_record }) =>
+      buildPreviewIntake(input, source_record, selectConversationPreferenceIntakeBuilder(input)),
+    contradiction_detection: ({ intake }) => intake.world_claim,
+    projection_recompilation_inputs: () => ({
+      required_layers: ["runtime", "world", "wiki", "governance", "canon", "derived", "audits"],
+    }),
+  };
+  return profile;
+}
+
+function selectRegisteredIntakeProfile(input: ConversationPreferenceStoreInput): ConversationPreferenceRegisteredIntakeProfile {
+  return registeredPreferenceProfile(input.intake_kind ?? "conversation_preference");
+}
+
 function assertAuthorizedOwnerAction(input: {
   actor: string;
   authenticated_principal?: AuthenticatedPrincipal;
@@ -911,6 +995,55 @@ async function replayRecoveryJournalEntries(
   }
 }
 
+async function runRegisteredIntakeWorkflow<Result>(input: {
+  rootDir: string;
+  profile: {
+    profile_id: string;
+    runner_contract_version: string;
+  };
+  lock_key: string;
+  journal_operation: RecoveryJournal["operation"];
+  journal_stable_id: string;
+  created_at: string;
+  recover_or_reset: () => Promise<void>;
+  load_existing: () => Promise<Result | undefined>;
+  build_plan: () => Promise<RegisteredIntakeWorkflowPlan<Result>>;
+  validation_context: string;
+}): Promise<Result> {
+  return withStoreWriteLock(input.rootDir, input.lock_key, async () => {
+    if (input.profile.runner_contract_version.length === 0) {
+      throw new Error(`Registered intake profile ${input.profile.profile_id} is missing a runner contract version`);
+    }
+
+    await input.recover_or_reset();
+
+    const existing = await input.load_existing();
+    if (existing) {
+      return existing;
+    }
+
+    const plan = await input.build_plan();
+    assertNoValidationIssues(plan.validation_issues, input.validation_context);
+
+    const journalPath = recoveryJournalPath(input.rootDir, input.journal_operation, input.journal_stable_id);
+    await writeRecoveryJournal(
+      journalPath,
+      buildRecoveryJournal({
+        rootDir: input.rootDir,
+        operation: input.journal_operation,
+        created_at: input.created_at,
+        files: plan.files,
+        append_entries: plan.append_entries,
+      }),
+    );
+    await materializeFiles(plan.files);
+    await replayRecoveryJournalEntries(input.rootDir, plan.append_entries);
+    await rm(journalPath, { force: true });
+
+    return plan.result;
+  });
+}
+
 async function recoverPendingJournal(rootDir: string, filePath: string): Promise<boolean> {
   if (!(await pathExists(filePath))) {
     return false;
@@ -938,10 +1071,7 @@ function serializeSourcePayload(input: ConversationPreferenceStoreInput): string
   )}\n`;
 }
 
-function selectConversationPreferenceIntakeBuilder(input: ConversationPreferenceStoreInput):
-  | typeof buildConversationPreferenceIntake
-  | typeof buildOpenClawPreferenceFeedbackIntake
-  | typeof buildStructuredPreferenceSignalIntake {
+function selectConversationPreferenceIntakeBuilder(input: ConversationPreferenceStoreInput): ConversationPreferenceIntakeBuilder {
   return input.intake_kind === "openclaw_projection_feedback"
     ? buildOpenClawPreferenceFeedbackIntake
     : input.intake_kind === "structured_preference_signal"
@@ -949,8 +1079,12 @@ function selectConversationPreferenceIntakeBuilder(input: ConversationPreference
       : buildConversationPreferenceIntake;
 }
 
-function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecord {
+function buildSourceRecord(
+  input: ConversationPreferenceStoreInput,
+  profile = selectRegisteredIntakeProfile(input),
+): SourceRecord {
   const content_ref = normalizeLegalSourceContentRef(input.source.content_ref);
+  const semantic_profile = profile.semantic_profile.resolve(input);
 
   return {
     id: input.source.id,
@@ -972,6 +1106,9 @@ function buildSourceRecord(input: ConversationPreferenceStoreInput): SourceRecor
       thread_ref: input.identity_context?.ids.conversation_thread,
     },
     content_ref,
+    intake_profile_ref: profile.profile_id,
+    intake_runner_contract_version: profile.runner_contract_version,
+    semantic_profile_fingerprint: profile.semantic_profile.fingerprint(semantic_profile),
   };
 }
 
@@ -2555,7 +2692,9 @@ async function loadExistingFlow(
     throw new Error("Existing conversation preference flow is missing manual contradiction review queue state");
   }
 
-  assertLoadedFlowMatchesInput(
+  await assertLoadedFlowMatchesInput(
+    paths,
+    input,
     loaded,
     expectedSourceRecord,
     expectedIntake,
@@ -2759,21 +2898,33 @@ async function loadAuthoritativeFlow(
   };
 }
 
-function assertLoadedFlowMatchesInput(
+async function assertLoadedFlowMatchesInput(
+  paths: ConversationPreferenceStorePaths,
+  input: ConversationPreferenceStoreInput,
   loaded: LoadedAuthoritativeFlow,
   expectedSourceRecord: SourceRecord,
   expectedIntake: ConversationPreferenceIntakeArtifacts,
   expectedAuthenticatedPrincipal?: AuthenticatedPrincipal,
   ignoreAuthenticatedPrincipal = false,
-): void {
+): Promise<void> {
   const mismatches: string[] = [];
   const expectedProposalStatement =
     typeof expectedIntake.proposal.candidate_payload.statement === "string"
       ? expectedIntake.proposal.candidate_payload.statement
       : undefined;
+  const loadedSourcePayload = await readFile(paths.raw_source, "utf8");
+  const expectedSourcePayload = serializeSourcePayload(input);
 
   if (loaded.source_record.id !== expectedSourceRecord.id) mismatches.push("source.id");
   if (loaded.source_record.content_ref !== expectedSourceRecord.content_ref) mismatches.push("source.content_ref");
+  if (loaded.source_record.intake_profile_ref !== expectedSourceRecord.intake_profile_ref) mismatches.push("source.intake_profile_ref");
+  if (loaded.source_record.intake_runner_contract_version !== expectedSourceRecord.intake_runner_contract_version) {
+    mismatches.push("source.intake_runner_contract_version");
+  }
+  if (loaded.source_record.semantic_profile_fingerprint !== expectedSourceRecord.semantic_profile_fingerprint) {
+    mismatches.push("source.semantic_profile_fingerprint");
+  }
+  if (loadedSourcePayload !== expectedSourcePayload) mismatches.push("source.payload");
   if (loaded.source_record.provenance.source_type !== expectedSourceRecord.provenance.source_type) mismatches.push("source.source_type");
   if (loaded.source_record.provenance.source_ref !== expectedSourceRecord.provenance.source_ref) mismatches.push("source.source_ref");
   if (loaded.source_record.provenance.speaker_ref !== expectedSourceRecord.provenance.speaker_ref) mismatches.push("source.speaker_ref");
@@ -3309,6 +3460,7 @@ export async function writeConversationPreferenceFlowToStore(
   input: AuthenticatedConversationPreferenceStoreInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  const profile = selectRegisteredIntakeProfile(input);
   const authenticated_principal = requireAuthenticatedPrincipal(
     input.authenticated_principal,
     "Conversation preference write",
@@ -3319,163 +3471,117 @@ export async function writeConversationPreferenceFlowToStore(
   });
   await initializeStore(rootDir, input.now);
 
-  return withStoreWriteLock(rootDir, `conversation_preference_write:${input.ids.proposal}`, async () => {
-    const source_record = buildSourceRecord(input);
-    const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
-    const previewPaths = buildPaths(rootDir, source_record, buildPreviewIntake(input, source_record, intakeBuilder), input);
-    await recoverOrResetWriteFlow(rootDir, input, previewPaths);
-    const {
-      intake,
-      existingCanonicalRecords,
-      existingWorldClaims,
-      conflicting_world_claim,
-    } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
-    const paths = buildPaths(rootDir, source_record, intake, input);
+  const source_record = profile.source_normalization(input);
+  const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
+  const previewPaths = buildPaths(rootDir, source_record, profile.proposal_emission({ input, source_record }), input);
 
-    const existingFlow = await loadExistingFlow(input, paths, source_record, intake);
-    if (existingFlow) {
-      return existingFlow;
-    }
+  return runRegisteredIntakeWorkflow({
+    rootDir,
+    profile,
+    lock_key: `conversation_preference_write:${input.ids.proposal}`,
+    journal_operation: "conversation_preference_write",
+    journal_stable_id: input.ids.proposal,
+    created_at: input.now,
+    recover_or_reset: () => recoverOrResetWriteFlow(rootDir, input, previewPaths),
+    load_existing: async () => {
+      const { intake } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
+      return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input), source_record, intake);
+    },
+    validation_context: "conversation preference write flow",
+    build_plan: async () => {
+      const {
+        intake,
+        existingCanonicalRecords,
+        existingWorldClaims,
+        conflicting_world_claim,
+      } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
+      const paths = buildPaths(rootDir, source_record, intake, input);
 
-    const canonicalWorkflow = executeCanonicalProposalWorkflow({
-      proposal: intake.proposal,
-      existing_canon_records: existingCanonicalRecords,
-      blocking_world_conflict_ref: conflicting_world_claim?.id ?? null,
-      now: input.now,
-      actor: input.actor,
-      authenticated_principal: input.authenticated_principal,
-      ratification_id: input.ids.ratification,
-      diagnostic_id: input.ids.diagnostic,
-      canonical_id: input.ids.canonical,
-    });
+      const canonicalWorkflow = executeCanonicalProposalWorkflow({
+        proposal: intake.proposal,
+        existing_canon_records: existingCanonicalRecords,
+        blocking_world_conflict_ref: conflicting_world_claim?.id ?? null,
+        now: input.now,
+        actor: input.actor,
+        authenticated_principal: input.authenticated_principal,
+        ratification_id: input.ids.ratification,
+        diagnostic_id: input.ids.diagnostic,
+        canonical_id: input.ids.canonical,
+      });
 
-    if (canonicalWorkflow.accepted && !canonicalWorkflow.created_record) {
-      throw new Error("Conversation preference workflow produced an accepted proposal without canonical state");
-    }
+      if (canonicalWorkflow.accepted && !canonicalWorkflow.created_record) {
+        throw new Error("Conversation preference workflow produced an accepted proposal without canonical state");
+      }
 
-    const owner_ratification_queue = buildOwnerRatificationQueuePacket({
-      now: input.now,
-      source_record,
-      intake,
-      paths,
-      ratification_record: canonicalWorkflow.ratification_record,
-      diagnostic: canonicalWorkflow.diagnostic,
-    });
+      const owner_ratification_queue = buildOwnerRatificationQueuePacket({
+        now: input.now,
+        source_record,
+        intake,
+        paths,
+        ratification_record: canonicalWorkflow.ratification_record,
+        diagnostic: canonicalWorkflow.diagnostic,
+      });
 
-    const contradiction =
-      input.ids.contradiction && conflicting_world_claim
-        ? detectWorldClaimContradiction({
-            now: input.now,
-            contradiction_id: input.ids.contradiction,
-            candidate_claim: intake.world_claim,
-            existing_world_claims: existingWorldClaims,
-          })
-        : undefined;
-    const contradiction_resolution =
-      contradiction && conflicting_world_claim && input.ids.contradiction_resolution
-        ? proposeContradictionResolution({
-            now: input.now,
-            resolution_id: input.ids.contradiction_resolution,
-            contradiction,
-            existing_claim: conflicting_world_claim,
-            candidate_claim: intake.world_claim,
-          })
-        : undefined;
-    const manual_contradiction_review_queue =
-      contradiction && contradiction_resolution
-        ? buildManualContradictionReviewQueuePacket({
-            now: input.now,
-            source_record,
-            intake,
-            contradiction,
-            contradiction_resolution,
-            ratification_record: canonicalWorkflow.ratification_record,
-            diagnostic: canonicalWorkflow.diagnostic,
-            paths,
-          })
-        : undefined;
-    const projection = await buildProjectionFromStoreState(rootDir, paths, input, canonicalWorkflow.created_record, intake, input.now, {
-      canonical_records: canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : [],
-      world_claims: [intake.world_claim],
-      episodes: [intake.episode],
-      entities: [intake.subject_entity, intake.preference_entity],
-      relations: [intake.preference_relation],
-      contradictions: contradiction ? [contradiction] : [],
-      contradiction_resolutions: contradiction_resolution ? [contradiction_resolution] : [],
-      curation_packets: [
-        ...(owner_ratification_queue ? [owner_ratification_queue] : []),
-        ...(manual_contradiction_review_queue ? [manual_contradiction_review_queue] : []),
-      ],
-      wiki_pages: [intake.wiki_page],
-      wiki_claims: [intake.wiki_claim],
-      diagnostics: canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : [],
-    });
-    const files = buildConversationPreferenceWriteFiles({
-      rootDir,
-      storeInput: input,
-      paths,
-      source_record,
-      intake,
-      contradiction,
-      contradiction_resolution,
-      owner_ratification_queue,
-      manual_contradiction_review_queue,
-      ratification_record: canonicalWorkflow.ratification_record,
-      diagnostic: canonicalWorkflow.diagnostic,
-      canonical_record: canonicalWorkflow.created_record,
-      projection,
-    });
-    const validation_issues = buildConversationPreferenceWriteValidationIssues({
-      source_record,
-      intake,
-      contradiction,
-      contradiction_resolution,
-      owner_ratification_queue,
-      manual_contradiction_review_queue,
-      ratification_record: canonicalWorkflow.ratification_record,
-      diagnostic: canonicalWorkflow.diagnostic,
-      canonical_record: canonicalWorkflow.created_record,
-      projection,
-    });
-    assertNoValidationIssues(validation_issues, "conversation preference write flow");
-    const audit_entries = buildConversationPreferenceAuditEntries({
-      now: input.now,
-      source_record,
-      intake,
-      owner_ratification_queue,
-      manual_contradiction_review_queue,
-      ratification_record: canonicalWorkflow.ratification_record,
-      canonical_record: canonicalWorkflow.created_record,
-      projection,
-      conflicting_world_claim,
-    });
-  const append_entries = buildConversationPreferenceAppendEntries({
-    now: input.now,
-    validation_scope: input.validation_scope ?? "workflow:conversation-preference",
-    validation_entry_id: `validation:${intake.proposal.id}:write`,
-    proposal_id: intake.proposal.id,
-    validation_issues,
-    audit_entries,
-    });
-    const journalPath = recoveryJournalPath(rootDir, "conversation_preference_write", input.ids.proposal);
-    await writeRecoveryJournal(
-      journalPath,
-      buildRecoveryJournal({
+      const contradiction =
+        input.ids.contradiction && conflicting_world_claim
+          ? detectWorldClaimContradiction({
+              now: input.now,
+              contradiction_id: input.ids.contradiction,
+              candidate_claim: intake.world_claim,
+              existing_world_claims: existingWorldClaims,
+            })
+          : undefined;
+      const contradiction_resolution =
+        contradiction && conflicting_world_claim && input.ids.contradiction_resolution
+          ? proposeContradictionResolution({
+              now: input.now,
+              resolution_id: input.ids.contradiction_resolution,
+              contradiction,
+              existing_claim: conflicting_world_claim,
+              candidate_claim: intake.world_claim,
+            })
+          : undefined;
+      const manual_contradiction_review_queue =
+        contradiction && contradiction_resolution
+          ? buildManualContradictionReviewQueuePacket({
+              now: input.now,
+              source_record,
+              intake,
+              contradiction,
+              contradiction_resolution,
+              ratification_record: canonicalWorkflow.ratification_record,
+              diagnostic: canonicalWorkflow.diagnostic,
+              paths,
+            })
+          : undefined;
+      const projection = await buildProjectionFromStoreState(
         rootDir,
-        operation: "conversation_preference_write",
-        created_at: input.now,
-        files,
-        append_entries,
-      }),
-    );
-    await materializeFiles(files);
-    await replayRecoveryJournalEntries(rootDir, append_entries);
-    await rm(journalPath, { force: true });
-
-    return {
-      reused: false,
-      paths,
-      records: {
+        paths,
+        input,
+        canonicalWorkflow.created_record,
+        intake,
+        input.now,
+        {
+          canonical_records: canonicalWorkflow.created_record ? [canonicalWorkflow.created_record] : [],
+          world_claims: [intake.world_claim],
+          episodes: [intake.episode],
+          entities: [intake.subject_entity, intake.preference_entity],
+          relations: [intake.preference_relation],
+          contradictions: contradiction ? [contradiction] : [],
+          contradiction_resolutions: contradiction_resolution ? [contradiction_resolution] : [],
+          curation_packets: [
+            ...(owner_ratification_queue ? [owner_ratification_queue] : []),
+            ...(manual_contradiction_review_queue ? [manual_contradiction_review_queue] : []),
+          ],
+          wiki_pages: [intake.wiki_page],
+          wiki_claims: [intake.wiki_claim],
+          diagnostics: canonicalWorkflow.diagnostic ? [canonicalWorkflow.diagnostic] : [],
+        },
+      );
+      const files = buildConversationPreferenceWriteFiles({
+        rootDir,
+        storeInput: input,
+        paths,
         source_record,
         intake,
         contradiction,
@@ -3485,11 +3591,64 @@ export async function writeConversationPreferenceFlowToStore(
         ratification_record: canonicalWorkflow.ratification_record,
         diagnostic: canonicalWorkflow.diagnostic,
         canonical_record: canonicalWorkflow.created_record,
-        projection_artifacts: projection.artifacts,
-        projection_manifest: projection.manifest,
-      },
-      validation_issues,
-    };
+        projection,
+      });
+      const validation_issues = buildConversationPreferenceWriteValidationIssues({
+        source_record,
+        intake,
+        contradiction,
+        contradiction_resolution,
+        owner_ratification_queue,
+        manual_contradiction_review_queue,
+        ratification_record: canonicalWorkflow.ratification_record,
+        diagnostic: canonicalWorkflow.diagnostic,
+        canonical_record: canonicalWorkflow.created_record,
+        projection,
+      });
+      const audit_entries = buildConversationPreferenceAuditEntries({
+        now: input.now,
+        source_record,
+        intake,
+        owner_ratification_queue,
+        manual_contradiction_review_queue,
+        ratification_record: canonicalWorkflow.ratification_record,
+        canonical_record: canonicalWorkflow.created_record,
+        projection,
+        conflicting_world_claim,
+      });
+      const append_entries = buildConversationPreferenceAppendEntries({
+        now: input.now,
+        validation_scope: input.validation_scope ?? "workflow:conversation-preference",
+        validation_entry_id: `validation:${intake.proposal.id}:write`,
+        proposal_id: intake.proposal.id,
+        validation_issues,
+        audit_entries,
+      });
+
+      return {
+        files,
+        append_entries,
+        validation_issues,
+        result: {
+          reused: false,
+          paths,
+          records: {
+            source_record,
+            intake,
+            contradiction,
+            contradiction_resolution,
+            owner_ratification_queue,
+            manual_contradiction_review_queue,
+            ratification_record: canonicalWorkflow.ratification_record,
+            diagnostic: canonicalWorkflow.diagnostic,
+            canonical_record: canonicalWorkflow.created_record,
+            projection_artifacts: projection.artifacts,
+            projection_manifest: projection.manifest,
+          },
+          validation_issues,
+        },
+      };
+    },
   });
 }
 

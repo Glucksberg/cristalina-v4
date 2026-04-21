@@ -132,6 +132,16 @@ test("source intake profile schema stays aligned with executable intake kinds", 
   assert.equal(profile.subject_authority_role, "participant");
 });
 
+test("registered intake profile schema captures generic runner contract", async () => {
+  const schema = await readSchema("../../schemas/registered-intake-profile.schema.json");
+  const properties = schema.properties ?? {};
+
+  assert.deepEqual(expectEnum(properties.intake_kind), [...SOURCE_INTAKE_KINDS]);
+  assert.equal((properties.runner_contract_version as { const?: string } | undefined)?.const, "registered_intake_profile.v1");
+  assert.deepEqual(expectEnum(properties.contradiction_detection), ["optional", "none"]);
+  assert.equal((properties.projection_recompilation_inputs as { type?: string } | undefined)?.type, "array");
+});
+
 test("projection manifest schema stays aligned with adapter and read-discipline contracts", async () => {
   const schema = await readSchema("../../schemas/projection-manifest.schema.json");
   const variant = schema.allOf?.[1];

@@ -132,6 +132,26 @@ Make the current preference flow less special without weakening it.
 - Keep `conversation_preference`, `openclaw_projection_feedback`, and `structured_preference_signal` as compatibility profiles implemented through the generic runner.
 - Move profile-specific assumptions out of generic store/recovery machinery.
 
+### Initial Runner Contract
+
+Phase A starts with a narrow registered-profile contract rather than a broad new intake product surface.
+
+A `RegisteredIntakeProfile` must declare:
+
+- a stable `profile_id`
+- the compatible `intake_kind`
+- the `runner_contract_version`
+- the source-normalization function used before authoritative writes
+- the semantic-profile resolver and stable semantic-profile fingerprint
+- the disposition-routing strategy used by the profile
+- the proposal/intake emission function
+- optional contradiction detection
+- the projection inputs needed after the authoritative write
+
+The generic runner owns the reusable write mechanics: store initialization, write lock, recovery journal, authoritative file materialization, validation-log append, audit append, idempotent rerun, and repair. A profile may describe and emit domain-specific records, but it must not define its own durability, replay, or reuse law.
+
+Profile reuse is legal only when the registered profile, authenticated authority, runtime identity, source payload, and semantic-profile fingerprint still match the already materialized flow.
+
 ### Tests
 
 - Existing 109 tests must remain green.

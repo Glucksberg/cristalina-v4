@@ -1,5 +1,43 @@
 import type { SourceIntakeKind, SubjectAuthorityRole } from "../types.js";
 
+export interface RegisteredIntakeProfile<
+  TStoreInput,
+  TNormalizedSource,
+  TSemanticProfile,
+  TIntakeArtifacts,
+  TDispositionRouting,
+  TContradictionDetection = unknown,
+  TProjectionInputs = unknown,
+> {
+  profile_id: string;
+  intake_kind: SourceIntakeKind;
+  runner_contract_version: "registered_intake_profile.v1";
+  source_normalization: (input: TStoreInput) => TNormalizedSource;
+  semantic_profile: {
+    kind: string;
+    resolve: (input: TStoreInput) => TSemanticProfile;
+    fingerprint: (profile: TSemanticProfile) => string;
+  };
+  disposition_routing: (input: {
+    input: TStoreInput;
+    semantic_profile: TSemanticProfile;
+  }) => TDispositionRouting;
+  proposal_emission: (input: {
+    input: TStoreInput;
+    source_record: TNormalizedSource;
+  }) => TIntakeArtifacts;
+  contradiction_detection?: (input: {
+    input: TStoreInput;
+    source_record: TNormalizedSource;
+    intake: TIntakeArtifacts;
+  }) => TContradictionDetection;
+  projection_recompilation_inputs: (input: {
+    input: TStoreInput;
+    source_record: TNormalizedSource;
+    intake: TIntakeArtifacts;
+  }) => TProjectionInputs;
+}
+
 export interface PreferenceSignalSemanticProfile {
   observation_prefix?: string;
   episode_summary: string;

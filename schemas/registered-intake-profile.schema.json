@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/registered-intake-profile.schema.json",
+  "title": "Cristalina v4 Registered Intake Profile",
+  "type": "object",
+  "required": [
+    "profile_id",
+    "intake_kind",
+    "runner_contract_version",
+    "semantic_profile_kind",
+    "source_normalization",
+    "disposition_routing",
+    "proposal_emission",
+    "contradiction_detection",
+    "projection_recompilation_inputs"
+  ],
+  "properties": {
+    "profile_id": {
+      "type": "string"
+    },
+    "intake_kind": {
+      "type": "string",
+      "enum": [
+        "conversation_preference",
+        "openclaw_projection_feedback",
+        "structured_preference_signal"
+      ]
+    },
+    "runner_contract_version": {
+      "const": "registered_intake_profile.v1"
+    },
+    "semantic_profile_kind": {
+      "type": "string"
+    },
+    "source_normalization": {
+      "type": "string"
+    },
+    "disposition_routing": {
+      "type": "string"
+    },
+    "proposal_emission": {
+      "type": "string"
+    },
+    "contradiction_detection": {
+      "type": "string",
+      "enum": [
+        "optional",
+        "none"
+      ]
+    },
+    "projection_recompilation_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

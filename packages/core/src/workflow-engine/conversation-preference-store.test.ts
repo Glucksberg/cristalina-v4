@@ -80,9 +80,31 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
   assert.equal(first.validation_issues.length, 0);
   assert.equal(first.records.canonical_record?.id, input.ids.canonical);
   assert.equal(first.records.canonical_record?.governance_state, "ratified");
+  assert.equal(first.records.source_record.intake_profile_ref, "preference_signal/conversation_preference");
+  assert.equal(first.records.source_record.intake_runner_contract_version, "registered_intake_profile.v1");
+  assert.match(first.records.source_record.semantic_profile_fingerprint ?? "", /^preference_signal:/);
   assert.equal(first.records.intake.runtime_instance?.id, input.identity_context?.ids.runtime_instance);
   assert.equal(first.records.intake.episode.id, input.ids.episode);
   assert.equal(first.records.intake.preference_relation.object_ref.id, input.ids.preference_entity);
+  assert.deepEqual(
+    new Set([
+      first.records.source_record.layer,
+      first.records.intake.observation.layer,
+      first.records.intake.episode.layer,
+      first.records.intake.subject_entity.layer,
+      first.records.intake.preference_entity.layer,
+      first.records.intake.preference_relation.layer,
+      first.records.intake.world_claim.layer,
+      first.records.intake.wiki_page.layer,
+      first.records.intake.wiki_claim.layer,
+      first.records.intake.proposal.layer,
+      first.records.intake.disposition_record.layer,
+      first.records.ratification_record.layer,
+      first.records.canonical_record?.layer,
+      first.records.projection_manifest.layer,
+    ]),
+    new Set(["raw", "runtime", "world", "wiki", "governance", "canon", "derived"]),
+  );
 
   const canonicalRecords = await loadCanonicalRecords(rootDir);
   assert.equal(canonicalRecords.length, 1);
@@ -783,6 +805,49 @@ test("writeConversationPreferenceFlowToStore rejects reuse with mismatched input
         },
       }),
     /does not match input/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore rejects reuse when raw source payload changes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(input);
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...input,
+        source: {
+          ...input.source,
+          message: "Same normalized claim arrived with a different raw payload.",
+        },
+      }),
+    /source\.payload/,
+  );
+});
+
+test("writeConversationPreferenceFlowToStore rejects reuse when semantic profile fingerprint changes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(input);
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...input,
+        semantic_profile: {
+          proposal_reason: "Same evidence is being routed under a changed semantic profile.",
+        },
+      }),
+    /source\.semantic_profile_fingerprint/,
   );
 });
 
