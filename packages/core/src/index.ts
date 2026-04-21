@@ -16,3 +16,4 @@ export * from "./projection-engine/openclaw.js";
 export * from "./workflow-engine/source-intake.js";
 export * from "./workflow-engine/pipeline.js";
 export * from "./workflow-engine/conversation-preference-store.js";
+export * from "./workflow-engine/non-canonical-intake-store.js";

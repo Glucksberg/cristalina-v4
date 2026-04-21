@@ -13,6 +13,7 @@ Planned schema families:
 - disposition records
 - source intake profile contracts
 - registered intake profile contracts
+- non-canonical intake contracts
 - projection manifests
 - OpenClaw adapter contracts
 - Hermes adapter contracts

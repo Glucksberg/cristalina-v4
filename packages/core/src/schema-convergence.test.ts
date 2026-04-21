@@ -13,6 +13,7 @@ import {
   GOVERNANCE_STATES,
   MEMORY_OBJECT_KINDS,
   RUNTIMES,
+  NON_CANONICAL_INTAKE_MODES,
   SOURCE_INTAKE_KINDS,
   SUBJECT_AUTHORITY_ROLES,
   TEMPORAL_STATUSES,
@@ -140,6 +141,13 @@ test("registered intake profile schema captures generic runner contract", async 
   assert.equal((properties.runner_contract_version as { const?: string } | undefined)?.const, "registered_intake_profile.v1");
   assert.deepEqual(expectEnum(properties.contradiction_detection), ["optional", "none"]);
   assert.equal((properties.projection_recompilation_inputs as { type?: string } | undefined)?.type, "array");
+});
+
+test("non-canonical intake schema stays aligned with executable disposition modes", async () => {
+  const schema = await readSchema("../../schemas/non-canonical-intake.schema.json");
+  const properties = schema.properties ?? {};
+
+  assert.deepEqual(expectEnum(properties.mode), [...NON_CANONICAL_INTAKE_MODES]);
 });
 
 test("projection manifest schema stays aligned with adapter and read-discipline contracts", async () => {

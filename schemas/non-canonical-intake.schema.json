@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/non-canonical-intake.schema.json",
+  "title": "Cristalina v4 Non-Canonical Intake",
+  "type": "object",
+  "required": [
+    "mode",
+    "source"
+  ],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "evidence_only",
+        "runtime_only",
+        "diagnostic_only"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "source_ref",
+        "content_ref",
+        "source_type"
+      ],
+      "properties": {
+        "source_ref": {
+          "type": "string"
+        },
+        "content_ref": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string"
+        },
+        "attachment_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

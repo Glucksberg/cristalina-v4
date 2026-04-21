@@ -180,6 +180,18 @@ Prove that not every source has to become a canonical proposal.
 - Add a source-import fixture that uses `raw/imports` as a real payload source, not only as a path-containment test.
 - Add an attachment-reference fixture that proves `raw/attachments` can be referenced safely without being treated as truth.
 
+### Initial Non-Canonical Contract
+
+Phase B starts with three explicit non-canonical modes:
+
+- `evidence_only`
+- `runtime_only`
+- `diagnostic_only`
+
+These modes may write raw source records, disposition records, runtime observations, diagnostics, validation log entries, and audit entries. They must not emit proposal records, ratification records, canonical records, world claims, wiki pages, or wiki claims.
+
+Attachment refs in this path are references to bounded raw evidence only. They must stay under `raw/attachments/` and must not be treated as claims, proposals, or truth without a later governed intake path dereferencing them.
+
 ### Tests
 
 - Disposition outcome must match target layer requirements.

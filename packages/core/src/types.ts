@@ -105,6 +105,12 @@ export const DISPOSITION_OUTCOMES = [
   "diagnostic_only",
 ] as const;
 
+export const NON_CANONICAL_INTAKE_MODES = [
+  "evidence_only",
+  "runtime_only",
+  "diagnostic_only",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -153,6 +159,7 @@ export type SourceIntakeKind = typeof SOURCE_INTAKE_KINDS[number];
 export type ProposalOperation = typeof PROPOSAL_OPERATIONS[number];
 export type ProposalStageState = Exclude<GovernanceState, "ratified" | "superseded">;
 export type DispositionOutcome = typeof DISPOSITION_OUTCOMES[number];
+export type NonCanonicalIntakeMode = typeof NON_CANONICAL_INTAKE_MODES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
