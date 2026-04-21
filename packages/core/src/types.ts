@@ -439,6 +439,15 @@ export interface RetrievalTrace {
   suppression_reasons: RetrievalSuppressionReason[];
 }
 
+export interface ProjectionRetrievalTrace {
+  trace_ref?: string;
+  query_ref: string;
+  recipe_ref: string;
+  included_candidate_refs: string[];
+  suppressed_candidate_refs: string[];
+  suppression_reasons: RetrievalSuppressionReason[];
+}
+
 export interface VectorBlobRef {
   path: string;
   checksum: string;
@@ -907,6 +916,10 @@ export interface ProjectionManifest extends RecordEnvelope {
     kind: string;
     reason_code: string;
   }>;
+  retrieval_trace_refs?: string[];
+  included_retrieval_candidate_refs?: string[];
+  suppressed_retrieval_candidate_refs?: string[];
+  retrieval_traces?: ProjectionRetrievalTrace[];
   diagnostic_refs?: string[];
   review_refs?: string[];
   upstream_refs: string[];

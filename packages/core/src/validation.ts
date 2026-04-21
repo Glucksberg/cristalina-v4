@@ -973,6 +973,86 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
       }
     }
   }
+  for (const optionalUniqueRefKey of [
+    "retrieval_trace_refs",
+    "included_retrieval_candidate_refs",
+    "suppressed_retrieval_candidate_refs",
+  ] as const) {
+    if (value[optionalUniqueRefKey] !== undefined && (!isStringArray(value[optionalUniqueRefKey]) || !hasUniqueEntries(value[optionalUniqueRefKey]))) {
+      issues.push({ path: optionalUniqueRefKey, message: "expected unique string array" });
+    }
+  }
+  if (value.retrieval_traces !== undefined) {
+    if (!Array.isArray(value.retrieval_traces)) {
+      issues.push({ path: "retrieval_traces", message: "expected array" });
+    } else {
+      for (const [index, trace] of value.retrieval_traces.entries()) {
+        const tracePath = `retrieval_traces[${index}]`;
+        if (!isRecord(trace)) {
+          issues.push({ path: tracePath, message: "expected object" });
+          continue;
+        }
+        if (trace.trace_ref !== undefined && typeof trace.trace_ref !== "string") {
+          issues.push({ path: `${tracePath}.trace_ref`, message: "expected string" });
+        }
+        pushRequiredString(issues, trace, "query_ref", `${tracePath}.query_ref`);
+        pushRequiredString(issues, trace, "recipe_ref", `${tracePath}.recipe_ref`);
+        if (!isStringArray(trace.included_candidate_refs) || !hasUniqueEntries(trace.included_candidate_refs)) {
+          issues.push({ path: `${tracePath}.included_candidate_refs`, message: "expected unique string array" });
+        }
+        if (!isStringArray(trace.suppressed_candidate_refs) || !hasUniqueEntries(trace.suppressed_candidate_refs)) {
+          issues.push({ path: `${tracePath}.suppressed_candidate_refs`, message: "expected unique string array" });
+        }
+        if (!Array.isArray(trace.suppression_reasons)) {
+          issues.push({ path: `${tracePath}.suppression_reasons`, message: "expected retrieval suppression reason array" });
+        } else {
+          trace.suppression_reasons.forEach((reason, reasonIndex) => {
+            if (!isEnumValue(reason, RETRIEVAL_SUPPRESSION_REASONS)) {
+              issues.push({
+                path: `${tracePath}.suppression_reasons[${reasonIndex}]`,
+                message: `expected one of: ${RETRIEVAL_SUPPRESSION_REASONS.join(", ")}`,
+              });
+            }
+          });
+        }
+      }
+    }
+  }
+  if (Array.isArray(value.retrieval_traces)) {
+    const traceRefs = new Set<string>();
+    const includedCandidateRefs = new Set<string>();
+    const suppressedCandidateRefs = new Set<string>();
+
+    for (const trace of value.retrieval_traces) {
+      if (!isRecord(trace)) continue;
+      if (typeof trace.trace_ref === "string") traceRefs.add(trace.trace_ref);
+      if (isStringArray(trace.included_candidate_refs)) {
+        for (const ref of trace.included_candidate_refs) includedCandidateRefs.add(ref);
+      }
+      if (isStringArray(trace.suppressed_candidate_refs)) {
+        for (const ref of trace.suppressed_candidate_refs) suppressedCandidateRefs.add(ref);
+      }
+    }
+
+    for (const [field, expectedRefs] of [
+      ["retrieval_trace_refs", traceRefs],
+      ["included_retrieval_candidate_refs", includedCandidateRefs],
+      ["suppressed_retrieval_candidate_refs", suppressedCandidateRefs],
+    ] as const) {
+      if (!isStringArray(value[field])) continue;
+      const declaredRefs = new Set(value[field]);
+      for (const ref of expectedRefs) {
+        if (!declaredRefs.has(ref)) {
+          issues.push({ path: field, message: `missing retrieval metadata ref: ${ref}` });
+        }
+      }
+      for (const ref of declaredRefs) {
+        if (!expectedRefs.has(ref)) {
+          issues.push({ path: field, message: `retrieval metadata did not declare ref: ${ref}` });
+        }
+      }
+    }
+  }
   if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
     issues.push({ path: "diagnostic_refs", message: "expected string array" });
   }

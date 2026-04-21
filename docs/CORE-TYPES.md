@@ -623,11 +623,16 @@ Minimum fields:
 - `created_at`
 - `context_refs`
 - `suppressed_refs`
+- `retrieval_trace_refs`
+- `included_retrieval_candidate_refs`
+- `suppressed_retrieval_candidate_refs`
 - `policy_snapshot_ref`
 - `upstream_refs`
 - `artifact_refs`
 
 For manifests, `upstream_refs` should remain the cumulative source set that materially shaped the compiled package.
+
+Retrieval metadata in a projection manifest is traceability only. It may expose which retrieval candidates were included or suppressed, and which retrieval trace refs explain that decision, but it must not convert retrieval rank into authority, truth, or proposal legality.
 
 ### 4.24 `Diagnostic`
 

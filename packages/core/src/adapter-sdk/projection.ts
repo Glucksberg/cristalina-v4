@@ -329,6 +329,10 @@ export interface ProjectionManifestInput {
     kind: string;
     reason_code: string;
   }>;
+  retrieval_trace_refs?: ProjectionManifest["retrieval_trace_refs"];
+  included_retrieval_candidate_refs?: ProjectionManifest["included_retrieval_candidate_refs"];
+  suppressed_retrieval_candidate_refs?: ProjectionManifest["suppressed_retrieval_candidate_refs"];
+  retrieval_traces?: ProjectionManifest["retrieval_traces"];
   diagnostic_refs?: string[];
   review_refs?: string[];
   artifact_refs: string[];
@@ -364,6 +368,14 @@ export function createProjectionManifest(input: ProjectionManifestInput): Projec
     context_refs: input.context_refs,
     ...(input.suppressed_refs !== undefined ? { suppressed_refs: input.suppressed_refs } : {}),
     ...(input.suppressed_records !== undefined ? { suppressed_records: input.suppressed_records } : {}),
+    ...(input.retrieval_trace_refs !== undefined ? { retrieval_trace_refs: input.retrieval_trace_refs } : {}),
+    ...(input.included_retrieval_candidate_refs !== undefined
+      ? { included_retrieval_candidate_refs: input.included_retrieval_candidate_refs }
+      : {}),
+    ...(input.suppressed_retrieval_candidate_refs !== undefined
+      ? { suppressed_retrieval_candidate_refs: input.suppressed_retrieval_candidate_refs }
+      : {}),
+    ...(input.retrieval_traces !== undefined ? { retrieval_traces: input.retrieval_traces } : {}),
     ...(input.diagnostic_refs !== undefined ? { diagnostic_refs: input.diagnostic_refs } : {}),
     ...(input.review_refs !== undefined ? { review_refs: input.review_refs } : {}),
     upstream_refs: input.upstream_refs,

@@ -255,4 +255,8 @@ test("projection manifest schema stays aligned with adapter and read-discipline 
   assert.deepEqual((properties.owner_identity_ref as { type?: string[] } | undefined)?.type, ["string", "null"]);
   assert.equal((properties.context_refs as { type?: string } | undefined)?.type, "array");
   assert.equal((properties.review_refs as { type?: string } | undefined)?.type, "array");
+  assert.equal((properties.retrieval_trace_refs as { type?: string } | undefined)?.type, "array");
+  assert.equal((properties.included_retrieval_candidate_refs as { type?: string } | undefined)?.type, "array");
+  assert.equal((properties.suppressed_retrieval_candidate_refs as { type?: string } | undefined)?.type, "array");
+  assert.equal((properties.retrieval_traces as { type?: string } | undefined)?.type, "array");
 });

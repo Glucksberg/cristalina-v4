@@ -122,6 +122,84 @@
             "additionalProperties": true
           }
         },
+        "retrieval_trace_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "included_retrieval_candidate_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "suppressed_retrieval_candidate_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "retrieval_traces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "query_ref",
+              "recipe_ref",
+              "included_candidate_refs",
+              "suppressed_candidate_refs",
+              "suppression_reasons"
+            ],
+            "properties": {
+              "trace_ref": {
+                "type": "string"
+              },
+              "query_ref": {
+                "type": "string"
+              },
+              "recipe_ref": {
+                "type": "string"
+              },
+              "included_candidate_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "suppressed_candidate_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "suppression_reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "visibility_scope_mismatch",
+                    "authority_mismatch",
+                    "stale_record",
+                    "contradicted_record",
+                    "unsupported_wiki_claim",
+                    "missing_upstream_ref",
+                    "projection_budget_exceeded",
+                    "invalid_external_candidate",
+                    "embedding_generation_mismatch"
+                  ]
+                },
+                "uniqueItems": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
         "diagnostic_refs": {
           "type": "array",
           "items": {

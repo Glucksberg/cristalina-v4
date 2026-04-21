@@ -17,6 +17,9 @@ import type {
   Episode,
   ProjectionArtifact,
   ProjectionManifest,
+  ProjectionRetrievalTrace,
+  RetrievalCandidate,
+  RetrievalResult,
   Relation,
   RuntimeKind,
   RuntimeInstance,
@@ -147,6 +150,42 @@ function renderReviewTraceSection(records: CurationPacket[]): string[] {
   });
 }
 
+function renderRetrievalCandidateLine(state: "included" | "suppressed", candidate: RetrievalCandidate): string {
+  const reasons = state === "included"
+    ? candidate.why_retrieved.join(", ")
+    : candidate.suppression_reasons?.join(", ") ?? "unspecified";
+  return `- [${state}:${candidate.id}] ${candidate.layer}/${candidate.authority} ref=${candidate.ref.id} reasons=${reasons}`;
+}
+
+function renderRetrievalSection(results: RetrievalResult[]): string[] {
+  if (results.length === 0) return ["- (none)"];
+
+  const lines: string[] = [];
+  for (const result of results) {
+    lines.push(`- result query=${result.query_ref} recipe=${result.recipe_ref} trace=${result.trace_ref ?? "none"}`);
+    for (const candidate of result.included_candidates) {
+      lines.push(renderRetrievalCandidateLine("included", candidate));
+    }
+    for (const candidate of result.suppressed_candidates) {
+      lines.push(renderRetrievalCandidateLine("suppressed", candidate));
+    }
+  }
+  return lines;
+}
+
+function summarizeRetrievalTraces(results: RetrievalResult[]): ProjectionRetrievalTrace[] {
+  return results.map((result) => ({
+    ...(result.trace_ref ? { trace_ref: result.trace_ref } : {}),
+    query_ref: result.query_ref,
+    recipe_ref: result.recipe_ref,
+    included_candidate_refs: result.included_candidates.map((candidate) => candidate.id),
+    suppressed_candidate_refs: result.suppressed_candidates.map((candidate) => candidate.id),
+    suppression_reasons: [
+      ...new Set(result.suppressed_candidates.flatMap((candidate) => candidate.suppression_reasons ?? [])),
+    ],
+  }));
+}
+
 export interface OpenClawBootstrapCompilationInput {
   adapter?: ProjectionAdapterKind;
   now: string;
@@ -163,6 +202,7 @@ export interface OpenClawBootstrapCompilationInput {
   wiki_claims: WikiClaim[];
   curation_packets?: CurationPacket[];
   diagnostics?: Diagnostic[];
+  retrieval_results?: RetrievalResult[];
   runtime_identity?: {
     actor_identity?: ActorIdentity;
     owner_identity?: ActorIdentity;
@@ -296,6 +336,20 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const wiki_claim_refs = wiki_claims.map((record) => record.id);
   const diagnostic_refs = diagnostics.map((record) => record.id);
   const review_refs = curation_packets.map((record) => record.id);
+  const retrieval_results = input.retrieval_results ?? [];
+  const retrieval_traces = summarizeRetrievalTraces(retrieval_results);
+  const retrieval_trace_refs = uniqueRefs(retrieval_traces.flatMap((trace) => trace.trace_ref ? [trace.trace_ref] : []));
+  const included_retrieval_candidate_refs = uniqueRefs(retrieval_traces.map((trace) => trace.included_candidate_refs).flat());
+  const suppressed_retrieval_candidate_refs = uniqueRefs(retrieval_traces.map((trace) => trace.suppressed_candidate_refs).flat());
+  const retrieval_upstream_refs = uniqueRefs(
+    retrieval_results.map((result) => result.query_ref),
+    retrieval_results.map((result) => result.recipe_ref),
+    retrieval_trace_refs,
+    retrieval_results.flatMap((result) => [
+      ...result.included_candidates.map((candidate) => candidate.ref.id),
+      ...result.suppressed_candidates.map((candidate) => candidate.ref.id),
+    ]),
+  );
   const all_runtime_refs = [
     input.runtime_identity?.actor_identity?.id ?? input.identity_context?.actor_identity_ref ?? null,
     input.runtime_identity?.owner_identity?.id ?? input.identity_context?.owner_identity_ref ?? null,
@@ -409,6 +463,9 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     "## Review Trace",
     ...renderReviewTraceSection(curation_packets),
     "",
+    "## Retrieval",
+    ...renderRetrievalSection(retrieval_results),
+    "",
     "## Provenance",
     ...uniqueRefs(
       runtime_refs,
@@ -423,6 +480,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       wiki_claim_refs,
       review_refs,
       diagnostic_refs,
+      retrieval_upstream_refs,
     ).map((ref) => `- ${ref}`),
     "",
   ].join("\n");
@@ -441,6 +499,10 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     context_refs: runtime_refs,
     suppressed_refs: suppressed_ref_ids,
     suppressed_records,
+    retrieval_trace_refs: retrieval_trace_refs.length > 0 ? retrieval_trace_refs : undefined,
+    included_retrieval_candidate_refs: included_retrieval_candidate_refs.length > 0 ? included_retrieval_candidate_refs : undefined,
+    suppressed_retrieval_candidate_refs: suppressed_retrieval_candidate_refs.length > 0 ? suppressed_retrieval_candidate_refs : undefined,
+    retrieval_traces: retrieval_traces.length > 0 ? retrieval_traces : undefined,
     diagnostic_refs: diagnostic_refs.length > 0 ? diagnostic_refs : undefined,
     review_refs: review_refs.length > 0 ? review_refs : undefined,
     artifact_refs: artifacts.map((artifact) => artifact.id),
@@ -457,6 +519,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       all_wiki_claim_refs,
       all_review_refs,
       all_diagnostic_refs,
+      retrieval_upstream_refs,
     ),
     now: input.now,
     visibility_state: input.visibility_state,
