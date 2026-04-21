@@ -2,7 +2,7 @@ import { applyApprovedCanonicalProposal } from "../canon/engine.js";
 import { evaluateCanonicalProposal, type GovernanceEvaluationResult } from "../governance/engine.js";
 import {
   compileOpenClawBootstrapProjection,
-  defaultOpenClawBootstrapProjectionPath,
+  defaultRuntimeBootstrapProjectionPath,
 } from "../projection-engine/openclaw.js";
 import { resolvePreferenceSignalSemanticProfile, type PreferenceSignalSemanticProfile } from "./source-intake.js";
 import type {
@@ -1302,6 +1302,7 @@ export function executeCanonicalProposalWorkflow(input: CanonicalProposalWorkflo
 }
 
 export interface OpenClawBootstrapWorkflowInput {
+  adapter?: Exclude<RuntimeKind, "generic">;
   now: string;
   visibility_state: VisibilityState;
   projection_path?: string;
@@ -1345,10 +1346,12 @@ export interface OpenClawBootstrapWorkflowResult {
 }
 
 export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflowInput): OpenClawBootstrapWorkflowResult {
+  const adapter = input.adapter ?? "openclaw";
   return compileOpenClawBootstrapProjection({
+    adapter,
     now: input.now,
     visibility_state: input.visibility_state,
-    projection_path: input.projection_path ?? defaultOpenClawBootstrapProjectionPath(input.ids.manifest),
+    projection_path: input.projection_path ?? defaultRuntimeBootstrapProjectionPath(adapter, input.ids.manifest),
     canonical_records: input.canonical_records,
     world_claims: input.world_claims,
     episodes: input.episodes ?? [],

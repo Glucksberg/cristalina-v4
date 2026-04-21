@@ -21,6 +21,8 @@ type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
 export interface ProjectionRuntimeSummary {
   manifest_id: string;
   compiled_at: string;
+  actor_identity_ref?: string | null;
+  owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
@@ -30,6 +32,8 @@ export interface ProjectionRuntimeSummary {
 }
 
 export interface ProjectionRuntimeFilter {
+  actor_identity_ref?: string | null;
+  owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
@@ -51,13 +55,22 @@ function compareProjectionTimestamps(left: ProjectionManifest, right: Projection
 }
 
 function matchesProjectionRuntimeFilter(
-  manifest: Pick<ProjectionManifest, "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref">,
+  manifest: Pick<
+    ProjectionManifest,
+    "actor_identity_ref" | "owner_identity_ref" | "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref"
+  >,
   filter?: ProjectionRuntimeFilter,
 ): boolean {
   if (!filter) {
     return true;
   }
 
+  if (filter.actor_identity_ref !== undefined && manifest.actor_identity_ref !== filter.actor_identity_ref) {
+    return false;
+  }
+  if (filter.owner_identity_ref !== undefined && manifest.owner_identity_ref !== filter.owner_identity_ref) {
+    return false;
+  }
   if (filter.runtime_instance_ref !== undefined && manifest.runtime_instance_ref !== filter.runtime_instance_ref) {
     return false;
   }
@@ -69,6 +82,39 @@ function matchesProjectionRuntimeFilter(
   }
 
   return true;
+}
+
+function selectionDimensionIsAmbiguous(
+  summaries: ProjectionRuntimeSummary[],
+  filter: ProjectionRuntimeFilter | undefined,
+  key: keyof Pick<
+    ProjectionRuntimeSummary,
+    "actor_identity_ref" | "owner_identity_ref" | "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref"
+  >,
+): boolean {
+  if (filter?.[key] !== undefined) {
+    return false;
+  }
+
+  const values = new Set(summaries.map((summary) => summary[key] ?? null));
+  return values.size > 1;
+}
+
+function projectionSelectionIsAmbiguous(
+  summaries: ProjectionRuntimeSummary[],
+  filter?: ProjectionRuntimeFilter,
+): boolean {
+  if (summaries.length <= 1) {
+    return false;
+  }
+
+  return (
+    selectionDimensionIsAmbiguous(summaries, filter, "actor_identity_ref") ||
+    selectionDimensionIsAmbiguous(summaries, filter, "owner_identity_ref") ||
+    selectionDimensionIsAmbiguous(summaries, filter, "runtime_instance_ref") ||
+    selectionDimensionIsAmbiguous(summaries, filter, "runtime_session_ref") ||
+    selectionDimensionIsAmbiguous(summaries, filter, "conversation_thread_ref")
+  );
 }
 
 export function resolveProjectionMarkdownPath(input: {
@@ -113,6 +159,8 @@ export async function listProjectionRuntimeViews(
       return {
         manifest_id: manifest.id,
         compiled_at: manifest.updated_at ?? manifest.created_at,
+        actor_identity_ref: manifest.actor_identity_ref ?? null,
+        owner_identity_ref: manifest.owner_identity_ref ?? null,
         runtime_instance_ref: manifest.runtime_instance_ref ?? null,
         runtime_session_ref: manifest.runtime_session_ref ?? null,
         conversation_thread_ref: manifest.conversation_thread_ref ?? null,
@@ -167,9 +215,9 @@ export async function loadLatestProjectionRuntimeView(
   filter?: ProjectionRuntimeFilter,
 ): Promise<ProjectionRuntimeView | undefined> {
   const summaries = await listProjectionRuntimeViews(rootDir, adapter, filter);
-  if (!filter && summaries.length > 1) {
+  if (projectionSelectionIsAmbiguous(summaries, filter)) {
     throw new Error(
-      `Latest ${adapter} projection is ambiguous without runtime context; provide runtime_instance_ref, runtime_session_ref, or conversation_thread_ref`,
+      `Latest ${adapter} projection is ambiguous without full runtime and identity context; provide actor_identity_ref, owner_identity_ref, runtime_instance_ref, runtime_session_ref, or conversation_thread_ref`,
     );
   }
   const latest = summaries[0];

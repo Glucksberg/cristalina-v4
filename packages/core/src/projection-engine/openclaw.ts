@@ -18,6 +18,7 @@ import type {
   ProjectionArtifact,
   ProjectionManifest,
   Relation,
+  RuntimeKind,
   RuntimeInstance,
   RuntimeSession,
   VisibilityState,
@@ -26,8 +27,21 @@ import type {
   WorldClaim,
 } from "../types.js";
 
+type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
+
+export function defaultRuntimeBootstrapProjectionPath(
+  adapter: ProjectionAdapterKind,
+  manifestId: string,
+): string {
+  return `derived/${adapter}/${manifestId}/bootstrap-memory.md`;
+}
+
 export function defaultOpenClawBootstrapProjectionPath(manifestId: string): string {
-  return `derived/openclaw/${manifestId}/bootstrap-memory.md`;
+  return defaultRuntimeBootstrapProjectionPath("openclaw", manifestId);
+}
+
+export function defaultHermesBootstrapProjectionPath(manifestId: string): string {
+  return defaultRuntimeBootstrapProjectionPath("hermes", manifestId);
 }
 
 function uniqueRefs(...groups: string[][]): string[] {
@@ -134,6 +148,7 @@ function renderReviewTraceSection(records: CurationPacket[]): string[] {
 }
 
 export interface OpenClawBootstrapCompilationInput {
+  adapter?: ProjectionAdapterKind;
   now: string;
   visibility_state: VisibilityState;
   projection_path: string;
@@ -177,8 +192,9 @@ export interface OpenClawBootstrapCompilation {
 }
 
 export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompilationInput): OpenClawBootstrapCompilation {
+  const adapter = input.adapter ?? "openclaw";
   const projectionContext = {
-    adapter: "openclaw" as const,
+    adapter,
     audience: "runtime",
     actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
     owner_identity_ref: input.identity_context?.owner_identity_ref ?? null,
@@ -304,7 +320,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const artifacts: ProjectionArtifact[] = [
     createProjectionArtifact({
       id: input.ids.canon_artifact,
-      adapter: "openclaw",
+      adapter,
       artifact_kind: "layer_fragment",
       path: `${input.projection_path}#canon`,
       source_layer: "canon",
@@ -315,7 +331,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     }),
     createProjectionArtifact({
       id: input.ids.world_artifact,
-      adapter: "openclaw",
+      adapter,
       artifact_kind: "layer_fragment",
       path: `${input.projection_path}#world`,
       source_layer: "world",
@@ -326,7 +342,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     }),
     createProjectionArtifact({
       id: input.ids.wiki_artifact,
-      adapter: "openclaw",
+      adapter,
       artifact_kind: "layer_fragment",
       path: `${input.projection_path}#wiki`,
       source_layer: "wiki",
@@ -347,8 +363,10 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       }
     : undefined;
 
+  const projectionTitle = adapter === "hermes" ? "Hermes Bootstrap Memory" : "OpenClaw Bootstrap Memory";
+
   const markdown = [
-    "# OpenClaw Bootstrap Memory",
+    `# ${projectionTitle}`,
     "",
     `Compiled at: ${input.now}`,
     "",
@@ -411,7 +429,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
 
   const manifest = createProjectionManifest({
     id: input.ids.manifest,
-    adapter: "openclaw",
+    adapter,
     projection_profile: "bootstrap",
     audience: "runtime",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,

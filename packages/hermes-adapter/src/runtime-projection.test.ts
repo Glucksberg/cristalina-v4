@@ -11,6 +11,7 @@ import {
   buildConversationPreferenceFlowInput,
   type ConversationPreferenceFlowInputFixtureInput,
 } from "../../core/dist/test-support/conversation-preference-fixtures.js";
+import { listProjectionRuntimeViews } from "../../core/dist/index.js";
 
 import {
   listHermesProjectionRuntimeViews,
@@ -196,6 +197,8 @@ test("Hermes adapter forwards authenticated principals through write-through ing
   assert.equal(deferred.records.intake.runtime_instance?.runtime, "hermes");
   assert.equal(deferred.records.intake.proposal.promotion_requirement, "owner_ratification_required");
   assert.equal(deferred.records.ratification_record.decision, "deferred");
+  assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 1);
+  assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
 
   const ownerRootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-owner-"));
   t.after(async () => {
@@ -266,4 +269,6 @@ test("Hermes adapter forwards authenticated principals through write-through ing
   assert.equal(approved.records.intake.runtime_instance?.runtime, "hermes");
   assert.equal(approved.records.intake.proposal.promotion_requirement, "none");
   assert.equal(approved.records.ratification_record.decision, "approved");
+  assert.equal((await listHermesProjectionRuntimeViews(ownerRootDir)).length, 1);
+  assert.equal((await listProjectionRuntimeViews(ownerRootDir, "openclaw")).length, 0);
 });

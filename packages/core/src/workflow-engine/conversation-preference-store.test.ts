@@ -7,6 +7,7 @@ import test from "node:test";
 import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
 import {
   applyConversationPreferenceResolutionToStore,
+  type AuthenticatedConversationPreferenceStoreInput,
   applyQueuedConversationPreferenceManualContradictionReviewToStore,
   expireQueuedConversationPreferenceProposalToStore,
   listConversationPreferenceManualContradictionReviewQueue,
@@ -22,7 +23,7 @@ import {
 } from "./conversation-preference-store.js";
 import { buildDefaultConversationPreferenceFlowInput } from "../test-support/conversation-preference-fixtures.js";
 
-function buildInput(rootDir: string): ConversationPreferenceStoreInput {
+function buildInput(rootDir: string): AuthenticatedConversationPreferenceStoreInput {
   return buildDefaultConversationPreferenceFlowInput(rootDir);
 }
 
@@ -30,7 +31,7 @@ function cloneInputWithSuffix(
   rootDir: string,
   suffix: string,
   statement: string,
-): ConversationPreferenceStoreInput {
+): AuthenticatedConversationPreferenceStoreInput {
   const input = buildInput(rootDir);
   input.statement = statement;
   input.source.id = `${input.source.id}_${suffix}`;
@@ -39,7 +40,7 @@ function cloneInputWithSuffix(
   input.source.message = statement;
   input.ids = Object.fromEntries(
     Object.entries(input.ids).map(([key, value]) => [key, `${value}_${suffix}`]),
-  ) as unknown as ConversationPreferenceStoreInput["ids"];
+  ) as unknown as AuthenticatedConversationPreferenceStoreInput["ids"];
   input.validation_scope = `test:conversation-preference:${suffix}`;
   return input;
 }
@@ -103,6 +104,24 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
   assert.equal(second.reused, true);
   assert.equal(second.records.canonical_record?.id, first.records.canonical_record?.id);
   assert.equal(auditLogAfter, auditLogBefore);
+});
+
+test("writeConversationPreferenceFlowToStore requires an authenticated principal", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  const unauthenticated = {
+    ...input,
+    authenticated_principal: undefined,
+  } as unknown as Parameters<typeof writeConversationPreferenceFlowToStore>[0];
+
+  await assert.rejects(
+    () => writeConversationPreferenceFlowToStore(unauthenticated),
+    /requires an authenticated_principal/,
+  );
 });
 
 test("writeConversationPreferenceFlowToStore preserves speaker provenance", async (t) => {
@@ -1034,7 +1053,7 @@ test("writeConversationPreferenceFlowToStore preserves canonical identity record
   const firstInput = buildInput(rootDir);
   await writeConversationPreferenceFlowToStore(firstInput);
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: "2026-04-13T00:00:00.000Z",
     statement: "The user now asks for terse summaries first.",
@@ -1169,7 +1188,7 @@ test("writeConversationPreferenceFlowToStore keeps projection markdown isolated 
   const first = await writeConversationPreferenceFlowToStore(firstInput);
   const firstProjectionBefore = await readFile(first.paths.projection_markdown, "utf8");
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: "2026-04-12T01:00:00.000Z",
     statement: "The user now prefers exhaustive answers by default.",
@@ -1223,7 +1242,7 @@ test("writeConversationPreferenceFlowToStore records contradictions against exis
   const firstInput = buildInput(rootDir);
   await writeConversationPreferenceFlowToStore(firstInput);
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: "2026-04-12T01:00:00.000Z",
     statement: "The user now prefers exhaustive answers by default.",
@@ -1347,7 +1366,7 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   const firstInput = buildInput(rootDir);
   await writeConversationPreferenceFlowToStore(firstInput);
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: "2026-04-12T01:00:00.000Z",
     statement: "The user now prefers exhaustive answers by default.",
@@ -1425,7 +1444,7 @@ test("applyConversationPreferenceResolutionToStore supports supersede_candidate 
   const firstInput = buildInput(rootDir);
   await writeConversationPreferenceFlowToStore(firstInput);
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: "2026-04-12T01:00:00.000Z",
     statement: "The user now prefers exhaustive answers by default.",
@@ -1495,7 +1514,7 @@ test("applyConversationPreferenceResolutionToStore blocks auto-application of ma
   const firstInput = buildInput(rootDir);
   await writeConversationPreferenceFlowToStore(firstInput);
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: firstInput.now,
     statement: "The user now prefers exhaustive answers by default.",
@@ -1556,7 +1575,7 @@ test("manual contradiction review queue lists pending reviews and can apply an e
   const firstInput = buildInput(rootDir);
   await writeConversationPreferenceFlowToStore(firstInput);
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: firstInput.now,
     statement: "The user now prefers exhaustive answers by default.",
@@ -1634,7 +1653,7 @@ test("manual contradiction review queue rejects calls without an authenticated o
   const firstInput = buildInput(rootDir);
   await writeConversationPreferenceFlowToStore(firstInput);
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(rootDir),
     now: firstInput.now,
     statement: "The user now prefers exhaustive answers by default.",

@@ -8,7 +8,7 @@ import {
   type AuditChangeEntry,
   type ValidationLogEntry,
 } from "../audit/log.js";
-import { defaultOpenClawBootstrapProjectionPath } from "../projection-engine/openclaw.js";
+import { defaultRuntimeBootstrapProjectionPath } from "../projection-engine/openclaw.js";
 import { ValidationError, validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
   coreRecordPath,
@@ -124,6 +124,11 @@ export interface ConversationPreferenceStoreInput {
   validation_scope?: string;
 }
 
+export type AuthenticatedConversationPreferenceStoreInput =
+  ConversationPreferenceStoreInput & {
+    authenticated_principal: AuthenticatedPrincipal;
+  };
+
 export interface ConversationPreferenceStorePaths {
   raw_source: string;
   source_record: string;
@@ -184,6 +189,11 @@ export interface ConversationPreferenceOwnerRatificationInput extends Conversati
   owner_actor_ref?: string;
 }
 
+export type AuthenticatedConversationPreferenceOwnerRatificationInput =
+  ConversationPreferenceOwnerRatificationInput & {
+    authenticated_principal: AuthenticatedPrincipal;
+  };
+
 export interface ConversationPreferenceOwnerRatificationQueueEntry {
   queue_id: string;
   proposal_id: string;
@@ -211,6 +221,11 @@ export interface ConversationPreferenceQueuedRatificationInput {
   validation_scope?: string;
 }
 
+export type AuthenticatedConversationPreferenceQueuedRatificationInput =
+  ConversationPreferenceQueuedRatificationInput & {
+    authenticated_principal: AuthenticatedPrincipal;
+  };
+
 export interface ConversationPreferenceQueuedRejectionInput {
   rootDir: string;
   queue_id: string;
@@ -221,6 +236,11 @@ export interface ConversationPreferenceQueuedRejectionInput {
   validation_scope?: string;
 }
 
+export type AuthenticatedConversationPreferenceQueuedRejectionInput =
+  ConversationPreferenceQueuedRejectionInput & {
+    authenticated_principal: AuthenticatedPrincipal;
+  };
+
 export interface ConversationPreferenceQueuedExpirationInput {
   rootDir: string;
   queue_id: string;
@@ -229,6 +249,11 @@ export interface ConversationPreferenceQueuedExpirationInput {
   authenticated_principal?: AuthenticatedPrincipal;
   validation_scope?: string;
 }
+
+export type AuthenticatedConversationPreferenceQueuedExpirationInput =
+  ConversationPreferenceQueuedExpirationInput & {
+    authenticated_principal: AuthenticatedPrincipal;
+  };
 
 export interface ConversationPreferenceManualContradictionReviewQueueEntry {
   queue_id: string;
@@ -256,6 +281,11 @@ export interface ConversationPreferenceQueuedManualContradictionReviewInput {
   strategy: Exclude<ContradictionResolutionStrategy, "manual_review">;
   validation_scope?: string;
 }
+
+export type AuthenticatedConversationPreferenceQueuedManualContradictionReviewInput =
+  ConversationPreferenceQueuedManualContradictionReviewInput & {
+    authenticated_principal: AuthenticatedPrincipal;
+  };
 
 export interface ConversationPreferenceResolutionStoreResult {
   reused: boolean;
@@ -330,6 +360,8 @@ const STORE_WRITE_LOCK_POLL_MS = 25;
 const STORE_WRITE_LOCK_TIMEOUT_MS = 120_000;
 const STORE_WRITE_LOCK_STALE_MS = 120_000;
 const STORE_WRITE_LOCK_HEARTBEAT_MS = 10_000;
+
+type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
 
 function ownerRatificationQueueId(proposalId: string): string {
   return `cur_owner_ratification_${proposalId}`;
@@ -627,15 +659,22 @@ function applyExplicitManualContradictionReview(input: {
   });
 }
 
-function assertAuthenticatedPrincipalMatchesActor(input: {
-  actor: string;
-  authenticated_principal?: AuthenticatedPrincipal;
-}): void {
-  const principal = input.authenticated_principal;
+function requireAuthenticatedPrincipal<T extends AuthenticatedPrincipal | undefined>(
+  principal: T,
+  action: string,
+): AuthenticatedPrincipal {
   if (!principal) {
-    return;
+    throw new Error(`${action} requires an authenticated_principal`);
   }
 
+  return principal;
+}
+
+function assertAuthenticatedPrincipalMatchesActor(input: {
+  actor: string;
+  authenticated_principal: AuthenticatedPrincipal;
+}): void {
+  const principal = input.authenticated_principal;
   if (typeof principal.actor_ref !== "string" || principal.actor_ref.trim().length === 0) {
     throw new Error("Authenticated principal requires a non-empty actor_ref");
   }
@@ -656,6 +695,10 @@ function authenticatedActorRef(input: Pick<ConversationPreferenceStoreInput, "ac
   return input.authenticated_principal?.actor_ref?.trim() || input.actor;
 }
 
+function projectionAdapterForRuntime(runtime: RuntimeKind): ProjectionAdapterKind {
+  return runtime === "hermes" ? "hermes" : "openclaw";
+}
+
 function assertAuthorizedOwnerAction(input: {
   actor: string;
   authenticated_principal?: AuthenticatedPrincipal;
@@ -667,14 +710,18 @@ function assertAuthorizedOwnerAction(input: {
     throw new Error(`Deferred conversation preference flow does not carry an owner identity`);
   }
 
+  const authenticated_principal = requireAuthenticatedPrincipal(
+    input.authenticated_principal,
+    `Explicit owner ${input.action}`,
+  );
   assertAuthenticatedPrincipalMatchesActor({
     actor: input.actor,
-    authenticated_principal: input.authenticated_principal,
+    authenticated_principal,
   });
 
   if (
-    input.authenticated_principal?.kind !== "owner" ||
-    input.authenticated_principal.actor_ref?.trim() !== input.owner_identity_ref
+    authenticated_principal.kind !== "owner" ||
+    authenticated_principal.actor_ref?.trim() !== input.owner_identity_ref
   ) {
     throw new Error(`Explicit owner ${input.action} requires authenticated owner principal ${input.owner_identity_ref}`);
   }
@@ -692,12 +739,16 @@ function assertAuthorizedOwnerReviewExpiration(input: {
   authenticated_principal?: AuthenticatedPrincipal;
   owner_identity_ref?: string | null;
 }): void {
+  const authenticated_principal = requireAuthenticatedPrincipal(
+    input.authenticated_principal,
+    "Owner review expiration",
+  );
   assertAuthenticatedPrincipalMatchesActor({
     actor: input.actor,
-    authenticated_principal: input.authenticated_principal,
+    authenticated_principal,
   });
 
-  if (input.authenticated_principal?.kind === "system") {
+  if (authenticated_principal.kind === "system") {
     return;
   }
 
@@ -706,8 +757,8 @@ function assertAuthorizedOwnerReviewExpiration(input: {
   }
 
   if (
-    input.authenticated_principal?.kind === "owner" &&
-    input.authenticated_principal.actor_ref?.trim() === input.owner_identity_ref
+    authenticated_principal.kind === "owner" &&
+    authenticated_principal.actor_ref?.trim() === input.owner_identity_ref
   ) {
     return;
   }
@@ -720,19 +771,23 @@ function assertAuthorizedManualContradictionReview(input: {
   authenticated_principal?: AuthenticatedPrincipal;
   owner_identity_ref?: string | null;
 }): void {
+  const authenticated_principal = requireAuthenticatedPrincipal(
+    input.authenticated_principal,
+    "Manual contradiction review",
+  );
   assertAuthenticatedPrincipalMatchesActor({
     actor: input.actor,
-    authenticated_principal: input.authenticated_principal,
+    authenticated_principal,
   });
 
-  if (input.authenticated_principal?.kind === "system") {
+  if (authenticated_principal.kind === "system") {
     return;
   }
 
   if (
     input.owner_identity_ref &&
-    input.authenticated_principal?.kind === "owner" &&
-    input.authenticated_principal.actor_ref?.trim() === input.owner_identity_ref
+    authenticated_principal.kind === "owner" &&
+    authenticated_principal.actor_ref?.trim() === input.owner_identity_ref
   ) {
     return;
   }
@@ -927,6 +982,7 @@ function buildPaths(
   input: ConversationPreferenceStoreInput,
 ): ConversationPreferenceStorePaths {
   assertStoreRelativeWikiPagePath(intake.wiki_page.path);
+  const projectionAdapter = projectionAdapterForRuntime(input.source.runtime);
 
   const paths: ConversationPreferenceStorePaths = {
     raw_source: resolveStorePath(rootDir, sourceRecord.content_ref),
@@ -1016,14 +1072,17 @@ function buildPaths(
         layer: "canon",
       } as CanonicalMemoryObject,
     ),
-    projection_markdown: resolveStorePath(rootDir, defaultOpenClawBootstrapProjectionPath(input.ids.projection_manifest)),
+    projection_markdown: resolveStorePath(
+      rootDir,
+      defaultRuntimeBootstrapProjectionPath(projectionAdapter, input.ids.projection_manifest),
+    ),
     projection_manifest: coreRecordPath(
       rootDir,
       {
         id: input.ids.projection_manifest,
         kind: "projection_manifest",
         layer: "derived",
-        adapter: "openclaw",
+        adapter: projectionAdapter,
       } as ProjectionManifest,
     ),
     projection_artifacts: {
@@ -1033,7 +1092,7 @@ function buildPaths(
           id: input.ids.canon_artifact,
           kind: "projection_artifact",
           layer: "derived",
-          adapter: "openclaw",
+          adapter: projectionAdapter,
         } as ProjectionArtifact,
       ),
       world: coreRecordPath(
@@ -1042,7 +1101,7 @@ function buildPaths(
           id: input.ids.world_artifact,
           kind: "projection_artifact",
           layer: "derived",
-          adapter: "openclaw",
+          adapter: projectionAdapter,
         } as ProjectionArtifact,
       ),
       wiki: coreRecordPath(
@@ -1051,7 +1110,7 @@ function buildPaths(
           id: input.ids.wiki_artifact,
           kind: "projection_artifact",
           layer: "derived",
-          adapter: "openclaw",
+          adapter: projectionAdapter,
         } as ProjectionArtifact,
       ),
     },
@@ -1114,6 +1173,51 @@ function assertNoPathCollisions(paths: ConversationPreferenceStorePaths): void {
     }
     seen.set(filePath, label);
   }
+}
+
+function projectionManifestPathForAdapter(
+  rootDir: string,
+  manifestId: string,
+  adapter: ProjectionAdapterKind,
+): string {
+  return coreRecordPath(
+    rootDir,
+    {
+      id: manifestId,
+      kind: "projection_manifest",
+      layer: "derived",
+      adapter,
+    } as ProjectionManifest,
+  );
+}
+
+function projectionArtifactPathForAdapter(
+  rootDir: string,
+  artifactId: string,
+  adapter: ProjectionAdapterKind,
+): string {
+  return coreRecordPath(
+    rootDir,
+    {
+      id: artifactId,
+      kind: "projection_artifact",
+      layer: "derived",
+      adapter,
+    } as ProjectionArtifact,
+  );
+}
+
+async function resolveStoredProjectionAdapter(
+  rootDir: string,
+  manifestId: string,
+): Promise<ProjectionAdapterKind> {
+  for (const adapter of ["openclaw", "hermes"] as const) {
+    if (await pathExists(projectionManifestPathForAdapter(rootDir, manifestId, adapter))) {
+      return adapter;
+    }
+  }
+
+  throw new Error(`Projection manifest ${manifestId} does not exist in derived/openclaw or derived/hermes`);
 }
 
 function writeFlowBaselinePaths(paths: ConversationPreferenceStorePaths): string[] {
@@ -2368,6 +2472,9 @@ async function loadExistingFlow(
   paths: ConversationPreferenceStorePaths,
   expectedSourceRecord: SourceRecord,
   expectedIntake: ConversationPreferenceIntakeArtifacts,
+  options?: {
+    ignore_authenticated_principal?: boolean;
+  },
 ): Promise<ConversationPreferenceStoreResult | undefined> {
   const rootDir = resolve(input.rootDir);
   const authoritativePaths = [
@@ -2453,6 +2560,7 @@ async function loadExistingFlow(
     expectedSourceRecord,
     expectedIntake,
     input.authenticated_principal,
+    options?.ignore_authenticated_principal ?? false,
   );
 
   await ensureReplayableArtifacts(input, paths, loaded);
@@ -2550,6 +2658,7 @@ async function readConversationPreferenceFlowResultInternal(
   input: ConversationPreferenceStoreInput,
   options?: {
     repair?: boolean;
+    ignore_authenticated_principal?: boolean;
   },
 ): Promise<ConversationPreferenceStoreResult | undefined> {
   const rootDir = resolve(input.rootDir);
@@ -2562,7 +2671,15 @@ async function readConversationPreferenceFlowResultInternal(
   }
 
   const { intake } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
-  return loadExistingFlow(input, buildPaths(rootDir, source_record, intake, input), source_record, intake);
+  return loadExistingFlow(
+    input,
+    buildPaths(rootDir, source_record, intake, input),
+    source_record,
+    intake,
+    {
+      ignore_authenticated_principal: options?.ignore_authenticated_principal,
+    },
+  );
 }
 
 async function loadAuthoritativeFlow(
@@ -2647,6 +2764,7 @@ function assertLoadedFlowMatchesInput(
   expectedSourceRecord: SourceRecord,
   expectedIntake: ConversationPreferenceIntakeArtifacts,
   expectedAuthenticatedPrincipal?: AuthenticatedPrincipal,
+  ignoreAuthenticatedPrincipal = false,
 ): void {
   const mismatches: string[] = [];
   const expectedProposalStatement =
@@ -2693,15 +2811,17 @@ function assertLoadedFlowMatchesInput(
   if (loaded.intake.disposition_record.provenance.source_ref !== expectedIntake.disposition_record.provenance.source_ref) mismatches.push("disposition_record.provenance.source_ref");
   if (loaded.intake.disposition_record.provenance.source_type !== expectedIntake.disposition_record.provenance.source_type) mismatches.push("disposition_record.provenance.source_type");
   if (loaded.ratification_record.provenance.source_ref !== expectedIntake.proposal.provenance.source_ref) mismatches.push("ratification_record.provenance.source_ref");
-  const loadedPrincipal = loaded.ratification_record.authenticated_principal ?? null;
-  const expectedPrincipal = expectedAuthenticatedPrincipal ?? null;
-  if (loadedPrincipal?.kind !== expectedPrincipal?.kind) mismatches.push("ratification_record.authenticated_principal.kind");
-  if (loadedPrincipal?.actor_ref !== expectedPrincipal?.actor_ref) mismatches.push("ratification_record.authenticated_principal.actor_ref");
-  if (loadedPrincipal?.kind === "system" || expectedPrincipal?.kind === "system") {
-    const loadedSystemScope = loadedPrincipal?.kind === "system" ? loadedPrincipal.system_scope : undefined;
-    const expectedSystemScope = expectedPrincipal?.kind === "system" ? expectedPrincipal.system_scope : undefined;
-    if (loadedSystemScope !== expectedSystemScope) {
-      mismatches.push("ratification_record.authenticated_principal.system_scope");
+  if (!ignoreAuthenticatedPrincipal) {
+    const loadedPrincipal = loaded.ratification_record.authenticated_principal ?? null;
+    const expectedPrincipal = expectedAuthenticatedPrincipal ?? null;
+    if (loadedPrincipal?.kind !== expectedPrincipal?.kind) mismatches.push("ratification_record.authenticated_principal.kind");
+    if (loadedPrincipal?.actor_ref !== expectedPrincipal?.actor_ref) mismatches.push("ratification_record.authenticated_principal.actor_ref");
+    if (loadedPrincipal?.kind === "system" || expectedPrincipal?.kind === "system") {
+      const loadedSystemScope = loadedPrincipal?.kind === "system" ? loadedPrincipal.system_scope : undefined;
+      const expectedSystemScope = expectedPrincipal?.kind === "system" ? expectedPrincipal.system_scope : undefined;
+      if (loadedSystemScope !== expectedSystemScope) {
+        mismatches.push("ratification_record.authenticated_principal.system_scope");
+      }
     }
   }
   if (
@@ -2770,6 +2890,7 @@ async function buildProjectionFromStoreState(
     diagnostics?: Diagnostic[];
   },
 ) {
+  const projectionAdapter = projectionAdapterForRuntime(input.source.runtime);
   const [
     canonical_records,
     world_claims,
@@ -2814,6 +2935,7 @@ async function buildProjectionFromStoreState(
     );
 
   return executeOpenClawBootstrapWorkflow({
+    adapter: projectionAdapter,
     now,
     projection_path: relativeStorePath(rootDir, paths.projection_markdown),
     visibility_state: canonicalRecord?.visibility_state ?? intake.world_claim.visibility_state,
@@ -3184,12 +3306,16 @@ async function reconcilePersistedRuntimeIdentityArtifacts(
 }
 
 export async function writeConversationPreferenceFlowToStore(
-  input: ConversationPreferenceStoreInput,
+  input: AuthenticatedConversationPreferenceStoreInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  const authenticated_principal = requireAuthenticatedPrincipal(
+    input.authenticated_principal,
+    "Conversation preference write",
+  );
   assertAuthenticatedPrincipalMatchesActor({
     actor: input.actor,
-    authenticated_principal: input.authenticated_principal,
+    authenticated_principal,
   });
   await initializeStore(rootDir, input.now);
 
@@ -3377,7 +3503,7 @@ export async function readConversationPreferenceFlowResult(
 }
 
 export async function writeOpenClawPreferenceFeedbackFlowToStore(
-  input: Omit<ConversationPreferenceStoreInput, "intake_kind">,
+  input: Omit<AuthenticatedConversationPreferenceStoreInput, "intake_kind">,
 ): Promise<ConversationPreferenceStoreResult> {
   return writeConversationPreferenceFlowToStore({
     ...input,
@@ -3386,7 +3512,7 @@ export async function writeOpenClawPreferenceFeedbackFlowToStore(
 }
 
 export async function writeStructuredPreferenceSignalFlowToStore(
-  input: Omit<ConversationPreferenceStoreInput, "intake_kind">,
+  input: Omit<AuthenticatedConversationPreferenceStoreInput, "intake_kind">,
 ): Promise<ConversationPreferenceStoreResult> {
   return writeConversationPreferenceFlowToStore({
     ...input,
@@ -3395,9 +3521,17 @@ export async function writeStructuredPreferenceSignalFlowToStore(
 }
 
 export async function applyConversationPreferenceResolutionToStore(
-  input: ConversationPreferenceStoreInput,
+  input: AuthenticatedConversationPreferenceStoreInput,
 ): Promise<ConversationPreferenceResolutionStoreResult> {
   const rootDir = resolve(input.rootDir);
+  const authenticated_principal = requireAuthenticatedPrincipal(
+    input.authenticated_principal,
+    "Conversation preference resolution application",
+  );
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal,
+  });
   return withStoreWriteLock(
     rootDir,
     `conversation_preference_resolution_apply:${input.ids.contradiction_resolution ?? input.ids.proposal}`,
@@ -3630,6 +3764,7 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
     throw new Error(`Owner ratification queue ${queue_id} does not carry enough flow refs`);
   }
   const projectionArtifactRefs = queuePacket.projection_artifact_refs as [string, string, string];
+  const projectionAdapter = await resolveStoredProjectionAdapter(rootDir, queuePacket.projection_manifest_ref);
 
   const proposalPath = coreRecordPath(
     rootDir,
@@ -3706,15 +3841,15 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
         layer: queuePacket.canonical_target_ref.layer ?? "canon",
       } as CanonicalMemoryObject,
     ),
-    projection_markdown: resolveStorePath(rootDir, defaultOpenClawBootstrapProjectionPath(queuePacket.projection_manifest_ref)),
-    projection_manifest: coreRecordPath(
+    projection_markdown: resolveStorePath(
       rootDir,
-      { id: queuePacket.projection_manifest_ref, kind: "projection_manifest", layer: "derived", adapter: "openclaw" } as ProjectionManifest,
+      defaultRuntimeBootstrapProjectionPath(projectionAdapter, queuePacket.projection_manifest_ref),
     ),
+    projection_manifest: projectionManifestPathForAdapter(rootDir, queuePacket.projection_manifest_ref, projectionAdapter),
     projection_artifacts: {
-      canon: coreRecordPath(rootDir, { id: projectionArtifactRefs[0]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
-      world: coreRecordPath(rootDir, { id: projectionArtifactRefs[1]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
-      wiki: coreRecordPath(rootDir, { id: projectionArtifactRefs[2]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+      canon: projectionArtifactPathForAdapter(rootDir, projectionArtifactRefs[0]!, projectionAdapter),
+      world: projectionArtifactPathForAdapter(rootDir, projectionArtifactRefs[1]!, projectionAdapter),
+      wiki: projectionArtifactPathForAdapter(rootDir, projectionArtifactRefs[2]!, projectionAdapter),
     },
   };
 
@@ -3806,6 +3941,7 @@ async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
     throw new Error(`Manual contradiction review queue ${queue_id} does not carry enough flow refs`);
   }
   const projectionArtifactRefs = queuePacket.projection_artifact_refs as [string, string, string];
+  const projectionAdapter = await resolveStoredProjectionAdapter(rootDir, queuePacket.projection_manifest_ref);
 
   const proposalPath = coreRecordPath(
     rootDir,
@@ -3894,15 +4030,15 @@ async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
         layer: queuePacket.canonical_target_ref.layer ?? "canon",
       } as CanonicalMemoryObject,
     ),
-    projection_markdown: resolveStorePath(rootDir, defaultOpenClawBootstrapProjectionPath(queuePacket.projection_manifest_ref)),
-    projection_manifest: coreRecordPath(
+    projection_markdown: resolveStorePath(
       rootDir,
-      { id: queuePacket.projection_manifest_ref, kind: "projection_manifest", layer: "derived", adapter: "openclaw" } as ProjectionManifest,
+      defaultRuntimeBootstrapProjectionPath(projectionAdapter, queuePacket.projection_manifest_ref),
     ),
+    projection_manifest: projectionManifestPathForAdapter(rootDir, queuePacket.projection_manifest_ref, projectionAdapter),
     projection_artifacts: {
-      canon: coreRecordPath(rootDir, { id: projectionArtifactRefs[0]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
-      world: coreRecordPath(rootDir, { id: projectionArtifactRefs[1]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
-      wiki: coreRecordPath(rootDir, { id: projectionArtifactRefs[2]!, kind: "projection_artifact", layer: "derived", adapter: "openclaw" } as ProjectionArtifact),
+      canon: projectionArtifactPathForAdapter(rootDir, projectionArtifactRefs[0]!, projectionAdapter),
+      world: projectionArtifactPathForAdapter(rootDir, projectionArtifactRefs[1]!, projectionAdapter),
+      wiki: projectionArtifactPathForAdapter(rootDir, projectionArtifactRefs[2]!, projectionAdapter),
     },
   };
 
@@ -4583,9 +4719,16 @@ export async function listConversationPreferenceManualContradictionReviewQueue(
 }
 
 export async function ratifyQueuedConversationPreferenceProposalToStore(
-  input: ConversationPreferenceQueuedRatificationInput,
+  input: AuthenticatedConversationPreferenceQueuedRatificationInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: requireAuthenticatedPrincipal(
+      input.authenticated_principal,
+      "Queued conversation preference ratification",
+    ),
+  });
   return withStoreWriteLock(
     rootDir,
     `conversation_preference_owner_ratification_queue:${input.queue_id}`,
@@ -4622,9 +4765,16 @@ export async function ratifyQueuedConversationPreferenceProposalToStore(
 }
 
 export async function applyQueuedConversationPreferenceManualContradictionReviewToStore(
-  input: ConversationPreferenceQueuedManualContradictionReviewInput,
+  input: AuthenticatedConversationPreferenceQueuedManualContradictionReviewInput,
 ): Promise<ConversationPreferenceResolutionStoreResult> {
   const rootDir = resolve(input.rootDir);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: requireAuthenticatedPrincipal(
+      input.authenticated_principal,
+      "Queued manual contradiction review",
+    ),
+  });
   return withStoreWriteLock(
     rootDir,
     `conversation_preference_manual_contradiction_review:${input.queue_id}`,
@@ -4649,9 +4799,16 @@ export async function applyQueuedConversationPreferenceManualContradictionReview
 }
 
 export async function rejectQueuedConversationPreferenceProposalToStore(
-  input: ConversationPreferenceQueuedRejectionInput,
+  input: AuthenticatedConversationPreferenceQueuedRejectionInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: requireAuthenticatedPrincipal(
+      input.authenticated_principal,
+      "Queued conversation preference rejection",
+    ),
+  });
   return withStoreWriteLock(
     rootDir,
     `conversation_preference_owner_review_close:${input.queue_id}`,
@@ -4679,9 +4836,16 @@ export async function rejectQueuedConversationPreferenceProposalToStore(
 }
 
 export async function expireQueuedConversationPreferenceProposalToStore(
-  input: ConversationPreferenceQueuedExpirationInput,
+  input: AuthenticatedConversationPreferenceQueuedExpirationInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: requireAuthenticatedPrincipal(
+      input.authenticated_principal,
+      "Queued conversation preference expiration",
+    ),
+  });
   return withStoreWriteLock(
     rootDir,
     `conversation_preference_owner_review_close:${input.queue_id}`,
@@ -4709,9 +4873,16 @@ export async function expireQueuedConversationPreferenceProposalToStore(
 }
 
 export async function ratifyDeferredConversationPreferenceProposalToStore(
-  input: ConversationPreferenceOwnerRatificationInput,
+  input: AuthenticatedConversationPreferenceOwnerRatificationInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const rootDir = resolve(input.rootDir);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: requireAuthenticatedPrincipal(
+      input.authenticated_principal,
+      "Deferred conversation preference ratification",
+    ),
+  });
   const flowLookupInput = {
     ...input,
     authenticated_principal: undefined,
@@ -4722,7 +4893,10 @@ export async function ratifyDeferredConversationPreferenceProposalToStore(
     async () => {
       await recoverOwnerRatificationApplication(rootDir, input);
 
-      const existingFlow = await readConversationPreferenceFlowResultInternal(flowLookupInput, { repair: true });
+      const existingFlow = await readConversationPreferenceFlowResultInternal(flowLookupInput, {
+        repair: true,
+        ignore_authenticated_principal: true,
+      });
       if (!existingFlow) {
         throw new Error("Conversation preference flow must exist before explicit owner ratification");
       }

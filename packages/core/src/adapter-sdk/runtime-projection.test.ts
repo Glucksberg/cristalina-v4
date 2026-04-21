@@ -191,6 +191,11 @@ test("runtime projection helper requires runtime context when multiple latest ma
     rootDir,
     now: "2026-04-17T05:00:00.000Z",
     actor: "system:runtime-projection-ambiguity-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-projection-ambiguity-test",
+      system_scope: "runtime-projection-ambiguity-test",
+    },
     statement: "The owner prefers concise summaries in thread A.",
     validation_scope: "test:core:runtime-projection:ambiguity:a",
     ids: {
@@ -239,6 +244,11 @@ test("runtime projection helper requires runtime context when multiple latest ma
     rootDir,
     now: "2026-04-17T05:01:00.000Z",
     actor: "system:runtime-projection-ambiguity-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-projection-ambiguity-test",
+      system_scope: "runtime-projection-ambiguity-test",
+    },
     statement: "The owner prefers exhaustive summaries in thread B.",
     validation_scope: "test:core:runtime-projection:ambiguity:b",
     ids: {
@@ -289,7 +299,7 @@ test("runtime projection helper requires runtime context when multiple latest ma
 
   await assert.rejects(
     () => loadLatestProjectionRuntimeView(rootDir, "openclaw"),
-    /ambiguous without runtime context/,
+    /ambiguous without full runtime and identity context/,
   );
 
   const latestForThreadA = await loadLatestProjectionRuntimeView(rootDir, "openclaw", {
@@ -297,6 +307,71 @@ test("runtime projection helper requires runtime context when multiple latest ma
   });
   assert.ok(latestForThreadA);
   assert.equal(latestForThreadA!.manifest.id, "pmf_openclaw_runtime_projection_ambiguity_a");
+});
+
+test("runtime projection helper requires identity context when one thread has projections for multiple principals", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-17T06:00:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_identity_ambiguity_a",
+    diagnostic_id: "diag_hermes_identity_ambiguity_a",
+    review_id: "cur_hermes_identity_ambiguity_a",
+    proposal_ref: "prop_hermes_identity_ambiguity_a",
+    markdown_heading: "Hermes Runtime Memory A",
+    diagnostic_message: "Identity ambiguity fixture A.",
+    provenance_source_ref: "tests/runtime-projection/identity-ambiguity-a",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    actor_identity_ref: "actor_agent_identity_ambiguity_a",
+    owner_identity_ref: "actor_owner_identity_ambiguity_shared",
+    runtime_instance_ref: "runtime_identity_ambiguity_shared",
+    runtime_session_ref: "session_identity_ambiguity_shared",
+    conversation_thread_ref: "thread_identity_ambiguity_shared",
+    markdown_artifact_id: "part_hermes_identity_ambiguity_a",
+    canon_artifact_id: "part_hermes_identity_ambiguity_a_canon",
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-17T06:01:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_identity_ambiguity_b",
+    diagnostic_id: "diag_hermes_identity_ambiguity_b",
+    review_id: "cur_hermes_identity_ambiguity_b",
+    proposal_ref: "prop_hermes_identity_ambiguity_b",
+    markdown_heading: "Hermes Runtime Memory B",
+    diagnostic_message: "Identity ambiguity fixture B.",
+    provenance_source_ref: "tests/runtime-projection/identity-ambiguity-b",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    actor_identity_ref: "actor_agent_identity_ambiguity_b",
+    owner_identity_ref: "actor_owner_identity_ambiguity_shared",
+    runtime_instance_ref: "runtime_identity_ambiguity_shared",
+    runtime_session_ref: "session_identity_ambiguity_shared",
+    conversation_thread_ref: "thread_identity_ambiguity_shared",
+    markdown_artifact_id: "part_hermes_identity_ambiguity_b",
+    canon_artifact_id: "part_hermes_identity_ambiguity_b_canon",
+  });
+
+  await assert.rejects(
+    () => loadLatestProjectionRuntimeView(rootDir, "hermes", {
+      conversation_thread_ref: "thread_identity_ambiguity_shared",
+    }),
+    /ambiguous without full runtime and identity context/,
+  );
+
+  const latest = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    conversation_thread_ref: "thread_identity_ambiguity_shared",
+    actor_identity_ref: "actor_agent_identity_ambiguity_b",
+    owner_identity_ref: "actor_owner_identity_ambiguity_shared",
+  });
+
+  assert.ok(latest);
+  assert.equal(latest!.manifest.id, "pmf_hermes_identity_ambiguity_b");
 });
 
 test("runtime projection helper rejects stored projection artifacts that escape derived storage", async (t) => {

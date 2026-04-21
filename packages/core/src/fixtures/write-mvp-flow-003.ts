@@ -7,14 +7,19 @@ import type { WorldClaim } from "../types.js";
 import {
   applyConversationPreferenceResolutionToStore,
   writeConversationPreferenceFlowToStore,
-  type ConversationPreferenceStoreInput,
+  type AuthenticatedConversationPreferenceStoreInput,
 } from "../workflow-engine/conversation-preference-store.js";
 
-function buildInput(rootDir: string): ConversationPreferenceStoreInput {
+function buildInput(rootDir: string): AuthenticatedConversationPreferenceStoreInput {
   return {
     rootDir,
     now: "2026-04-13T00:00:00.000Z",
     actor: "system:auto-ratify-mvp-003",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:auto-ratify-mvp-003",
+      system_scope: "auto-ratify-mvp-003",
+    },
     statement: "The user prefers exhaustive answers by default.",
     identity_context: {
       runtime: "openclaw",
@@ -70,7 +75,7 @@ async function main(): Promise<void> {
   const first = buildInput(outputRoot);
   await writeConversationPreferenceFlowToStore(first);
 
-  const second: ConversationPreferenceStoreInput = {
+  const second: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(outputRoot),
     now: "2026-04-13T01:00:00.000Z",
     statement: "The user now prefers concise answers by default.",

@@ -4,14 +4,19 @@ import { join, resolve } from "node:path";
 import { appendAuditChange, writeSnapshotManifest, writeSnapshotRecordCopies } from "../audit/log.js";
 import {
   writeConversationPreferenceFlowToStore,
-  type ConversationPreferenceStoreInput,
+  type AuthenticatedConversationPreferenceStoreInput,
 } from "../workflow-engine/conversation-preference-store.js";
 
-function buildInput(rootDir: string): ConversationPreferenceStoreInput {
+function buildInput(rootDir: string): AuthenticatedConversationPreferenceStoreInput {
   return {
     rootDir,
     now: "2026-04-16T01:00:00.000Z",
     actor: "system:fixture-mvp-005",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:fixture-mvp-005",
+      system_scope: "fixture-mvp-005",
+    },
     statement: "Customer 001 prefers weekly status summaries.",
     identity_context: {
       runtime: "openclaw",
@@ -80,7 +85,7 @@ async function main(): Promise<void> {
     throw new Error("Expected first participant claim to materialize canonical state");
   }
 
-  const secondInput: ConversationPreferenceStoreInput = {
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
     ...buildInput(outputRoot),
     now: "2026-04-16T01:05:00.000Z",
     statement: "Customer 001 prefers daily status summaries.",

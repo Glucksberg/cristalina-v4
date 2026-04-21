@@ -1,5 +1,7 @@
 import type { AuthenticatedPrincipal } from "../types.js";
-import type { ConversationPreferenceStoreInput } from "../workflow-engine/conversation-preference-store.js";
+import type {
+  AuthenticatedConversationPreferenceStoreInput,
+} from "../workflow-engine/conversation-preference-store.js";
 
 export interface ConversationPreferenceFlowInputFixtureInput {
   rootDir: string;
@@ -7,7 +9,7 @@ export interface ConversationPreferenceFlowInputFixtureInput {
   actor: string;
   statement: string;
   validation_scope: string;
-  authenticated_principal?: AuthenticatedPrincipal;
+  authenticated_principal: AuthenticatedPrincipal;
   ids: {
     agent_identity: string;
     owner_identity: string;
@@ -61,13 +63,13 @@ export interface ConversationPreferenceFlowInputFixtureInput {
 
 export function buildConversationPreferenceFlowInput(
   input: ConversationPreferenceFlowInputFixtureInput,
-): ConversationPreferenceStoreInput {
+): AuthenticatedConversationPreferenceStoreInput {
   return {
     rootDir: input.rootDir,
     now: input.now,
     actor: input.actor,
     statement: input.statement,
-    ...(input.authenticated_principal ? { authenticated_principal: input.authenticated_principal } : {}),
+    authenticated_principal: input.authenticated_principal,
     identity_context: {
       runtime: input.source.runtime,
       ids: {
@@ -131,13 +133,18 @@ export function buildConversationPreferenceFlowInput(
   };
 }
 
-export function buildDefaultConversationPreferenceFlowInput(rootDir: string): ConversationPreferenceStoreInput {
+export function buildDefaultConversationPreferenceFlowInput(rootDir: string): AuthenticatedConversationPreferenceStoreInput {
   return buildConversationPreferenceFlowInput({
     rootDir,
     now: "2026-04-12T00:00:00.000Z",
     actor: "system:test",
     statement: "The user prefers concise answers unless they explicitly ask for depth.",
     validation_scope: "test:conversation-preference",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:test",
+      system_scope: "test",
+    },
     ids: {
       agent_identity: "actor_agent_test_001",
       owner_identity: "actor_owner_test_001",

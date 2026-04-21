@@ -17,6 +17,7 @@ export interface HermesProjectionFixtureInput {
   provenance_source_ref: string;
   projection_profile: string;
   read_policy_version: string;
+  actor_identity_ref?: string;
   owner_identity_ref: string;
   runtime_instance_ref: string;
   runtime_session_ref: string;
@@ -144,11 +145,13 @@ export async function createHermesProjectionFixture(
     projection_profile: input.projection_profile,
     audience: "runtime",
     read_policy_version: input.read_policy_version,
+    actor_identity_ref: input.actor_identity_ref ?? null,
     owner_identity_ref: input.owner_identity_ref,
     runtime_instance_ref: input.runtime_instance_ref,
     runtime_session_ref: input.runtime_session_ref,
     conversation_thread_ref: input.conversation_thread_ref,
     context_refs: [
+      ...(input.actor_identity_ref ? [input.actor_identity_ref] : []),
       input.owner_identity_ref,
       input.runtime_instance_ref,
       input.runtime_session_ref,

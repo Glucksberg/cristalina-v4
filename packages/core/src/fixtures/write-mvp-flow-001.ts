@@ -15,6 +15,11 @@ async function main(): Promise<void> {
     rootDir: outputRoot,
     now,
     actor: "system:auto-ratify-mvp",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:auto-ratify-mvp",
+      system_scope: "auto-ratify-mvp",
+    },
     statement: "The user prefers concise answers unless they explicitly ask for depth.",
     identity_context: {
       runtime: "openclaw",

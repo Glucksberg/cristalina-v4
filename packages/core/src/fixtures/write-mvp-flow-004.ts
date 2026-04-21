@@ -6,14 +6,19 @@ import {
   listConversationPreferenceOwnerRatificationQueue,
   ratifyQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
-  type ConversationPreferenceStoreInput,
+  type AuthenticatedConversationPreferenceStoreInput,
 } from "../workflow-engine/conversation-preference-store.js";
 
-function buildInput(rootDir: string): ConversationPreferenceStoreInput {
+function buildInput(rootDir: string): AuthenticatedConversationPreferenceStoreInput {
   return {
     rootDir,
     now: "2026-04-16T00:00:00.000Z",
     actor: "system:fixture-mvp-004",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:fixture-mvp-004",
+      system_scope: "fixture-mvp-004",
+    },
     statement: "The owner prefers strategic summaries on Fridays.",
     identity_context: {
       runtime: "openclaw",
@@ -89,6 +94,10 @@ async function main(): Promise<void> {
     queue_id: queueEntry.queue_id,
     now: "2026-04-16T00:05:00.000Z",
     actor: "actor_owner_mvp_004",
+    authenticated_principal: {
+      kind: "owner",
+      actor_ref: "actor_owner_mvp_004",
+    },
     owner_actor_ref: "actor_owner_mvp_004",
     validation_scope: "fixture:mvp-flow-004:owner-ratification",
   });
