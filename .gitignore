@@ -5,3 +5,4 @@ coverage/
 *.log
 *.tsbuildinfo
 docs/diario-dev/
+.serena/
