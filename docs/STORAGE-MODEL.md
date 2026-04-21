@@ -204,9 +204,17 @@ Expected contents:
 - session packs
 - bootstrap surfaces
 - projection manifests
+- symbol anchors
+- vector corpora, chunks, embeddings, index manifests, search runs, and retrieval audits
 - diagnostics bundles
 
 This layer must always be reproducible from upstream data.
+
+Symbol and vector metadata are derived/navigation surfaces, not a new authority layer.
+
+Symbol anchors live under `derived/symbols/`.
+
+Vector metadata lives under `derived/vector/`, while larger text/vector/index sidecar blobs remain referenced by schema-validated metadata records.
 
 ### 4.8 `audits/`
 
@@ -270,6 +278,18 @@ Expected contents:
     openclaw/
     hermes/
     manifests/
+    symbols/
+    vector/
+      corpora/
+      chunks/
+      embeddings/
+      embedding-batches/
+      indexes/
+      manifests/
+      models/
+      search-runs/
+      evals/
+        retrieval-audits/
   audits/
     changes.log
     validation.log

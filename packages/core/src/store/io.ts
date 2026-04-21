@@ -27,9 +27,11 @@ import type {
   WikiMaintenanceRun,
   WikiPage,
   WorldClaim,
+  SymbolAnchor,
+  VectorArtifact,
 } from "../types.js";
 import { STORAGE_LAYOUT } from "../storage.js";
-import { assertCoreRecord, assertStoreManifest } from "../validation.js";
+import { assertCoreRecord, assertStoreManifest, assertSymbolAnchor, assertVectorArtifact } from "../validation.js";
 import { atomicWriteText, isMissingFileError } from "./atomic-write.js";
 import { createStoreManifest, parseStoreManifestYaml, serializeStoreManifestYaml, type StoreManifest } from "./manifest.js";
 
@@ -119,6 +121,31 @@ function extensionlessRecordPath(record: CoreRecord): string {
   }
 }
 
+function extensionlessSymbolAnchorPath(anchor: SymbolAnchor): string {
+  return join(STORAGE_LAYOUT.derived.symbols, anchor.id.replaceAll("/", "__").replaceAll(":", "_"));
+}
+
+function extensionlessVectorArtifactPath(artifact: VectorArtifact): string {
+  switch (artifact.kind) {
+    case "vector_corpus":
+      return join(STORAGE_LAYOUT.derived.vector.corpora, artifact.id);
+    case "vector_chunk":
+      return join(STORAGE_LAYOUT.derived.vector.chunks, artifact.id);
+    case "embedding_model_manifest":
+      return join(STORAGE_LAYOUT.derived.vector.models, artifact.id);
+    case "embedding_record":
+      return join(STORAGE_LAYOUT.derived.vector.embeddings, artifact.id);
+    case "embedding_batch_run":
+      return join(STORAGE_LAYOUT.derived.vector.embeddingBatches, artifact.id);
+    case "vector_index_manifest":
+      return join(STORAGE_LAYOUT.derived.vector.manifests, artifact.id);
+    case "vector_search_run":
+      return join(STORAGE_LAYOUT.derived.vector.searchRuns, artifact.id);
+    case "retrieval_audit":
+      return join(STORAGE_LAYOUT.derived.vector.retrievalAudits, artifact.id);
+  }
+}
+
 function resolveWithinRoot(rootDir: string, relativePath: string): string {
   const rootPath = resolve(rootDir);
   const targetPath = resolve(rootPath, relativePath);
@@ -137,6 +164,14 @@ function resolveWithinRoot(rootDir: string, relativePath: string): string {
 
 function recordFilePath(rootDir: string, record: CoreRecord): string {
   return resolveWithinRoot(rootDir, `${extensionlessRecordPath(record)}.json`);
+}
+
+function symbolAnchorFilePath(rootDir: string, anchor: SymbolAnchor): string {
+  return resolveWithinRoot(rootDir, `${extensionlessSymbolAnchorPath(anchor)}.json`);
+}
+
+function vectorArtifactFilePath(rootDir: string, artifact: VectorArtifact): string {
+  return resolveWithinRoot(rootDir, `${extensionlessVectorArtifactPath(artifact)}.json`);
 }
 
 async function ensureParent(filePath: string): Promise<void> {
@@ -205,6 +240,18 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
     STORAGE_LAYOUT.derived.openclaw,
     STORAGE_LAYOUT.derived.hermes,
     STORAGE_LAYOUT.derived.manifests,
+    STORAGE_LAYOUT.derived.symbols,
+    STORAGE_LAYOUT.derived.vector.root,
+    STORAGE_LAYOUT.derived.vector.corpora,
+    STORAGE_LAYOUT.derived.vector.chunks,
+    STORAGE_LAYOUT.derived.vector.embeddings,
+    STORAGE_LAYOUT.derived.vector.embeddingBatches,
+    STORAGE_LAYOUT.derived.vector.indexes,
+    STORAGE_LAYOUT.derived.vector.manifests,
+    STORAGE_LAYOUT.derived.vector.models,
+    STORAGE_LAYOUT.derived.vector.searchRuns,
+    STORAGE_LAYOUT.derived.vector.evals,
+    STORAGE_LAYOUT.derived.vector.retrievalAudits,
     STORAGE_LAYOUT.audits.root,
     STORAGE_LAYOUT.audits.snapshots,
     STORAGE_LAYOUT.audits.diagnostics,
@@ -244,6 +291,22 @@ export async function writeCoreRecord(rootDir: string, record: CoreRecord): Prom
   return filePath;
 }
 
+export async function writeSymbolAnchor(rootDir: string, anchor: SymbolAnchor): Promise<string> {
+  assertSymbolAnchor(anchor);
+  const filePath = symbolAnchorFilePath(rootDir, anchor);
+  await ensureParent(filePath);
+  await atomicWriteText(filePath, `${JSON.stringify(anchor, null, 2)}\n`);
+  return filePath;
+}
+
+export async function writeVectorArtifact(rootDir: string, artifact: VectorArtifact): Promise<string> {
+  assertVectorArtifact(artifact);
+  const filePath = vectorArtifactFilePath(rootDir, artifact);
+  await ensureParent(filePath);
+  await atomicWriteText(filePath, `${JSON.stringify(artifact, null, 2)}\n`);
+  return filePath;
+}
+
 export async function readCoreRecord<T extends CoreRecord = CoreRecord>(filePath: string): Promise<T> {
   const source = await readFile(filePath, "utf8");
   const parsed = JSON.parse(source) as unknown;
@@ -251,8 +314,32 @@ export async function readCoreRecord<T extends CoreRecord = CoreRecord>(filePath
   return parsed as T;
 }
 
+export async function readSymbolAnchor(filePath: string): Promise<SymbolAnchor> {
+  const source = await readFile(filePath, "utf8");
+  const parsed = JSON.parse(source) as unknown;
+  assertSymbolAnchor(parsed);
+  return parsed;
+}
+
+export async function readVectorArtifact<T extends VectorArtifact = VectorArtifact>(filePath: string): Promise<T> {
+  const source = await readFile(filePath, "utf8");
+  const parsed = JSON.parse(source) as unknown;
+  assertVectorArtifact(parsed);
+  return parsed as T;
+}
+
 export function coreRecordPath(rootDir: string, record: CoreRecord): string {
   return recordFilePath(rootDir, record);
+}
+
+export function symbolAnchorPath(rootDir: string, anchor: SymbolAnchor): string {
+  assertSymbolAnchor(anchor);
+  return symbolAnchorFilePath(rootDir, anchor);
+}
+
+export function vectorArtifactPath(rootDir: string, artifact: VectorArtifact): string {
+  assertVectorArtifact(artifact);
+  return vectorArtifactFilePath(rootDir, artifact);
 }
 
 async function collectJsonFiles(rootDir: string, relativeDir: string): Promise<string[]> {
@@ -277,6 +364,34 @@ async function collectJsonFiles(rootDir: string, relativeDir: string): Promise<s
 async function loadLayerRecords(rootDir: string, relativeDir: string): Promise<CoreRecord[]> {
   const files = await collectJsonFiles(rootDir, relativeDir);
   return Promise.all(files.map((file) => readCoreRecord<CoreRecord>(join(rootDir, file))));
+}
+
+async function loadSymbolAnchorRecords(rootDir: string, relativeDir: string): Promise<SymbolAnchor[]> {
+  const files = await collectJsonFiles(rootDir, relativeDir);
+  return Promise.all(files.map((file) => readSymbolAnchor(join(rootDir, file))));
+}
+
+async function loadVectorArtifactRecords(rootDir: string, relativeDir: string): Promise<VectorArtifact[]> {
+  const files = await collectJsonFiles(rootDir, relativeDir);
+  return Promise.all(files.map((file) => readVectorArtifact(join(rootDir, file))));
+}
+
+export async function loadSymbolAnchors(rootDir: string): Promise<SymbolAnchor[]> {
+  return loadSymbolAnchorRecords(rootDir, STORAGE_LAYOUT.derived.symbols);
+}
+
+export async function loadVectorArtifacts(rootDir: string): Promise<VectorArtifact[]> {
+  const directories = [
+    STORAGE_LAYOUT.derived.vector.corpora,
+    STORAGE_LAYOUT.derived.vector.chunks,
+    STORAGE_LAYOUT.derived.vector.embeddings,
+    STORAGE_LAYOUT.derived.vector.embeddingBatches,
+    STORAGE_LAYOUT.derived.vector.models,
+    STORAGE_LAYOUT.derived.vector.manifests,
+    STORAGE_LAYOUT.derived.vector.searchRuns,
+    STORAGE_LAYOUT.derived.vector.retrievalAudits,
+  ];
+  return (await Promise.all(directories.map((directory) => loadVectorArtifactRecords(rootDir, directory)))).flat();
 }
 
 export async function loadCanonicalRecords(rootDir: string): Promise<CanonicalMemoryObject[]> {
