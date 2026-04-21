@@ -32,6 +32,18 @@ This pattern was articulated especially clearly in Andrej Karpathy's "LLM Wiki" 
 
 That idea is valuable enough to become a first-class architectural layer in Cristalina v4.
 
+The useful part to preserve is not merely "Markdown files".
+
+The useful part is the maintenance loop:
+
+- raw sources remain immutable
+- the LLM incrementally compiles those sources into a persistent cross-linked wiki
+- the wiki has a small navigational index and chronological log
+- query answers and investigations can become new wiki pages when they add durable synthesis
+- lint/review keeps the wiki healthy by finding stale claims, contradictions, orphan pages, broken links, and missing concepts
+
+Cristalina adopts that loop, but with a stricter authority model: wiki synthesis can guide reasoning and emit candidates, but it cannot become canon without governance.
+
 ---
 
 ## 2. What the Wiki Layer Is
@@ -134,6 +146,39 @@ The system should maintain:
 
 This makes the wiki layer usable as a living environment, not just as a pile of files.
 
+### 4.6 Query synthesis capture
+
+When a user asks a question and the answer produces reusable understanding, the system should be able to file that answer back into the wiki as a maintained page.
+
+Examples:
+
+- an analysis page
+- a comparison page
+- a synthesis page
+- a reading trail
+- a research question page
+
+This is one of the core advantages of the LLM Wiki pattern: exploration should compound instead of disappearing into chat history.
+
+In Cristalina, query-derived pages must preserve upstream refs to the wiki/source/world/canon records they used.
+
+They must not become proposal sources merely because the prose is persuasive.
+
+### 4.7 Wiki health review
+
+The wiki should support periodic maintenance passes that inspect the wiki as a graph of pages and links.
+
+At minimum, health review should detect:
+
+- orphan pages
+- broken wikilinks
+- important mentioned concepts without pages
+- duplicated pages that should be merged or linked
+- stale claims superseded by newer sources or world state
+- unsupported claims with weak or missing upstream refs
+- contradictions between wiki pages or between wiki pages and active world claims
+- data gaps that should become source-seeking questions instead of invented content
+
 ---
 
 ## 5. Relationship to the Other Layers
@@ -198,6 +243,18 @@ At minimum:
 - `wiki_claim`
 - `source_record`
 
+Expected page families:
+
+- source summary pages
+- entity pages
+- concept/topic pages
+- comparison pages
+- synthesis pages
+- query-answer pages worth preserving
+- research-question pages
+- index pages
+- maintenance logs
+
 Suggested metadata per page:
 
 - page id
@@ -208,12 +265,31 @@ Suggested metadata per page:
 - source refs
 - canonical refs
 - world-model refs
+- wiki claim refs
 - outgoing links
 - incoming links or index support
+- one-line index summary
+- source count or upstream count
+- stale/review status when applicable
 
 The exact representation may be markdown plus frontmatter, markdown plus sidecar metadata, or a structured storage layer that compiles to markdown.
 
 That implementation choice can remain open for now.
+
+The `index.md` contract should be content-oriented:
+
+- list every maintained wiki page or every page above a configured importance threshold
+- group pages by kind or domain
+- include a short one-line summary
+- include useful lightweight metadata such as last updated date, page kind, and upstream/source count
+- remain small enough to serve as the first navigation document for LLM query and maintenance flows
+
+The `log.md` contract should be chronological and append-oriented:
+
+- record ingests, refreshes, query captures, lint passes, and review actions
+- use a consistent heading prefix that simple tools can parse
+- preserve what changed and which upstream refs drove the change
+- avoid acting as the source of truth for the content itself
 
 ---
 
@@ -226,25 +302,41 @@ The wiki layer should support at least these operations:
 - create source summary
 - update index
 - link relevant pages
+- update existing entity, concept, topic, and comparison pages touched by the source
 - note tensions or contradictions
+- append a parseable log entry
+- preserve source refs and upstream refs on every changed page or sidecar record
 
 ### 8.2 Refresh page
 
 - revise an entity or topic page based on new sources or world updates
+- preserve prior upstream refs and add new refs rather than silently replacing provenance
+- mark older claims as stale, disputed, or superseded when appropriate
 
 ### 8.3 Create comparison
 
 - generate a new comparative page when repeated reasoning suggests it is useful
+- cite the source/wiki/world/canon records that support each side of the comparison
 
-### 8.4 Lint wiki
+### 8.4 Capture query result
+
+- turn a high-value answer into a durable wiki page
+- record which pages and upstream refs were used to answer
+- update index and log
+- preserve the page as synthesis, not canon
+
+### 8.5 Lint wiki
 
 - detect orphan pages
 - detect stale pages
 - detect broken links
 - detect unsupported claims
 - detect pages that mention unresolved contradictions
+- detect important unlinked concepts
+- detect duplicate or near-duplicate pages
+- emit diagnostics and source-seeking questions where evidence is missing
 
-### 8.5 Emit proposal candidates
+### 8.6 Emit proposal candidates
 
 When a wiki revision appears to state durable truth, the system should be able to emit:
 
@@ -252,9 +344,31 @@ When a wiki revision appears to state durable truth, the system should be able t
 - a world-model update candidate
 - or a diagnostic asking for review
 
+Proposal candidates must be based on referenced upstream objects, not on wiki prose alone.
+
+If the wiki prose cannot be traced to source, world, canon, or governance refs, the correct output is a diagnostic or research question, not a proposal.
+
 ---
 
-## 9. Why This Makes Cristalina v4 Stronger
+## 9. Minimum Executable Wiki Flow
+
+The first executable wiki-maintenance flow should prove one source through the full maintenance loop:
+
+1. register immutable raw source
+2. create or refresh a source summary page
+3. update at least one entity or concept page
+4. update `wiki/index.md`
+5. append to `wiki/log.md`
+6. extract at least one `wiki_claim` with upstream refs
+7. run lint and produce either a clean result or bounded diagnostics
+8. compile projection fragments that label wiki content as editorial
+9. prove that any proposal candidate dereferences upstream evidence instead of wiki prose alone
+
+This is the smallest road that captures the Karpathy-style compounding wiki without violating Cristalina's governance model.
+
+---
+
+## 10. Why This Makes Cristalina v4 Stronger
 
 Adding the wiki layer gives the architecture something none of the older ancestors fully unify on their own:
 
@@ -285,7 +399,7 @@ The wiki layer lets them persist.
 
 ---
 
-## 10. Final Rule
+## 11. Final Rule
 
 The wiki should be treated as:
 

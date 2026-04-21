@@ -182,22 +182,40 @@ Turn the wiki from projected editorial records into a maintained derived/editori
 ### Work
 
 - Define `WikiMaintenanceRun` or equivalent minimal workflow contract.
+- Define a wiki maintainer contract modeled on the LLM Wiki pattern:
+  - immutable raw sources
+  - LLM-maintained Markdown pages
+  - content-oriented `index.md`
+  - chronological append-oriented `log.md`
+  - disciplined ingest, query-capture, and lint operations
 - Implement source summary creation for selected source records.
-- Implement page refresh for existing wiki pages from upstream refs.
+- Implement page refresh for existing wiki pages from upstream refs, including touched entity/concept/topic/comparison pages.
 - Implement wiki claim extraction with explicit `support_refs`.
-- Maintain `wiki/index.md` and `wiki/log.md` as first-class derived/editorial artifacts.
+- Maintain `wiki/index.md` as a compact catalog with page links, one-line summaries, page kind, last updated date, and upstream/source counts.
+- Maintain `wiki/log.md` as a parseable chronological record of ingests, refreshes, query captures, lint passes, and review actions.
+- Allow high-value query answers to be filed back into the wiki as analysis, synthesis, comparison, or research-question pages with explicit upstream refs.
 - Emit diagnostics for:
+  - orphan pages
   - stale pages
   - unsupported wiki claims
   - broken wiki links
+  - important mentioned concepts without pages
+  - duplicate or near-duplicate pages
   - wiki claims contradicted by active world state
+  - evidence gaps that should become source-seeking questions
 - Define when a wiki claim may emit a proposal candidate, without letting wiki become canon.
+- Forbid proposal candidates from wiki prose alone; proposal generation must dereference eligible upstream source/world/canon/governance records.
+- Treat optional wiki search tools as acceleration only; `index.md` remains the baseline navigation contract and embeddings must not become the authority layer.
 
 ### Tests
 
 - A source summary fixture must write page, claim, index/log update, and audit entry.
+- A source-ingest fixture must update at least one existing entity/concept/topic page, not only create an isolated source page.
+- A query-capture fixture must preserve the pages/upstream refs used to answer and file the answer as editorial synthesis, not canon.
+- A lint fixture must detect orphan pages, broken links, unsupported claims, duplicate pages, and missing concept pages.
 - A stale-page fixture must emit a diagnostic, not silently overwrite canon or world.
 - A wiki-claim proposal fixture must prove that wiki-originated proposals still pass through governance.
+- A wiki-claim proposal fixture must reject prose-only proposal extraction when no upstream refs support the claim.
 - Projection must label wiki content as editorial and non-authoritative.
 
 ### Acceptance Criteria
@@ -205,6 +223,8 @@ Turn the wiki from projected editorial records into a maintained derived/editori
 - Wiki maintenance has a replayable lifecycle.
 - Wiki claims can influence governance only as evidence-backed proposal candidates.
 - Wiki diagnostics are inspectable from projection/runtime views.
+- The wiki compounds knowledge across ingest and query flows without forcing raw-source rereads for every question.
+- Index and log files remain useful to both LLM agents and humans while staying downstream of authoritative records.
 
 ---
 
