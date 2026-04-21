@@ -17,9 +17,17 @@ importers:
 
   packages/core: {}
 
-  packages/hermes-adapter: {}
+  packages/hermes-adapter:
+    dependencies:
+      '@cristalina-v4/core':
+        specifier: workspace:*
+        version: link:../core
 
-  packages/openclaw-adapter: {}
+  packages/openclaw-adapter:
+    dependencies:
+      '@cristalina-v4/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 
