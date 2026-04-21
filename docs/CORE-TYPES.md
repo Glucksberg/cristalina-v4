@@ -49,6 +49,12 @@ The MVP should begin with these type families:
 - `ProjectionManifest`
 - `Diagnostic`
 - `DispositionRecord`
+- `SymbolAnchor`
+- `RetrievalQuery`
+- `RetrievalRecipe`
+- `RetrievalCandidate`
+- `RetrievalResult`
+- `RetrievalTrace`
 
 These are not all equally mature.
 
@@ -646,6 +652,40 @@ Minimum fields:
 - `proposal_refs`
 - `diagnostic_refs`
 - `reason_codes`
+
+### 4.26 `SymbolAnchor`
+
+Represents a stable conceptual navigation address across memory layers.
+
+Minimum fields:
+
+- `id`
+- `kind`
+- `label`
+- `aliases`
+- `target_refs`
+- `upstream_refs`
+- `authority`
+- `lifecycle_state`
+- `namespace`
+
+`authority` must remain `navigation_only`. A symbol may point to raw, runtime, world, wiki, canon, governance, or derived refs, but it must not assert truth or bypass governance.
+
+### 4.27 Retrieval Contracts
+
+Retrieval contracts describe search requests, recipes, candidates, results, and traces before vector infrastructure expands.
+
+Minimum query/result families:
+
+- `RetrievalQuery`
+- `RetrievalRecipe`
+- `RetrievalCandidate`
+- `RetrievalResult`
+- `RetrievalTrace`
+
+Retrieval candidates must preserve layer, authority, provenance-bearing refs, symbol refs, scoring signals, inclusion reasons, suppression reasons, and explicit proposal-support legality.
+
+Wiki/editorial candidates may be useful retrieval results, but proposal support must come from eligible upstream refs rather than score or wiki prose alone.
 
 ---
 

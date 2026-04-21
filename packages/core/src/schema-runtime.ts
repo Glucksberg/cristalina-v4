@@ -50,6 +50,8 @@ export const RUNTIME_IDENTITY_SCHEMA_ID = "https://cristalina-v4.local/schemas/r
 export const SOURCE_INTAKE_PROFILE_SCHEMA_ID = "https://cristalina-v4.local/schemas/source-intake-profile.schema.json";
 export const PROJECTION_MANIFEST_SCHEMA_ID = "https://cristalina-v4.local/schemas/projection-manifest.schema.json";
 export const STORE_MANIFEST_SCHEMA_ID = "https://cristalina-v4.local/schemas/store-manifest.schema.json";
+export const SYMBOL_ANCHOR_SCHEMA_ID = "https://cristalina-v4.local/schemas/symbol-anchor.schema.json";
+export const RETRIEVAL_CONTRACTS_SCHEMA_ID = "https://cristalina-v4.local/schemas/retrieval-contracts.schema.json";
 
 const SCHEMA_PATHS = [
   "../../../schemas/object-envelope.schema.json",
@@ -61,6 +63,8 @@ const SCHEMA_PATHS = [
   "../../../schemas/source-intake-profile.schema.json",
   "../../../schemas/projection-manifest.schema.json",
   "../../../schemas/store-manifest.schema.json",
+  "../../../schemas/symbol-anchor.schema.json",
+  "../../../schemas/retrieval-contracts.schema.json",
 ] as const;
 
 function loadSchema(relativePath: string): JsonSchema {

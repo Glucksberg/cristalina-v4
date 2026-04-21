@@ -138,6 +138,49 @@ export const WIKI_GRAPH_EDGE_TYPES = [
   "supersedes",
 ] as const;
 
+export const SYMBOL_ANCHOR_KINDS = [
+  "concept",
+  "entity",
+  "relation_type",
+  "semantic_slot",
+  "intake_profile",
+  "wiki_topic",
+] as const;
+
+export const SYMBOL_ANCHOR_LIFECYCLE_STATES = [
+  "active",
+  "merged",
+  "superseded",
+  "archived",
+] as const;
+
+export const RETRIEVAL_AUTHORITIES = [
+  "evidence",
+  "runtime",
+  "world",
+  "editorial",
+  "canon",
+  "governance",
+  "derived",
+] as const;
+
+export const RETRIEVAL_SUPPRESSION_REASONS = [
+  "visibility_scope_mismatch",
+  "authority_mismatch",
+  "stale_record",
+  "contradicted_record",
+  "unsupported_wiki_claim",
+  "missing_upstream_ref",
+  "projection_budget_exceeded",
+  "invalid_external_candidate",
+  "embedding_generation_mismatch",
+] as const;
+
+export const RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES = [
+  "forbid",
+  "allow_normalized",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -190,6 +233,11 @@ export type NonCanonicalIntakeMode = typeof NON_CANONICAL_INTAKE_MODES[number];
 export type WikiMaintenanceEvent = typeof WIKI_MAINTENANCE_EVENTS[number];
 export type WikiStalenessState = typeof WIKI_STALENESS_STATES[number];
 export type WikiGraphEdgeType = typeof WIKI_GRAPH_EDGE_TYPES[number];
+export type SymbolAnchorKind = typeof SYMBOL_ANCHOR_KINDS[number];
+export type SymbolAnchorLifecycleState = typeof SYMBOL_ANCHOR_LIFECYCLE_STATES[number];
+export type RetrievalAuthority = typeof RETRIEVAL_AUTHORITIES[number];
+export type RetrievalSuppressionReason = typeof RETRIEVAL_SUPPRESSION_REASONS[number];
+export type RetrievalExternalCandidatePolicy = typeof RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
@@ -265,6 +313,103 @@ export type AuthenticatedPrincipal =
       actor_ref: string;
       system_scope: string;
     };
+
+export interface SymbolAnchor {
+  id: string;
+  kind: SymbolAnchorKind;
+  label: string;
+  aliases: string[];
+  description?: string;
+  target_refs: string[];
+  upstream_refs: string[];
+  authority: "navigation_only";
+  lifecycle_state: SymbolAnchorLifecycleState;
+  namespace: string;
+  canonical_symbol_ref?: string | null;
+  supersedes_ref?: string | null;
+  superseded_by_ref?: string | null;
+  merged_into_ref?: string | null;
+  diagnostic_refs?: string[];
+}
+
+export interface RetrievalQuery {
+  id: string;
+  query_text: string;
+  recipe_ref: string;
+  requested_layers: Layer[];
+  symbol_hints?: string[];
+  semantic_slot_hints?: string[];
+  runtime_context_ref?: string | null;
+  actor_ref?: string | null;
+  authenticated_principal?: AuthenticatedPrincipal | null;
+  read_policy_version: string;
+  projection_profile?: string | null;
+  audience?: string | null;
+  runtime_instance_ref?: string | null;
+  runtime_session_ref?: string | null;
+  conversation_thread_ref?: string | null;
+}
+
+export interface RetrievalRecipe {
+  id: string;
+  name: string;
+  layer_scope: Layer[];
+  allow_editorial_wiki: boolean;
+  require_canon_for_truth_claims: boolean;
+  vector_top_k: number;
+  final_top_k: number;
+  include_suppression_trace: boolean;
+  read_policy_version: string;
+  required_authenticated_principal_kind?: AuthenticatedPrincipalKind | null;
+  external_candidate_policy?: RetrievalExternalCandidatePolicy;
+  can_support_proposal_from_layers?: Layer[];
+  max_candidates_per_layer?: Partial<Record<Layer, number>>;
+}
+
+export interface RetrievalCandidate {
+  id: string;
+  ref: Reference;
+  layer: Layer;
+  authority: RetrievalAuthority;
+  text_ref?: string;
+  text_preview?: string;
+  visibility_state?: VisibilityState;
+  symbol_refs: string[];
+  semantic_slot?: string;
+  vector_score?: number;
+  lexical_score?: number;
+  symbolic_score?: number;
+  semantic_slot_score?: number;
+  authority_score?: number;
+  temporal_score?: number;
+  provenance_score?: number;
+  final_score?: number;
+  why_retrieved: string[];
+  suppression_reasons?: RetrievalSuppressionReason[];
+  can_support_proposal: boolean;
+  eligible_upstream_refs?: string[];
+}
+
+export interface RetrievalResult {
+  query_ref: string;
+  recipe_ref: string;
+  included_candidates: RetrievalCandidate[];
+  suppressed_candidates: RetrievalCandidate[];
+  trace_ref?: string;
+}
+
+export interface RetrievalTrace {
+  id: string;
+  query_ref: string;
+  recipe_ref: string;
+  read_policy_version: string;
+  projection_profile?: string | null;
+  audience?: string | null;
+  provider_run_refs?: string[];
+  included_candidate_refs: string[];
+  suppressed_candidate_refs: string[];
+  suppression_reasons: RetrievalSuppressionReason[];
+}
 
 export interface RecordEnvelope {
   id: string;

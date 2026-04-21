@@ -7,8 +7,15 @@ import type {
   DispositionRecord,
   Observation,
   Proposal,
+  RetrievalCandidate,
+  RetrievalQuery,
+  RetrievalRecipe,
+  RetrievalResult,
+  RetrievalSuppressionReason,
+  RetrievalTrace,
   RuntimeInstance,
   RuntimeSession,
+  SymbolAnchor,
   WorldClaim,
 } from "./types.js";
 import { isStoreRelativeWikiPagePath } from "./wiki/path.js";
@@ -28,7 +35,9 @@ import {
   MEMORY_OBJECT_KINDS,
   PROPOSAL_OPERATIONS,
   RUNTIMES,
+  RETRIEVAL_SUPPRESSION_REASONS,
   SUBJECT_AUTHORITY_ROLES,
+  SYMBOL_ANCHOR_LIFECYCLE_STATES,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
   WIKI_GRAPH_EDGE_TYPES,
@@ -40,7 +49,9 @@ import {
   DISPOSITION_RECORD_SCHEMA_ID,
   MEMORY_OBJECT_SCHEMA_ID,
   PROJECTION_MANIFEST_SCHEMA_ID,
+  RETRIEVAL_CONTRACTS_SCHEMA_ID,
   RUNTIME_IDENTITY_SCHEMA_ID,
+  SYMBOL_ANCHOR_SCHEMA_ID,
   STORE_MANIFEST_SCHEMA_ID,
   TEMPORAL_WORLD_RECORD_SCHEMA_ID,
   validateAgainstSchema,
@@ -164,6 +175,51 @@ function pushAuthenticatedPrincipal(issues: ValidationIssue[], value: unknown, p
   if (value.system_scope !== undefined) {
     issues.push({ path: `${path}.system_scope`, message: "non-system principals cannot carry system_scope" });
   }
+}
+
+function pushRetrievalSuppressionReasons(
+  issues: ValidationIssue[],
+  value: unknown,
+  path: string,
+): RetrievalSuppressionReason[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "expected retrieval suppression reason array" });
+    return undefined;
+  }
+
+  const reasons: RetrievalSuppressionReason[] = [];
+  for (const [index, entry] of value.entries()) {
+    if (!isEnumValue(entry, RETRIEVAL_SUPPRESSION_REASONS)) {
+      issues.push({ path: `${path}[${index}]`, message: `expected one of: ${RETRIEVAL_SUPPRESSION_REASONS.join(", ")}` });
+      continue;
+    }
+    reasons.push(entry);
+  }
+  if (!hasUniqueEntries(reasons)) {
+    issues.push({ path, message: "expected unique suppression reasons" });
+  }
+  return reasons;
+}
+
+function pushRetrievalCandidateLegality(issues: ValidationIssue[], value: unknown, path: string): void {
+  if (!isRecord(value)) return;
+
+  if (value.can_support_proposal === true) {
+    const upstreamPath = path === "$" ? "eligible_upstream_refs" : `${path}.eligible_upstream_refs`;
+    if (!isStringArray(value.eligible_upstream_refs) || value.eligible_upstream_refs.length === 0) {
+      issues.push({
+        path: upstreamPath,
+        message: "proposal-supporting retrieval candidates require eligible upstream refs",
+      });
+    }
+  }
+
+  pushRetrievalSuppressionReasons(
+    issues,
+    value.suppression_reasons,
+    path === "$" ? "suppression_reasons" : `${path}.suppression_reasons`,
+  );
 }
 
 function validateEnvelope(value: unknown): ValidationIssue[] {
@@ -990,6 +1046,76 @@ export function assertDispositionRecord(value: unknown): asserts value is Dispos
   const issues = validateDispositionRecord(value);
   if (issues.length > 0) {
     throw new ValidationError("Invalid disposition record", issues);
+  }
+}
+
+export function validateSymbolAnchor(value: unknown): ValidationIssue[] {
+  const issues = validateAgainstSchema(value, SYMBOL_ANCHOR_SCHEMA_ID);
+  if (!isRecord(value)) return issues;
+
+  if (typeof value.id === "string" && typeof value.namespace === "string") {
+    const expectedPrefix = `sym:${value.namespace}/`;
+    if (!value.id.startsWith(expectedPrefix)) {
+      issues.push({ path: "id", message: `symbol id must start with ${expectedPrefix}` });
+    }
+  }
+
+  if (value.lifecycle_state === "merged" && (typeof value.merged_into_ref !== "string" || value.merged_into_ref.length === 0)) {
+    issues.push({ path: "merged_into_ref", message: "merged symbols require merged_into_ref" });
+  }
+
+  if (
+    value.lifecycle_state === "superseded" &&
+    (typeof value.superseded_by_ref !== "string" || value.superseded_by_ref.length === 0)
+  ) {
+    issues.push({ path: "superseded_by_ref", message: "superseded symbols require superseded_by_ref" });
+  }
+
+  if (value.lifecycle_state === "active") {
+    for (const refKey of ["merged_into_ref", "superseded_by_ref"] as const) {
+      if (value[refKey] !== undefined && value[refKey] !== null) {
+        issues.push({ path: refKey, message: "active symbols cannot point at a terminal lifecycle successor" });
+      }
+    }
+  }
+
+  if (value.lifecycle_state !== undefined && !isEnumValue(value.lifecycle_state, SYMBOL_ANCHOR_LIFECYCLE_STATES)) {
+    issues.push({ path: "lifecycle_state", message: `expected one of: ${SYMBOL_ANCHOR_LIFECYCLE_STATES.join(", ")}` });
+  }
+
+  return issues;
+}
+
+export function assertSymbolAnchor(value: unknown): asserts value is SymbolAnchor {
+  const issues = validateSymbolAnchor(value);
+  if (issues.length > 0) {
+    throw new ValidationError("Invalid symbol anchor", issues);
+  }
+}
+
+export function validateRetrievalContract(value: unknown): ValidationIssue[] {
+  const issues = validateAgainstSchema(value, RETRIEVAL_CONTRACTS_SCHEMA_ID);
+  if (!isRecord(value)) return issues;
+
+  pushRetrievalCandidateLegality(issues, value, "$");
+
+  for (const candidateArrayKey of ["included_candidates", "suppressed_candidates"] as const) {
+    if (Array.isArray(value[candidateArrayKey])) {
+      value[candidateArrayKey].forEach((candidate, index) => {
+        pushRetrievalCandidateLegality(issues, candidate, `${candidateArrayKey}[${index}]`);
+      });
+    }
+  }
+
+  return issues;
+}
+
+export function assertRetrievalContract(
+  value: unknown,
+): asserts value is RetrievalCandidate | RetrievalQuery | RetrievalRecipe | RetrievalResult | RetrievalTrace {
+  const issues = validateRetrievalContract(value);
+  if (issues.length > 0) {
+    throw new ValidationError("Invalid retrieval contract", issues);
   }
 }
 

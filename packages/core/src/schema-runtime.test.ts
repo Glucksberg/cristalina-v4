@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { validateValueAgainstJsonSchema, type JsonSchema } from "./schema-runtime.js";
+import { validateRetrievalContract, validateSymbolAnchor } from "./validation.js";
 
 test("schema runtime supports broader object, array, and local-ref features", () => {
   const schema: JsonSchema = {
@@ -142,4 +143,75 @@ test("schema runtime treats undefined object properties as absent JSON fields", 
   );
 
   assert.deepEqual(issues, []);
+});
+
+test("symbol anchor validation preserves navigation-only lifecycle law", () => {
+  const valid = validateSymbolAnchor({
+    id: "sym:concept/user-interaction-preferences",
+    kind: "concept",
+    label: "User interaction preferences",
+    aliases: ["answer style"],
+    target_refs: ["wiki_claim_001", "canon_preference_001"],
+    upstream_refs: ["source_001"],
+    authority: "navigation_only",
+    lifecycle_state: "active",
+    namespace: "concept",
+  });
+
+  assert.deepEqual(valid, []);
+
+  const invalid = validateSymbolAnchor({
+    id: "sym:concept/user-interaction-preferences",
+    kind: "concept",
+    label: "User interaction preferences",
+    aliases: [],
+    target_refs: [],
+    upstream_refs: [],
+    authority: "navigation_only",
+    lifecycle_state: "active",
+    namespace: "entity",
+    merged_into_ref: "sym:concept/answer-style",
+  });
+
+  assert.ok(invalid.some((issue) => issue.path === "id"));
+  assert.ok(invalid.some((issue) => issue.path === "merged_into_ref"));
+});
+
+test("retrieval contract validation requires upstream refs for proposal support", () => {
+  const invalid = validateRetrievalContract({
+    id: "candidate_wiki_editorial_001",
+    ref: {
+      id: "wiki_claim_001",
+      kind: "wiki_claim",
+      layer: "wiki",
+    },
+    layer: "wiki",
+    authority: "editorial",
+    symbol_refs: ["sym:concept/user-interaction-preferences"],
+    why_retrieved: ["matched symbol anchor"],
+    can_support_proposal: true,
+  });
+
+  assert.ok(invalid.some((issue) => issue.path === "eligible_upstream_refs"));
+
+  const valid = validateRetrievalContract({
+    id: "candidate_canon_001",
+    ref: {
+      id: "canon_preference_001",
+      kind: "preference",
+      layer: "canon",
+    },
+    layer: "canon",
+    authority: "canon",
+    symbol_refs: ["sym:concept/user-interaction-preferences"],
+    semantic_slot: "preference.answer_style",
+    vector_score: 0.82,
+    authority_score: 1,
+    final_score: 1.82,
+    why_retrieved: ["matched symbol anchor", "matched deterministic vector"],
+    can_support_proposal: true,
+    eligible_upstream_refs: ["canon_preference_001"],
+  });
+
+  assert.deepEqual(valid, []);
 });

@@ -8,14 +8,21 @@ import {
   CONTRADICTION_RESOLUTION_STATUSES,
   CONTRADICTION_RESOLUTION_STRATEGIES,
   ACTOR_KINDS,
+  AUTHENTICATED_PRINCIPAL_KINDS,
   DISPOSITION_OUTCOMES,
   EPISTEMIC_STATES,
   GOVERNANCE_STATES,
+  LAYERS,
   MEMORY_OBJECT_KINDS,
   RUNTIMES,
   NON_CANONICAL_INTAKE_MODES,
+  RETRIEVAL_AUTHORITIES,
+  RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES,
+  RETRIEVAL_SUPPRESSION_REASONS,
   SOURCE_INTAKE_KINDS,
   SUBJECT_AUTHORITY_ROLES,
+  SYMBOL_ANCHOR_KINDS,
+  SYMBOL_ANCHOR_LIFECYCLE_STATES,
   TEMPORAL_STATUSES,
   VISIBILITY_SCOPES,
   WIKI_GRAPH_EDGE_TYPES,
@@ -25,9 +32,11 @@ import { resolvePreferenceSignalSemanticProfile } from "./workflow-engine/source
 
 interface JsonSchema {
   properties?: Record<string, unknown>;
+  $defs?: Record<string, JsonSchema>;
   allOf?: Array<{
     properties?: Record<string, unknown>;
   }>;
+  oneOf?: JsonSchema[];
 }
 
 interface EnumProperty {
@@ -159,6 +168,33 @@ test("wiki maintenance run schema stays aligned with executable wiki events", as
 
   assert.deepEqual(expectEnum(properties.event), [...WIKI_MAINTENANCE_EVENTS]);
   assert.deepEqual(expectEnum(graphEdgeItems?.properties?.edge_type), [...WIKI_GRAPH_EDGE_TYPES]);
+});
+
+test("symbol anchor schema stays aligned with symbolic retrieval enums", async () => {
+  const schema = await readSchema("../../schemas/symbol-anchor.schema.json");
+  const properties = schema.properties ?? {};
+
+  assert.deepEqual(expectEnum(properties.kind), [...SYMBOL_ANCHOR_KINDS]);
+  assert.deepEqual(expectEnum(properties.lifecycle_state), [...SYMBOL_ANCHOR_LIFECYCLE_STATES]);
+  assert.equal((properties.authority as { const?: string } | undefined)?.const, "navigation_only");
+});
+
+test("retrieval contracts schema stays aligned with core retrieval enums", async () => {
+  const schema = await readSchema("../../schemas/retrieval-contracts.schema.json");
+  const defs = schema.$defs ?? {};
+  const layer = defs.Layer;
+  const visibility = defs.VisibilityState;
+  const authenticatedPrincipal = defs.AuthenticatedPrincipal;
+  const candidate = defs.RetrievalCandidate;
+  const recipe = defs.RetrievalRecipe;
+  const suppressionReason = defs.RetrievalSuppressionReason;
+
+  assert.deepEqual(expectEnum(layer), [...LAYERS]);
+  assert.deepEqual(expectEnum(visibility?.properties?.privacy_scope), [...VISIBILITY_SCOPES]);
+  assert.deepEqual(expectEnum(authenticatedPrincipal?.properties?.kind), [...AUTHENTICATED_PRINCIPAL_KINDS]);
+  assert.deepEqual(expectEnum(candidate?.properties?.authority), [...RETRIEVAL_AUTHORITIES]);
+  assert.deepEqual(expectEnum(suppressionReason), [...RETRIEVAL_SUPPRESSION_REASONS]);
+  assert.deepEqual(expectEnum(recipe?.properties?.external_candidate_policy), [...RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES]);
 });
 
 test("projection manifest schema stays aligned with adapter and read-discipline contracts", async () => {

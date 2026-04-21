@@ -1,0 +1,551 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/retrieval-contracts.schema.json",
+  "title": "Cristalina v4 Retrieval Contracts",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/RetrievalQuery"
+    },
+    {
+      "$ref": "#/$defs/RetrievalRecipe"
+    },
+    {
+      "$ref": "#/$defs/RetrievalCandidate"
+    },
+    {
+      "$ref": "#/$defs/RetrievalResult"
+    },
+    {
+      "$ref": "#/$defs/RetrievalTrace"
+    }
+  ],
+  "$defs": {
+    "Layer": {
+      "type": "string",
+      "enum": [
+        "raw",
+        "runtime",
+        "world",
+        "canon",
+        "wiki",
+        "governance",
+        "derived",
+        "audits"
+      ]
+    },
+    "Reference": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string"
+        },
+        "layer": {
+          "$ref": "#/$defs/Layer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "VisibilityState": {
+      "type": "object",
+      "required": [
+        "privacy_scope"
+      ],
+      "properties": {
+        "privacy_scope": {
+          "type": "string",
+          "enum": [
+            "runtime_private",
+            "owner_private",
+            "agent_operational",
+            "project_private",
+            "shareable",
+            "public_safe"
+          ]
+        },
+        "audience_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "AuthenticatedPrincipal": {
+      "type": "object",
+      "required": [
+        "kind",
+        "actor_ref"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "owner",
+            "agent",
+            "participant",
+            "system"
+          ]
+        },
+        "actor_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "system_scope": {
+          "type": "string"
+        }
+      },
+      "if": {
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "const": "system"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "system_scope"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "system_scope"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RetrievalSuppressionReason": {
+      "type": "string",
+      "enum": [
+        "visibility_scope_mismatch",
+        "authority_mismatch",
+        "stale_record",
+        "contradicted_record",
+        "unsupported_wiki_claim",
+        "missing_upstream_ref",
+        "projection_budget_exceeded",
+        "invalid_external_candidate",
+        "embedding_generation_mismatch"
+      ]
+    },
+    "RetrievalCandidate": {
+      "type": "object",
+      "required": [
+        "id",
+        "ref",
+        "layer",
+        "authority",
+        "symbol_refs",
+        "why_retrieved",
+        "can_support_proposal"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "layer": {
+          "$ref": "#/$defs/Layer"
+        },
+        "authority": {
+          "type": "string",
+          "enum": [
+            "evidence",
+            "runtime",
+            "world",
+            "editorial",
+            "canon",
+            "governance",
+            "derived"
+          ]
+        },
+        "text_ref": {
+          "type": "string"
+        },
+        "text_preview": {
+          "type": "string"
+        },
+        "visibility_state": {
+          "$ref": "#/$defs/VisibilityState"
+        },
+        "symbol_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "semantic_slot": {
+          "type": "string"
+        },
+        "vector_score": {
+          "type": "number"
+        },
+        "lexical_score": {
+          "type": "number"
+        },
+        "symbolic_score": {
+          "type": "number"
+        },
+        "semantic_slot_score": {
+          "type": "number"
+        },
+        "authority_score": {
+          "type": "number"
+        },
+        "temporal_score": {
+          "type": "number"
+        },
+        "provenance_score": {
+          "type": "number"
+        },
+        "final_score": {
+          "type": "number"
+        },
+        "why_retrieved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "suppression_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RetrievalSuppressionReason"
+          },
+          "uniqueItems": true
+        },
+        "can_support_proposal": {
+          "type": "boolean"
+        },
+        "eligible_upstream_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "RetrievalQuery": {
+      "type": "object",
+      "required": [
+        "id",
+        "query_text",
+        "recipe_ref",
+        "requested_layers",
+        "read_policy_version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query_text": {
+          "type": "string"
+        },
+        "recipe_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requested_layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "symbol_hints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "semantic_slot_hints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "runtime_context_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actor_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authenticated_principal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthenticatedPrincipal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "read_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection_profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "audience": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_instance_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_session_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "conversation_thread_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RetrievalRecipe": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "layer_scope",
+        "allow_editorial_wiki",
+        "require_canon_for_truth_claims",
+        "vector_top_k",
+        "final_top_k",
+        "include_suppression_trace",
+        "read_policy_version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layer_scope": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "allow_editorial_wiki": {
+          "type": "boolean"
+        },
+        "require_canon_for_truth_claims": {
+          "type": "boolean"
+        },
+        "vector_top_k": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "final_top_k": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "include_suppression_trace": {
+          "type": "boolean"
+        },
+        "read_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_authenticated_principal_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "owner",
+            "agent",
+            "participant",
+            "system",
+            null
+          ]
+        },
+        "external_candidate_policy": {
+          "type": "string",
+          "enum": [
+            "forbid",
+            "allow_normalized"
+          ]
+        },
+        "can_support_proposal_from_layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "uniqueItems": true
+        },
+        "max_candidates_per_layer": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/Layer"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "RetrievalResult": {
+      "type": "object",
+      "required": [
+        "query_ref",
+        "recipe_ref",
+        "included_candidates",
+        "suppressed_candidates"
+      ],
+      "properties": {
+        "query_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recipe_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "included_candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RetrievalCandidate"
+          }
+        },
+        "suppressed_candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RetrievalCandidate"
+          }
+        },
+        "trace_ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RetrievalTrace": {
+      "type": "object",
+      "required": [
+        "id",
+        "query_ref",
+        "recipe_ref",
+        "read_policy_version",
+        "included_candidate_refs",
+        "suppressed_candidate_refs",
+        "suppression_reasons"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recipe_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection_profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "audience": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider_run_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "included_candidate_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "suppressed_candidate_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "suppression_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RetrievalSuppressionReason"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

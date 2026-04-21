@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/symbol-anchor.schema.json",
+  "title": "Cristalina v4 Symbol Anchor",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "label",
+    "aliases",
+    "target_refs",
+    "upstream_refs",
+    "authority",
+    "lifecycle_state",
+    "namespace"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^sym:[a-z0-9._-]+/[a-z0-9][a-z0-9._/-]*$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "concept",
+        "entity",
+        "relation_type",
+        "semantic_slot",
+        "intake_profile",
+        "wiki_topic"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "description": {
+      "type": "string"
+    },
+    "target_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "upstream_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "authority": {
+      "const": "navigation_only"
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": [
+        "active",
+        "merged",
+        "superseded",
+        "archived"
+      ]
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonical_symbol_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "supersedes_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "superseded_by_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "merged_into_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "diagnostic_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

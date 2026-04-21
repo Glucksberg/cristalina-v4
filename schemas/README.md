@@ -15,6 +15,8 @@ Planned schema families:
 - registered intake profile contracts
 - non-canonical intake contracts
 - wiki maintenance run contracts
+- symbol anchor contracts
+- retrieval query, recipe, candidate, result, and trace contracts
 - projection manifests
 - OpenClaw adapter contracts
 - Hermes adapter contracts
