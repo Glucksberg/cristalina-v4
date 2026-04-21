@@ -3,6 +3,7 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { appendAuditChange, appendValidationLog } from "../audit/log.js";
 import { resolveProjectionArtifactPath } from "../adapter-sdk/projection-path.js";
+import type { ProjectionReadContext } from "../adapter-sdk/projection.js";
 import { compileMemoryBrowserProjection, type MemoryBrowserProjectionResult } from "../projection-engine/memory-browser.js";
 import { STORAGE_LAYOUT } from "../storage.js";
 import { atomicWriteText, isMissingFileError } from "../store/atomic-write.js";
@@ -70,6 +71,7 @@ export interface WikiMaintenanceInput {
   now: string;
   actor: string;
   authenticated_principal: AuthenticatedPrincipal;
+  memory_browser_read_context?: ProjectionReadContext;
   event: WikiMaintenanceEvent;
   ids: WikiMaintenanceIds;
   source_record?: SourceRecord;
@@ -122,10 +124,16 @@ export interface WikiClaimProposalCandidateInput {
   now: string;
   proposal_id: string;
   claim: WikiClaim;
+  upstream_records: CoreRecord[];
   candidate_kind?: "fact" | "belief" | "preference" | "constraint" | "goal" | "procedure" | "value" | "identity_trait";
   semantic_slot?: string;
   reason?: string;
   visibility_state?: VisibilityState;
+}
+
+interface PlannedWikiMarkdown {
+  page: WikiPage;
+  body: string;
 }
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
@@ -167,6 +175,18 @@ function provenance(input: WikiMaintenanceInput, sourceRef: string, evidenceRefs
     evidence_refs: unique(evidenceRefs),
     actor_ref: input.actor,
   };
+}
+
+function assertAuthenticatedPrincipal(input: WikiMaintenanceInput): void {
+  if (!input.authenticated_principal?.actor_ref?.trim()) {
+    throw new Error("Wiki maintenance requires an authenticated_principal with actor_ref");
+  }
+  if (input.authenticated_principal.actor_ref !== input.actor) {
+    throw new Error(`Authenticated principal actor_ref ${input.authenticated_principal.actor_ref} must match actor ${input.actor}`);
+  }
+  if (input.authenticated_principal.kind === "system" && !input.authenticated_principal.system_scope?.trim()) {
+    throw new Error("Authenticated system principal requires a non-empty system_scope");
+  }
 }
 
 function reference(record: { id: string; kind: string; layer: string }): Reference {
@@ -448,6 +468,7 @@ async function compileAndWriteMemoryBrowser(rootDir: string, input: WikiMaintena
   const projection = compileMemoryBrowserProjection({
     now: input.now,
     visibility_state: defaultVisibility(input),
+    read_context: input.memory_browser_read_context,
     ids: {
       json_artifact: input.ids.browser_json_artifact,
       html_artifact: input.ids.browser_html_artifact,
@@ -492,10 +513,60 @@ function assertNoValidationIssues(issues: ValidationIssue[], scope: string): voi
   }
 }
 
+function assertRecordMatches<T>(label: string, expected: T, actual: T): void {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`Existing wiki maintenance run does not match input: ${label}`);
+  }
+}
+
+async function assertReusedWikiMaintenanceMatchesInput(input: {
+  rootDir: string;
+  source_record?: SourceRecord;
+  run: WikiMaintenanceRun;
+  pages: WikiPage[];
+  claims: WikiClaim[];
+  diagnostics: Diagnostic[];
+  markdowns: PlannedWikiMarkdown[];
+}): Promise<void> {
+  assertRecordMatches("run", input.run, await readCoreRecord<WikiMaintenanceRun>(coreRecordPath(input.rootDir, input.run)));
+  if (input.source_record) {
+    assertRecordMatches("source_record", input.source_record, await readCoreRecord<SourceRecord>(coreRecordPath(input.rootDir, input.source_record)));
+  }
+  for (const page of input.pages) {
+    assertRecordMatches("wiki_page", page, await readCoreRecord<WikiPage>(coreRecordPath(input.rootDir, page)));
+  }
+  for (const claim of input.claims) {
+    assertRecordMatches("wiki_claim", claim, await readCoreRecord<WikiClaim>(coreRecordPath(input.rootDir, claim)));
+  }
+  for (const diagnosticRecord of input.diagnostics) {
+    assertRecordMatches("diagnostic", diagnosticRecord, await readCoreRecord<Diagnostic>(coreRecordPath(input.rootDir, diagnosticRecord)));
+  }
+  for (const markdown of input.markdowns) {
+    const existing = await readFile(resolveStorePath(input.rootDir, markdown.page.path), "utf8");
+    const expected = renderMarkdown(markdown.page, markdown.body);
+    if (existing !== expected) {
+      throw new Error(`Existing wiki maintenance run does not match input: markdown:${markdown.page.id}`);
+    }
+  }
+}
+
+function isEligibleProposalEvidenceRecord(record: CoreRecord): boolean {
+  return record.layer === "raw" || record.layer === "world" || record.layer === "canon" || record.layer === "governance";
+}
+
 export function buildWikiClaimProposalCandidate(input: WikiClaimProposalCandidateInput): Proposal {
   const supportRefs = unique([...(input.claim.support_refs ?? []), ...input.claim.source_refs]);
   if (supportRefs.length === 0) {
     throw new Error("Wiki claim proposal candidates require upstream support refs.");
+  }
+  const eligibleRecords = new Map(
+    input.upstream_records
+      .filter(isEligibleProposalEvidenceRecord)
+      .map((record) => [record.id, record]),
+  );
+  const missingOrIneligibleRefs = supportRefs.filter((ref) => !eligibleRecords.has(ref));
+  if (missingOrIneligibleRefs.length > 0) {
+    throw new Error(`Wiki claim proposal candidates must dereference eligible upstream source/world/canon/governance records: ${missingOrIneligibleRefs.join(", ")}`);
   }
   const candidateKind = input.candidate_kind ?? "fact";
   return {
@@ -536,17 +607,15 @@ export function buildWikiClaimProposalCandidate(input: WikiClaimProposalCandidat
 }
 
 export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Promise<WikiMaintenanceResult> {
+  assertAuthenticatedPrincipal(input);
   await initializeStore(input.rootDir, input.now);
   const existingPages = await loadWikiPages(input.rootDir);
   const existingClaims = await loadWikiClaims(input.rootDir);
   const pages: WikiPage[] = [];
   const claims: WikiClaim[] = [];
   const graph_edges: WikiGraphEdge[] = [];
+  const markdowns: PlannedWikiMarkdown[] = [];
   let diagnostics: Diagnostic[] = [];
-
-  if (input.source_record) {
-    await writeCoreRecord(input.rootDir, input.source_record);
-  }
 
   if (input.event === "source_ingested" || input.event === "page_refreshed") {
     const sourceRefs = input.source_record ? [input.source_record.id] : [];
@@ -562,7 +631,10 @@ export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Pr
         existing: findExistingPage(existingPages, input.ids.source_page, input.source_record.id),
       });
       pages.push(sourcePage);
-      await writeMarkdown(input.rootDir, sourcePage, input.source_summary ?? `Source record: ${input.source_record.id}`);
+      markdowns.push({
+        page: sourcePage,
+        body: input.source_summary ?? `Source record: ${input.source_record.id}`,
+      });
     }
 
     if (input.topic) {
@@ -578,7 +650,10 @@ export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Pr
         existing: findExistingPage(existingPages, input.ids.topic_page, input.topic.title, input.topic.path),
       });
       pages.push(topicPage);
-      await writeMarkdown(input.rootDir, topicPage, input.topic.summary);
+      markdowns.push({
+        page: topicPage,
+        body: input.topic.summary,
+      });
       if (input.source_record) {
         graph_edges.push({
           edge_type: "summarizes",
@@ -603,7 +678,10 @@ export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Pr
       existing: findExistingPage(existingPages, input.ids.query_page, title),
     });
     pages.push(queryPage);
-    await writeMarkdown(input.rootDir, queryPage, `Question: ${input.query_capture.question}\n\n${input.query_capture.answer}`);
+    markdowns.push({
+      page: queryPage,
+      body: `Question: ${input.query_capture.question}\n\n${input.query_capture.answer}`,
+    });
   }
 
   if (input.event === "session_crystallized" && input.session_crystallization) {
@@ -618,7 +696,10 @@ export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Pr
       existing: findExistingPage(existingPages, input.ids.synthesis_page, input.session_crystallization.title),
     });
     pages.push(synthesisPage);
-    await writeMarkdown(input.rootDir, synthesisPage, input.session_crystallization.summary);
+    markdowns.push({
+      page: synthesisPage,
+      body: input.session_crystallization.summary,
+    });
   }
 
   const claimPageRef = pages.find((page) => page.page_kind === "topic")?.id ??
@@ -717,9 +798,27 @@ export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Pr
       throw error;
     });
 
+  if (reused) {
+    await assertReusedWikiMaintenanceMatchesInput({
+      rootDir: input.rootDir,
+      source_record: input.source_record,
+      run,
+      pages,
+      claims,
+      diagnostics,
+      markdowns,
+    });
+  }
+
   if (!reused) {
+    if (input.source_record) {
+      await writeCoreRecord(input.rootDir, input.source_record);
+    }
     for (const record of records) {
       await writeCoreRecord(input.rootDir, record);
+    }
+    for (const markdown of markdowns) {
+      await writeMarkdown(input.rootDir, markdown.page, markdown.body);
     }
     await updateWikiIndexAndLog(input.rootDir, input, pages, claims, diagnostics);
     await appendValidationLog(input.rootDir, {

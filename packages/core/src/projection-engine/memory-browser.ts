@@ -1,4 +1,10 @@
-import { createProjectionArtifact, createProjectionManifest, DEFAULT_PROJECTION_READ_POLICY_VERSION } from "../adapter-sdk/projection.js";
+import {
+  createProjectionArtifact,
+  createProjectionManifest,
+  DEFAULT_PROJECTION_READ_POLICY_VERSION,
+  filterProjectionRecords,
+  type ProjectionReadContext,
+} from "../adapter-sdk/projection.js";
 import type {
   ActorIdentity,
   CanonicalMemoryObject,
@@ -28,6 +34,7 @@ import type {
 export interface MemoryBrowserProjectionInput {
   now: string;
   visibility_state: VisibilityState;
+  read_context?: ProjectionReadContext;
   ids: {
     json_artifact: string;
     html_artifact: string;
@@ -96,42 +103,96 @@ function artifactPath(manifestId: string, filename: string): string {
 }
 
 export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInput): MemoryBrowserProjectionResult {
+  const projectionContext = input.read_context ?? {
+    adapter: "openclaw" as const,
+    audience: "memory_browser",
+  };
+  const sourceFilter = filterProjectionRecords(input.source_records, projectionContext);
+  const actorIdentityFilter = filterProjectionRecords(input.actor_identities ?? [], projectionContext);
+  const runtimeInstanceFilter = filterProjectionRecords(input.runtime_instances ?? [], projectionContext);
+  const runtimeSessionFilter = filterProjectionRecords(input.runtime_sessions ?? [], projectionContext);
+  const conversationThreadFilter = filterProjectionRecords(input.conversation_threads ?? [], projectionContext);
+  const canonicalFilter = filterProjectionRecords(input.canonical_records, projectionContext);
+  const worldClaimsFilter = filterProjectionRecords(input.world_claims, projectionContext);
+  const episodesFilter = filterProjectionRecords(input.episodes ?? [], projectionContext);
+  const entitiesFilter = filterProjectionRecords(input.entities ?? [], projectionContext);
+  const relationsFilter = filterProjectionRecords(input.relations ?? [], projectionContext);
+  const contradictionsFilter = filterProjectionRecords(input.contradictions ?? [], projectionContext);
+  const contradictionResolutionsFilter = filterProjectionRecords(input.contradiction_resolutions ?? [], projectionContext);
+  const wikiPagesFilter = filterProjectionRecords(input.wiki_pages, projectionContext);
+  const wikiClaimsFilter = filterProjectionRecords(input.wiki_claims, projectionContext);
+  const wikiRunsFilter = filterProjectionRecords(input.wiki_maintenance_runs ?? [], projectionContext);
+  const proposalsFilter = filterProjectionRecords(input.proposals ?? [], projectionContext);
+  const curationPacketsFilter = filterProjectionRecords(input.curation_packets ?? [], projectionContext);
+  const ratificationRecordsFilter = filterProjectionRecords(input.ratification_records ?? [], projectionContext);
+  const dispositionRecordsFilter = filterProjectionRecords(input.disposition_records ?? [], projectionContext);
+  const diagnosticsFilter = filterProjectionRecords(input.diagnostics ?? [], projectionContext);
+  const projectionArtifactsFilter = filterProjectionRecords(input.projection_artifacts ?? [], projectionContext);
+  const projectionManifestsFilter = filterProjectionRecords(input.projection_manifests ?? [], projectionContext);
   const runtimeRecords = [
-    ...(input.runtime_instances ?? []),
-    ...(input.runtime_sessions ?? []),
-    ...(input.conversation_threads ?? []),
+    ...runtimeInstanceFilter.included,
+    ...runtimeSessionFilter.included,
+    ...conversationThreadFilter.included,
   ];
   const worldRecords = [
-    ...input.world_claims,
-    ...(input.episodes ?? []),
-    ...(input.entities ?? []),
-    ...(input.relations ?? []),
-    ...(input.contradictions ?? []),
+    ...worldClaimsFilter.included,
+    ...episodesFilter.included,
+    ...entitiesFilter.included,
+    ...relationsFilter.included,
+    ...contradictionsFilter.included,
   ];
   const governanceRecords = [
-    ...(input.proposals ?? []),
-    ...(input.curation_packets ?? []),
-    ...(input.ratification_records ?? []),
-    ...(input.disposition_records ?? []),
-    ...(input.contradiction_resolutions ?? []),
+    ...proposalsFilter.included,
+    ...curationPacketsFilter.included,
+    ...ratificationRecordsFilter.included,
+    ...dispositionRecordsFilter.included,
+    ...contradictionResolutionsFilter.included,
   ];
   const wikiRecords = [
-    ...input.wiki_pages,
-    ...input.wiki_claims,
-    ...(input.wiki_maintenance_runs ?? []),
+    ...wikiPagesFilter.included,
+    ...wikiClaimsFilter.included,
+    ...wikiRunsFilter.included,
   ];
   const derivedRecords = [
-    ...(input.projection_artifacts ?? []),
-    ...(input.projection_manifests ?? []),
+    ...projectionArtifactsFilter.included,
+    ...projectionManifestsFilter.included,
   ];
-  const auditRecords = input.diagnostics ?? [];
-  const suppressed_records = input.wiki_claims
+  const auditRecords = diagnosticsFilter.included;
+  const read_policy_suppressed_records = [
+    ...sourceFilter.suppressed,
+    ...actorIdentityFilter.suppressed,
+    ...runtimeInstanceFilter.suppressed,
+    ...runtimeSessionFilter.suppressed,
+    ...conversationThreadFilter.suppressed,
+    ...canonicalFilter.suppressed,
+    ...worldClaimsFilter.suppressed,
+    ...episodesFilter.suppressed,
+    ...entitiesFilter.suppressed,
+    ...relationsFilter.suppressed,
+    ...contradictionsFilter.suppressed,
+    ...contradictionResolutionsFilter.suppressed,
+    ...wikiPagesFilter.suppressed,
+    ...wikiClaimsFilter.suppressed,
+    ...wikiRunsFilter.suppressed,
+    ...proposalsFilter.suppressed,
+    ...curationPacketsFilter.suppressed,
+    ...ratificationRecordsFilter.suppressed,
+    ...dispositionRecordsFilter.suppressed,
+    ...diagnosticsFilter.suppressed,
+    ...projectionArtifactsFilter.suppressed,
+    ...projectionManifestsFilter.suppressed,
+  ];
+  const editorial_suppressed_records = wikiClaimsFilter.included
     .filter((claim) => claim.claim_status !== "candidate_for_promotion")
     .map((claim) => ({
       id: claim.id,
       kind: claim.kind,
       reason_code: "wiki_editorial_claim_not_authority",
     }));
+  const suppressed_records = [
+    ...read_policy_suppressed_records,
+    ...editorial_suppressed_records,
+  ];
 
   const snapshot = {
     projection_profile: "memory_browser",
@@ -144,27 +205,27 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
       governance: "proposal and ratification records remain the only canon promotion path",
     },
     counts: {
-      raw: input.source_records.length,
+      raw: sourceFilter.included.length,
       runtime: runtimeRecords.length,
       world: worldRecords.length,
-      canon: input.canonical_records.length,
+      canon: canonicalFilter.included.length,
       wiki: wikiRecords.length,
       governance: governanceRecords.length,
       derived: derivedRecords.length,
       audits: auditRecords.length,
     },
     by_kind: {
-      raw: countBy(input.source_records),
+      raw: countBy(sourceFilter.included),
       runtime: countBy(runtimeRecords),
       world: countBy(worldRecords),
-      canon: countBy(input.canonical_records),
+      canon: countBy(canonicalFilter.included),
       wiki: countBy(wikiRecords),
       governance: countBy(governanceRecords),
       derived: countBy(derivedRecords),
       audits: countBy(auditRecords),
     },
     wiki: {
-      pages: input.wiki_pages.map((page) => ({
+      pages: wikiPagesFilter.included.map((page) => ({
         id: page.id,
         title: page.title,
         page_kind: page.page_kind,
@@ -177,7 +238,7 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
         world_refs: page.world_refs,
         wiki_claim_refs: page.wiki_claim_refs ?? [],
       })),
-      claims: input.wiki_claims.map((claim) => ({
+      claims: wikiClaimsFilter.included.map((claim) => ({
         id: claim.id,
         statement: claim.statement,
         page_ref: claim.page_ref,
@@ -190,7 +251,7 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
         source_refs: claim.source_refs,
         support_refs: claim.support_refs ?? [],
       })),
-      maintenance_runs: (input.wiki_maintenance_runs ?? []).map((run) => ({
+      maintenance_runs: wikiRunsFilter.included.map((run) => ({
         id: run.id,
         event: run.event,
         status: run.status,
@@ -235,9 +296,9 @@ small{color:#52606d}
 <section><h2>Layer Counts</h2><div class="counts">${Object.entries(snapshot.counts)
     .map(([layer, count]) => `<div><strong>${text(layer)}</strong><br>${text(count)}</div>`)
     .join("")}</div></section>
-${renderList("Wiki Pages", input.wiki_pages.map((page) => ({ id: page.id, label: page.title, meta: `${page.page_kind}; ${page.staleness_state ?? "current"}` })))}
-${renderList("Wiki Claims", input.wiki_claims.map((claim) => ({ id: claim.id, label: claim.statement, meta: claim.claim_status })))}
-${renderList("Canon", input.canonical_records.map((record) => ({ id: record.id, label: record.statement, meta: record.governance_state })))}
+${renderList("Wiki Pages", wikiPagesFilter.included.map((page) => ({ id: page.id, label: page.title, meta: `${page.page_kind}; ${page.staleness_state ?? "current"}` })))}
+${renderList("Wiki Claims", wikiClaimsFilter.included.map((claim) => ({ id: claim.id, label: claim.statement, meta: claim.claim_status })))}
+${renderList("Canon", canonicalFilter.included.map((record) => ({ id: record.id, label: record.statement, meta: record.governance_state })))}
 ${renderList("Governance", governanceRecords.map((record) => ({ id: record.id, label: record.kind })))}
 ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label: record.message, meta: record.severity })))}
 </main>
@@ -246,10 +307,11 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
 `;
 
   const upstream_refs = [
-    ...refs(input.source_records),
+    ...refs(sourceFilter.included),
+    ...refs(actorIdentityFilter.included),
     ...refs(runtimeRecords),
     ...refs(worldRecords),
-    ...refs(input.canonical_records),
+    ...refs(canonicalFilter.included),
     ...refs(wikiRecords),
     ...refs(governanceRecords),
     ...refs(auditRecords),

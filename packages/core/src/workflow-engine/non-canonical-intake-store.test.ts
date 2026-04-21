@@ -306,3 +306,55 @@ test("attachment references stay bounded to raw attachments and do not become tr
     /Attachment refs must stay within raw\/attachments/,
   );
 });
+
+test("non-canonical intake rejects collisions between raw payload and authoritative records", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir, "evidence_only");
+  input.source.content_ref = `raw/sources/${input.ids.source}.json`;
+
+  await assert.rejects(
+    () => writeNonCanonicalIntakeToStore(input),
+    /paths collide: raw_payload and source_record/,
+  );
+});
+
+test("non-canonical intake rejects reuse when payload or authenticated authority changes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir, "evidence_only");
+  await writeNonCanonicalIntakeToStore(input);
+
+  await assert.rejects(
+    () =>
+      writeNonCanonicalIntakeToStore({
+        ...input,
+        source: {
+          ...input.source,
+          payload: {
+            note: "Changed evidence should not be hidden by reuse.",
+          },
+        },
+      }),
+    /does not match input: raw_payload/,
+  );
+
+  await assert.rejects(
+    () =>
+      writeNonCanonicalIntakeToStore({
+        ...input,
+        actor: "agent:non-canonical-test",
+        authenticated_principal: {
+          kind: "agent",
+          actor_ref: "agent:non-canonical-test",
+        },
+      }),
+    /does not match input: raw_payload/,
+  );
+});

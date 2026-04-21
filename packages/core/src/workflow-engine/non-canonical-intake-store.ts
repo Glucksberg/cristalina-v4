@@ -190,6 +190,7 @@ function serializePayload(input: NonCanonicalIntakeInput, attachment_refs: strin
       source_type: input.source.source_type,
       source_ref: input.source.source_ref,
       mode: input.mode,
+      authenticated_principal: input.authenticated_principal,
       payload: input.source.payload,
       attachment_refs,
     },
@@ -210,6 +211,70 @@ async function pathExists(filePath: string): Promise<boolean> {
       if (isMissingFileError(error)) return false;
       throw error;
     });
+}
+
+function definedIntakePaths(paths: NonCanonicalIntakePaths): Array<[string, string]> {
+  return [
+    ["raw_payload", paths.raw_payload],
+    ["source_record", paths.source_record],
+    ...(paths.runtime_instance ? [["runtime_instance", paths.runtime_instance] as [string, string]] : []),
+    ...(paths.runtime_session ? [["runtime_session", paths.runtime_session] as [string, string]] : []),
+    ...(paths.conversation_thread ? [["conversation_thread", paths.conversation_thread] as [string, string]] : []),
+    ...(paths.observation ? [["observation", paths.observation] as [string, string]] : []),
+    ["disposition_record", paths.disposition_record],
+    ...(paths.diagnostic ? [["diagnostic", paths.diagnostic] as [string, string]] : []),
+  ];
+}
+
+function assertNoPathCollisions(paths: NonCanonicalIntakePaths): void {
+  const seen = new Map<string, string>();
+  for (const [label, filePath] of definedIntakePaths(paths)) {
+    const previous = seen.get(filePath);
+    if (previous) {
+      throw new Error(`Non-canonical intake paths collide: ${previous} and ${label}`);
+    }
+    seen.set(filePath, label);
+  }
+}
+
+function assertRecordMatches<T>(label: string, expected: T, actual: T): void {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`Existing non-canonical intake does not match input: ${label}`);
+  }
+}
+
+async function assertReusedIntakeMatchesInput(input: {
+  paths: NonCanonicalIntakePaths;
+  raw_payload: string;
+  source_record: SourceRecord;
+  runtime_instance?: RuntimeInstance;
+  runtime_session?: RuntimeSession;
+  conversation_thread?: ConversationThread;
+  observation?: Observation;
+  disposition_record: DispositionRecord;
+  diagnostic?: Diagnostic;
+}): Promise<void> {
+  const existingPayload = await readFile(input.paths.raw_payload, "utf8");
+  if (existingPayload !== input.raw_payload) {
+    throw new Error("Existing non-canonical intake does not match input: raw_payload");
+  }
+  assertRecordMatches("source_record", input.source_record, await readCoreRecord<SourceRecord>(input.paths.source_record));
+  if (input.paths.runtime_instance && input.runtime_instance) {
+    assertRecordMatches("runtime_instance", input.runtime_instance, await readCoreRecord<RuntimeInstance>(input.paths.runtime_instance));
+  }
+  if (input.paths.runtime_session && input.runtime_session) {
+    assertRecordMatches("runtime_session", input.runtime_session, await readCoreRecord<RuntimeSession>(input.paths.runtime_session));
+  }
+  if (input.paths.conversation_thread && input.conversation_thread) {
+    assertRecordMatches("conversation_thread", input.conversation_thread, await readCoreRecord<ConversationThread>(input.paths.conversation_thread));
+  }
+  if (input.paths.observation && input.observation) {
+    assertRecordMatches("observation", input.observation, await readCoreRecord<Observation>(input.paths.observation));
+  }
+  assertRecordMatches("disposition_record", input.disposition_record, await readCoreRecord<DispositionRecord>(input.paths.disposition_record));
+  if (input.paths.diagnostic && input.diagnostic) {
+    assertRecordMatches("diagnostic", input.diagnostic, await readCoreRecord<Diagnostic>(input.paths.diagnostic));
+  }
 }
 
 function buildSourceRecord(input: NonCanonicalIntakeInput, content_ref: string, attachment_refs: string[]): SourceRecord {
@@ -454,6 +519,7 @@ export async function writeNonCanonicalIntakeToStore(
     disposition_record: coreRecordPath(rootDir, disposition_record),
     diagnostic: diagnostic ? coreRecordPath(rootDir, diagnostic) : undefined,
   };
+  assertNoPathCollisions(paths);
 
   const validation_issues = [
     source_record,
@@ -474,9 +540,24 @@ export async function writeNonCanonicalIntakeToStore(
     (!paths.conversation_thread || (await pathExists(paths.conversation_thread))) &&
     (!paths.observation || (await pathExists(paths.observation))) &&
     (!paths.diagnostic || (await pathExists(paths.diagnostic)));
+  const raw_payload = serializePayload(input, attachment_refs);
+
+  if (reused) {
+    await assertReusedIntakeMatchesInput({
+      paths,
+      raw_payload,
+      source_record,
+      runtime_instance: runtime_context.runtime_instance,
+      runtime_session: runtime_context.runtime_session,
+      conversation_thread: runtime_context.conversation_thread,
+      observation,
+      disposition_record,
+      diagnostic,
+    });
+  }
 
   if (!reused) {
-    await writeTextFile(paths.raw_payload, serializePayload(input, attachment_refs));
+    await writeTextFile(paths.raw_payload, raw_payload);
     await writeCoreRecord(rootDir, source_record);
     if (runtime_context.runtime_instance) await writeCoreRecord(rootDir, runtime_context.runtime_instance);
     if (runtime_context.runtime_session) await writeCoreRecord(rootDir, runtime_context.runtime_session);
