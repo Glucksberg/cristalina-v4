@@ -17,12 +17,16 @@ import type {
   Episode,
   ProjectionArtifact,
   ProjectionManifest,
+  ProjectionRetrievalTrace,
   Proposal,
   RatificationRecord,
   Relation,
+  RetrievalResult,
   RuntimeInstance,
   RuntimeSession,
   SourceRecord,
+  SymbolAnchor,
+  VectorArtifact,
   ConversationThread,
   VisibilityState,
   WikiClaim,
@@ -62,6 +66,9 @@ export interface MemoryBrowserProjectionInput {
   diagnostics?: Diagnostic[];
   projection_artifacts?: ProjectionArtifact[];
   projection_manifests?: ProjectionManifest[];
+  symbol_anchors?: SymbolAnchor[];
+  vector_artifacts?: VectorArtifact[];
+  retrieval_results?: RetrievalResult[];
 }
 
 export interface MemoryBrowserProjectionResult {
@@ -83,6 +90,10 @@ function refs(records: Array<{ id: string }>): string[] {
   return records.map((record) => record.id);
 }
 
+function uniqueRefs(...groups: string[][]): string[] {
+  return [...new Set(groups.flat())];
+}
+
 function text(value: unknown): string {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -100,6 +111,19 @@ function renderList(title: string, items: Array<{ id: string; label: string; met
 
 function artifactPath(manifestId: string, filename: string): string {
   return `derived/openclaw/${manifestId}/${filename}`;
+}
+
+function summarizeRetrievalTraces(results: RetrievalResult[]): ProjectionRetrievalTrace[] {
+  return results.map((result) => ({
+    ...(result.trace_ref ? { trace_ref: result.trace_ref } : {}),
+    query_ref: result.query_ref,
+    recipe_ref: result.recipe_ref,
+    included_candidate_refs: result.included_candidates.map((candidate) => candidate.id),
+    suppressed_candidate_refs: result.suppressed_candidates.map((candidate) => candidate.id),
+    suppression_reasons: [
+      ...new Set(result.suppressed_candidates.flatMap((candidate) => candidate.suppression_reasons ?? [])),
+    ],
+  }));
 }
 
 export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInput): MemoryBrowserProjectionResult {
@@ -129,6 +153,13 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
   const diagnosticsFilter = filterProjectionRecords(input.diagnostics ?? [], projectionContext);
   const projectionArtifactsFilter = filterProjectionRecords(input.projection_artifacts ?? [], projectionContext);
   const projectionManifestsFilter = filterProjectionRecords(input.projection_manifests ?? [], projectionContext);
+  const vectorArtifactsFilter = filterProjectionRecords(input.vector_artifacts ?? [], projectionContext);
+  const symbolAnchors = input.symbol_anchors ?? [];
+  const retrievalResults = input.retrieval_results ?? [];
+  const retrievalTraces = summarizeRetrievalTraces(retrievalResults);
+  const retrievalTraceRefs = uniqueRefs(retrievalTraces.flatMap((trace) => trace.trace_ref ? [trace.trace_ref] : []));
+  const includedRetrievalCandidateRefs = uniqueRefs(retrievalTraces.map((trace) => trace.included_candidate_refs).flat());
+  const suppressedRetrievalCandidateRefs = uniqueRefs(retrievalTraces.map((trace) => trace.suppressed_candidate_refs).flat());
   const runtimeRecords = [
     ...runtimeInstanceFilter.included,
     ...runtimeSessionFilter.included,
@@ -156,6 +187,7 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
   const derivedRecords = [
     ...projectionArtifactsFilter.included,
     ...projectionManifestsFilter.included,
+    ...vectorArtifactsFilter.included,
   ];
   const auditRecords = diagnosticsFilter.included;
   const read_policy_suppressed_records = [
@@ -181,6 +213,7 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
     ...diagnosticsFilter.suppressed,
     ...projectionArtifactsFilter.suppressed,
     ...projectionManifestsFilter.suppressed,
+    ...vectorArtifactsFilter.suppressed,
   ];
   const editorial_suppressed_records = wikiClaimsFilter.included
     .filter((claim) => claim.claim_status !== "candidate_for_promotion")
@@ -213,6 +246,8 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
       governance: governanceRecords.length,
       derived: derivedRecords.length,
       audits: auditRecords.length,
+      symbols: symbolAnchors.length,
+      retrieval_results: retrievalResults.length,
     },
     by_kind: {
       raw: countBy(sourceFilter.included),
@@ -223,6 +258,67 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
       governance: countBy(governanceRecords),
       derived: countBy(derivedRecords),
       audits: countBy(auditRecords),
+      symbols: countBy(symbolAnchors),
+    },
+    retrieval: {
+      symbols: symbolAnchors.map((symbol) => ({
+        id: symbol.id,
+        kind: symbol.kind,
+        label: symbol.label,
+        aliases: symbol.aliases,
+        authority: symbol.authority,
+        lifecycle_state: symbol.lifecycle_state,
+        target_refs: symbol.target_refs,
+        upstream_refs: symbol.upstream_refs,
+      })),
+      vector_chunks: vectorArtifactsFilter.included
+        .filter((artifact) => artifact.kind === "vector_chunk")
+        .map((chunk) => ({
+          id: chunk.id,
+          source_ref: chunk.source_ref,
+          source_layer: chunk.source_layer,
+          chunk_text_ref: chunk.chunk_text_ref,
+          chunk_hash: chunk.chunk_hash,
+          symbol_refs: chunk.symbol_refs,
+          semantic_slot: chunk.semantic_slot ?? null,
+          upstream_refs: chunk.upstream_refs,
+        })),
+      vector_search_runs: vectorArtifactsFilter.included
+        .filter((artifact) => artifact.kind === "vector_search_run")
+        .map((run) => ({
+          id: run.id,
+          query_ref: run.query_ref,
+          index_manifest_ref: run.index_manifest_ref,
+          recipe_ref: run.recipe_ref ?? null,
+          requested_layers: run.requested_layers,
+          candidate_refs: run.candidate_refs,
+          suppressed_candidate_refs: run.suppressed_candidate_refs,
+          metric: run.metric,
+          top_k: run.top_k,
+        })),
+      results: retrievalResults.map((result) => ({
+        query_ref: result.query_ref,
+        recipe_ref: result.recipe_ref,
+        trace_ref: result.trace_ref ?? null,
+        included_candidates: result.included_candidates.map((candidate) => ({
+          id: candidate.id,
+          ref: candidate.ref,
+          layer: candidate.layer,
+          authority: candidate.authority,
+          why_retrieved: candidate.why_retrieved,
+          can_support_proposal: candidate.can_support_proposal,
+          eligible_upstream_refs: candidate.eligible_upstream_refs ?? [],
+        })),
+        suppressed_candidates: result.suppressed_candidates.map((candidate) => ({
+          id: candidate.id,
+          ref: candidate.ref,
+          layer: candidate.layer,
+          authority: candidate.authority,
+          suppression_reasons: candidate.suppression_reasons ?? [],
+          can_support_proposal: candidate.can_support_proposal,
+          eligible_upstream_refs: candidate.eligible_upstream_refs ?? [],
+        })),
+      })),
     },
     wiki: {
       pages: wikiPagesFilter.included.map((page) => ({
@@ -299,6 +395,10 @@ small{color:#52606d}
 ${renderList("Wiki Pages", wikiPagesFilter.included.map((page) => ({ id: page.id, label: page.title, meta: `${page.page_kind}; ${page.staleness_state ?? "current"}` })))}
 ${renderList("Wiki Claims", wikiClaimsFilter.included.map((claim) => ({ id: claim.id, label: claim.statement, meta: claim.claim_status })))}
 ${renderList("Canon", canonicalFilter.included.map((record) => ({ id: record.id, label: record.statement, meta: record.governance_state })))}
+${renderList("Symbol Anchors", symbolAnchors.map((symbol) => ({ id: symbol.id, label: symbol.label, meta: `${symbol.kind}; ${symbol.authority}` })))}
+${renderList("Vector Chunks", vectorArtifactsFilter.included.filter((artifact) => artifact.kind === "vector_chunk").map((chunk) => ({ id: chunk.id, label: chunk.source_ref, meta: chunk.source_layer })))}
+${renderList("Vector Search Runs", vectorArtifactsFilter.included.filter((artifact) => artifact.kind === "vector_search_run").map((run) => ({ id: run.id, label: run.query_ref, meta: run.metric })))}
+${renderList("Suppressed Retrieval Candidates", retrievalResults.flatMap((result) => result.suppressed_candidates.map((candidate) => ({ id: candidate.id, label: candidate.ref.id, meta: candidate.suppression_reasons?.join(", ") ?? "unspecified" }))))}
 ${renderList("Governance", governanceRecords.map((record) => ({ id: record.id, label: record.kind })))}
 ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label: record.message, meta: record.severity })))}
 </main>
@@ -306,17 +406,25 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
 </html>
 `;
 
-  const upstream_refs = [
-    ...refs(sourceFilter.included),
-    ...refs(actorIdentityFilter.included),
-    ...refs(runtimeRecords),
-    ...refs(worldRecords),
-    ...refs(canonicalFilter.included),
-    ...refs(wikiRecords),
-    ...refs(governanceRecords),
-    ...refs(auditRecords),
-    ...refs(derivedRecords),
-  ];
+  const upstream_refs = uniqueRefs(
+    refs(sourceFilter.included),
+    refs(actorIdentityFilter.included),
+    refs(runtimeRecords),
+    refs(worldRecords),
+    refs(canonicalFilter.included),
+    refs(wikiRecords),
+    refs(governanceRecords),
+    refs(auditRecords),
+    refs(derivedRecords),
+    refs(symbolAnchors),
+    retrievalResults.flatMap((result) => [
+      result.query_ref,
+      result.recipe_ref,
+      ...(result.trace_ref ? [result.trace_ref] : []),
+      ...result.included_candidates.map((candidate) => candidate.ref.id),
+      ...result.suppressed_candidates.map((candidate) => candidate.ref.id),
+    ]),
+  );
   const artifacts = [
     createProjectionArtifact({
       id: input.ids.json_artifact,
@@ -350,6 +458,10 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
     context_refs: [],
     suppressed_refs: suppressed_records.map((record) => record.id),
     suppressed_records,
+    retrieval_trace_refs: retrievalTraceRefs.length > 0 ? retrievalTraceRefs : undefined,
+    included_retrieval_candidate_refs: includedRetrievalCandidateRefs.length > 0 ? includedRetrievalCandidateRefs : undefined,
+    suppressed_retrieval_candidate_refs: suppressedRetrievalCandidateRefs.length > 0 ? suppressedRetrievalCandidateRefs : undefined,
+    retrieval_traces: retrievalTraces.length > 0 ? retrievalTraces : undefined,
     diagnostic_refs: auditRecords.map((diagnostic) => diagnostic.id),
     artifact_refs: artifacts.map((artifact) => artifact.id),
     upstream_refs,
