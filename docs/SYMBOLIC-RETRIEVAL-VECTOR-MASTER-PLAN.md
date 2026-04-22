@@ -686,6 +686,14 @@ Keep Cristalina interoperable even though it owns its native vector engine.
 
 ### Required Normalization Fields
 
+External candidate providers must:
+
+- return `ExternalCandidateBatch`
+- preserve provider identity across batch and candidates
+- preserve recipe/query refs when known
+- fail closed on provider or recipe drift before normalization
+- remain downstream of core authority and projection law
+
 External candidate import must preserve:
 
 - external provider id

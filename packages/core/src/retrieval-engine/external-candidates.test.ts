@@ -4,7 +4,12 @@ import test from "node:test";
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateRetrievalContract } from "../validation.js";
 import { executeHybridRetrieval } from "./exact-vector.js";
-import { normalizeExternalCandidateBatch, normalizeExternalCandidates } from "./external-candidates.js";
+import {
+  createFixtureExternalCandidateProvider,
+  normalizeExternalCandidateBatch,
+  normalizeExternalCandidates,
+  runExternalCandidateProvider,
+} from "./external-candidates.js";
 
 test("external candidate normalization preserves mapped refs without granting proposal support", () => {
   const fixture = buildSymbolicRetrievalFixture();
@@ -213,5 +218,106 @@ test("external candidate batches reject provider and recipe drift", () => {
       },
     }),
     /recipe_ref does not match recipe/,
+  );
+});
+
+test("fixture external candidate provider emits checked batches before normalization", async () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const provider = createFixtureExternalCandidateProvider({
+    provider_id: "mem0",
+    score_normalization: "provider_raw_cosine",
+    model_ref: "mem0_fixture_model_001",
+    index_ref: "mem0_fixture_index_001",
+    candidates: [
+      {
+        provider_id: "placeholder",
+        external_candidate_id: "mem0_provider_candidate_001",
+        mapped_ref: {
+          id: fixture.canonical_record.id,
+          kind: fixture.canonical_record.kind,
+          layer: fixture.canonical_record.layer,
+        },
+        source_layer: "canon",
+        authority: "canon",
+        score: 0.93,
+        retrieved_at: "2026-04-21T00:00:00.000Z",
+        symbol_refs: [fixture.symbol_anchor.id],
+        semantic_slot: fixture.canonical_record.semantic_slot,
+        text_preview: fixture.canonical_record.statement,
+      },
+    ],
+  });
+
+  const batch = await runExternalCandidateProvider({
+    provider,
+    query_ref: "retrieval_query_external_provider_001",
+    recipe: fixture.recipe,
+    now: "2026-04-22T00:00:00.000Z",
+    external_run_id: "mem0_fixture_run_001",
+  });
+
+  assert.equal(batch.provider_id, "mem0");
+  assert.equal(batch.recipe_ref, fixture.recipe.id);
+  assert.equal(batch.candidates[0]?.provider_id, "mem0");
+  assert.deepEqual(validateRetrievalContract(batch), []);
+
+  const [candidate] = normalizeExternalCandidateBatch({
+    recipe: {
+      ...fixture.recipe,
+      external_candidate_policy: "allow_normalized",
+    },
+    batch,
+  });
+
+  assert.ok(candidate);
+  assert.equal(candidate.ref.id, fixture.canonical_record.id);
+  assert.equal(candidate.can_support_proposal, false);
+  assert.ok(candidate.why_retrieved.includes("external model: mem0_fixture_model_001"));
+  assert.deepEqual(validateRetrievalContract(candidate), []);
+});
+
+test("external candidate provider runner fails closed on provider and recipe drift", async () => {
+  const fixture = buildSymbolicRetrievalFixture();
+
+  await assert.rejects(
+    () => runExternalCandidateProvider({
+      provider: {
+        provider_id: "mem0",
+        retrieve() {
+          return {
+            id: "external_candidate_batch_provider_drift_001",
+            provider_id: "graphiti",
+            recipe_ref: fixture.recipe.id,
+            retrieved_at: "2026-04-22T00:00:00.000Z",
+            candidates: [],
+          };
+        },
+      },
+      query_ref: "retrieval_query_external_provider_drift_001",
+      recipe: fixture.recipe,
+      now: "2026-04-22T00:00:00.000Z",
+    }),
+    /provider_id drift/,
+  );
+
+  await assert.rejects(
+    () => runExternalCandidateProvider({
+      provider: {
+        provider_id: "mem0",
+        retrieve() {
+          return {
+            id: "external_candidate_batch_recipe_drift_001",
+            provider_id: "mem0",
+            recipe_ref: "other_recipe",
+            retrieved_at: "2026-04-22T00:00:00.000Z",
+            candidates: [],
+          };
+        },
+      },
+      query_ref: "retrieval_query_external_recipe_drift_001",
+      recipe: fixture.recipe,
+      now: "2026-04-22T00:00:00.000Z",
+    }),
+    /recipe_ref drift/,
   );
 });

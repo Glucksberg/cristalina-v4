@@ -19,6 +19,34 @@ export interface NormalizeExternalCandidateBatchInput {
   batch: ExternalCandidateBatch;
 }
 
+export interface ExternalCandidateProviderRequest {
+  query_ref: string;
+  recipe: RetrievalRecipe;
+  now: string;
+  external_run_id?: string | null;
+}
+
+export interface ExternalCandidateProvider {
+  provider_id: string;
+  retrieve(input: ExternalCandidateProviderRequest): ExternalCandidateBatch | Promise<ExternalCandidateBatch>;
+}
+
+export interface CreateFixtureExternalCandidateProviderInput {
+  provider_id: string;
+  candidates: ExternalRetrievalCandidate[];
+  score_normalization?: string | null;
+  model_ref?: string | null;
+  index_ref?: string | null;
+}
+
+export interface RunExternalCandidateProviderInput {
+  provider: ExternalCandidateProvider;
+  query_ref: string;
+  recipe: RetrievalRecipe;
+  now: string;
+  external_run_id?: string | null;
+}
+
 function safeId(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "external";
 }
@@ -120,4 +148,51 @@ export function normalizeExternalCandidateBatch(input: NormalizeExternalCandidat
       index_ref: candidate.index_ref ?? input.batch.index_ref ?? undefined,
     })),
   });
+}
+
+export function createFixtureExternalCandidateProvider(input: CreateFixtureExternalCandidateProviderInput): ExternalCandidateProvider {
+  return {
+    provider_id: input.provider_id,
+    retrieve(request) {
+      return {
+        id: `external_candidate_batch_${safeId(input.provider_id)}_${safeId(request.query_ref)}`,
+        provider_id: input.provider_id,
+        external_run_id: request.external_run_id ?? `external_run_${safeId(input.provider_id)}_${safeId(request.query_ref)}`,
+        query_ref: request.query_ref,
+        recipe_ref: request.recipe.id,
+        retrieved_at: request.now,
+        score_normalization: input.score_normalization ?? null,
+        model_ref: input.model_ref ?? null,
+        index_ref: input.index_ref ?? null,
+        candidates: input.candidates.map((candidate) => ({
+          ...candidate,
+          provider_id: input.provider_id,
+          retrieved_at: candidate.retrieved_at || request.now,
+        })),
+      };
+    },
+  };
+}
+
+export async function runExternalCandidateProvider(input: RunExternalCandidateProviderInput): Promise<ExternalCandidateBatch> {
+  const batch = await input.provider.retrieve({
+    query_ref: input.query_ref,
+    recipe: input.recipe,
+    now: input.now,
+    external_run_id: input.external_run_id,
+  });
+
+  if (batch.provider_id !== input.provider.provider_id) {
+    throw new Error(`External provider batch provider_id drift: ${batch.provider_id}`);
+  }
+  if (batch.recipe_ref !== undefined && batch.recipe_ref !== null && batch.recipe_ref !== input.recipe.id) {
+    throw new Error(`External provider batch recipe_ref drift: ${batch.recipe_ref}`);
+  }
+  for (const candidate of batch.candidates) {
+    if (candidate.provider_id !== batch.provider_id) {
+      throw new Error(`External provider candidate provider_id drift: ${candidate.external_candidate_id}`);
+    }
+  }
+
+  return batch;
 }

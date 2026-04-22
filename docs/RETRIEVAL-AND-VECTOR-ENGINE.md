@@ -761,6 +761,12 @@ external candidates must be suppressed with `invalid_external_candidate` and
 must never support proposal generation.
 - serve as benchmarks
 
+`ExternalCandidateProvider` is a kernel-facing interface that returns an
+`ExternalCandidateBatch`. Provider output must be checked for provider identity
+and recipe drift before normalization. The first executable provider should be a
+fixture provider only; Mem0, Graphiti, or live network providers remain adapters
+that must conform to this core batch contract.
+
 `ExternalCandidateBatch` is the core exchange envelope for external retrieval
 providers. It records provider identity, optional external run identity, query
 and recipe refs when known, retrieval timestamp, normalization metadata, and the
