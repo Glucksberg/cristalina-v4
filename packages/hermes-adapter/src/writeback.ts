@@ -3,6 +3,7 @@ import {
   ratifyQueuedConversationPreferenceProposalToStore,
   rejectQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
+  writePreferenceFeedbackFlowToStore,
   type AuthenticatedPrincipal,
   type ConversationPreferenceQueuedExpirationInput,
   type ConversationPreferenceQueuedRatificationInput,
@@ -14,6 +15,12 @@ import {
 export type HermesAuthenticatedPrincipal = AuthenticatedPrincipal;
 
 export interface HermesConversationPreferenceWriteInput
+  extends Omit<ConversationPreferenceStoreInput, "intake_kind" | "source" | "authenticated_principal"> {
+  authenticated_principal: HermesAuthenticatedPrincipal;
+  source: Omit<ConversationPreferenceStoreInput["source"], "runtime">;
+}
+
+export interface HermesProjectionFeedbackWriteInput
   extends Omit<ConversationPreferenceStoreInput, "intake_kind" | "source" | "authenticated_principal"> {
   authenticated_principal: HermesAuthenticatedPrincipal;
   source: Omit<ConversationPreferenceStoreInput["source"], "runtime">;
@@ -47,6 +54,20 @@ export async function writeHermesConversationPreferenceToStore(
 ): Promise<ConversationPreferenceStoreResult> {
   const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
   return writeConversationPreferenceFlowToStore({
+    ...input,
+    authenticated_principal,
+    source: {
+      ...input.source,
+      runtime: "hermes",
+    },
+  });
+}
+
+export async function writeHermesProjectionFeedbackToStore(
+  input: HermesProjectionFeedbackWriteInput,
+): Promise<ConversationPreferenceStoreResult> {
+  const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
+  return writePreferenceFeedbackFlowToStore({
     ...input,
     authenticated_principal,
     source: {

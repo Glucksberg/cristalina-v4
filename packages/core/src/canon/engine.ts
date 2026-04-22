@@ -8,8 +8,8 @@ function referenceMatchesCanonicalRecord(
   if (!reference) return false;
   return (
     reference.id === record.id &&
-    (reference.kind === undefined || reference.kind === record.kind) &&
-    (reference.layer === undefined || reference.layer === record.layer)
+    reference.kind === record.kind &&
+    reference.layer === record.layer
   );
 }
 

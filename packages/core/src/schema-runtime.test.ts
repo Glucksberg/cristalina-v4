@@ -250,6 +250,39 @@ test("retrieval contract validation checks external candidate batch identity", (
   });
 
   assert.ok(invalid.some((issue) => issue.path === "candidates[0].provider_id"));
+  assert.ok(invalid.some((issue) => issue.path === "recipe_ref"));
+});
+
+test("reference validation requires full record identity for stored references", () => {
+  const invalid = validateCoreRecord({
+    id: "prop_reference_contract_bad_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-04-22T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "test",
+      source_ref: "src_reference_contract_001",
+    },
+    operation: "revise",
+    candidate_kind: "preference",
+    target_layer: "canon",
+    target_ref: {
+      id: "mem_reference_contract_001",
+    },
+    candidate_payload: {
+      kind: "preference",
+    },
+    reason: "Reference contract test.",
+    evidence_refs: ["src_reference_contract_001"],
+    governance_state: "proposed",
+  });
+
+  assert.ok(invalid.some((issue) => issue.path === "target_ref.kind"));
+  assert.ok(invalid.some((issue) => issue.path === "target_ref.layer"));
 });
 
 test("working memory checkpoint validation preserves runtime authority boundaries", () => {
@@ -307,6 +340,38 @@ test("working memory checkpoint validation preserves runtime authority boundarie
   assert.ok(invalid.some((issue) => issue.path === "generation"));
   assert.ok(invalid.some((issue) => issue.path === "upstream_refs"));
   assert.ok(invalid.some((issue) => issue.path === "superseded_by_ref"));
+});
+
+test("path-composed runtime refs are rejected before storage path construction", () => {
+  for (const runtime_session_ref of ["a/b", "CON", "..rel", "x\0y", "name with space"]) {
+    const issues = validateCoreRecord({
+      id: `working_memory_checkpoint_bad_ref_${runtime_session_ref.replace(/[^A-Za-z0-9._-]+/g, "_") || "nul"}`,
+      kind: "working_memory_checkpoint",
+      layer: "runtime",
+      authoritative_home: "runtime",
+      created_at: "2026-04-22T00:00:00.000Z",
+      visibility_state: {
+        privacy_scope: "runtime_private",
+      },
+      provenance: {
+        source_type: "runtime_checkpoint",
+        source_ref: "session_contract_001",
+      },
+      runtime_instance_ref: "runtime_instance_contract_001",
+      runtime_session_ref,
+      conversation_thread_ref: "thread_contract_001",
+      continuity_epoch: "epoch_contract_001",
+      generation: 1,
+      read_policy_version: "runtime_read_policy.v1",
+      upstream_refs: ["session_contract_001", "thread_contract_001"],
+      status: "active",
+    });
+
+    assert.ok(
+      issues.some((issue) => issue.path === "runtime_session_ref"),
+      `expected runtime_session_ref issue for ${JSON.stringify(runtime_session_ref)}`,
+    );
+  }
 });
 
 test("vector artifact validation keeps vector metadata derived and source-bound", () => {

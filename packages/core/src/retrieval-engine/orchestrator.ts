@@ -60,6 +60,18 @@ export interface DeterministicRetrievalRun {
   vector_artifacts: VectorArtifact[];
 }
 
+function assertRecipeAuthority(input: ExecuteDeterministicRetrievalInput): void {
+  const requiredKind = input.recipe.required_authenticated_principal_kind;
+  if (!requiredKind) return;
+
+  const observedKind = input.query.authenticated_principal?.kind;
+  if (observedKind !== requiredKind) {
+    throw new Error(
+      `Retrieval recipe ${input.recipe.id} requires authenticated principal kind ${requiredKind}; got ${observedKind ?? "none"}`,
+    );
+  }
+}
+
 function sha256(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
@@ -173,6 +185,7 @@ export function executeDeterministicRetrieval(input: ExecuteDeterministicRetriev
       throw new Error(`Retrieval query requested layer is outside recipe scope: ${layer}`);
     }
   }
+  assertRecipeAuthority(input);
   const effectiveRecipe: RetrievalRecipe = {
     ...input.recipe,
     layer_scope: input.query.requested_layers,

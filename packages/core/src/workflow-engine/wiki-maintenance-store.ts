@@ -387,6 +387,10 @@ function reference(record: { id: string; kind: string; layer: string }): Referen
   return { id: record.id, kind: record.kind, layer: record.layer as Reference["layer"] };
 }
 
+function rawSourceReference(id: string): Reference {
+  return { id, kind: "source_record", layer: "raw" };
+}
+
 function buildPage(input: {
   base: WikiMaintenanceInput;
   id: string;
@@ -970,7 +974,7 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
       graph_edges.push({
         edge_type: "supports",
         from_ref: reference(newClaim),
-        to_ref: { id: sourceRef },
+        to_ref: rawSourceReference(sourceRef),
         upstream_refs: [sourceRef],
       });
     }

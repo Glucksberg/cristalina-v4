@@ -85,6 +85,7 @@ export const RUNTIMES = [
 
 export const SOURCE_INTAKE_KINDS = [
   "conversation_preference",
+  "projection_feedback",
   "openclaw_projection_feedback",
   "structured_preference_signal",
 ] as const;
@@ -325,8 +326,8 @@ export const DISPOSITION_OUTCOME_REF_REQUIREMENTS: Partial<
 
 export interface Reference {
   id: string;
-  kind?: string;
-  layer?: Layer;
+  kind: string;
+  layer: Layer;
   path?: string;
 }
 
@@ -473,7 +474,7 @@ export interface ExternalCandidateBatch {
   provider_id: string;
   external_run_id?: string | null;
   query_ref?: string | null;
-  recipe_ref?: string | null;
+  recipe_ref: string;
   retrieved_at: string;
   score_normalization?: string | null;
   model_ref?: string | null;

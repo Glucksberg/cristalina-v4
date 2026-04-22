@@ -30,6 +30,7 @@ import {
 import {
   ratifyHermesQueuedConversationPreference,
   writeHermesConversationPreferenceToStore,
+  writeHermesProjectionFeedbackToStore,
   type HermesAuthenticatedPrincipal,
   type HermesConversationPreferenceWriteInput,
 } from "./writeback.js";
@@ -372,4 +373,72 @@ test("Hermes adapter forwards authenticated principals through write-through ing
   assert.equal(approved.records.ratification_record.decision, "approved");
   assert.equal((await listHermesProjectionRuntimeViews(ownerRootDir)).length, 1);
   assert.equal((await listProjectionRuntimeViews(ownerRootDir, "openclaw")).length, 0);
+});
+
+test("Hermes adapter writes projection feedback through the runtime-neutral intake profile", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-feedback-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const result = await writeHermesProjectionFeedbackToStore(buildHermesWriteInput({
+    rootDir,
+    now: "2026-04-16T04:00:00.000Z",
+    actor: "system:hermes-adapter-feedback-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-adapter-feedback-test",
+      system_scope: "hermes-adapter-feedback-test",
+    },
+    statement: "Hermes projection feedback says the owner prefers compact memory summaries.",
+    validation_scope: "test:hermes-adapter:projection-feedback",
+    ids: {
+      agent_identity: "actor_agent_hermes_feedback_test_001",
+      owner_identity: "actor_owner_hermes_feedback_test_001",
+      runtime_instance: "runtime_hermes_feedback_test_001",
+      runtime_session: "session_hermes_feedback_test_001",
+      conversation_thread: "thread_hermes_feedback_test_001",
+      source: "src_hermes_feedback_test_001",
+      observation: "obs_hermes_feedback_test_001",
+      episode: "ep_hermes_feedback_test_001",
+      subject_entity: "ent_subject_hermes_feedback_test_001",
+      preference_entity: "ent_preference_hermes_feedback_test_001",
+      preference_relation: "rel_preference_hermes_feedback_test_001",
+      world_claim: "wcl_hermes_feedback_test_001",
+      contradiction: "contra_hermes_feedback_test_001",
+      contradiction_resolution: "cres_hermes_feedback_test_001",
+      wiki_page: "wpg_hermes_feedback_test_001",
+      wiki_claim: "wclm_hermes_feedback_test_001",
+      proposal: "prop_hermes_feedback_test_001",
+      disposition: "disp_hermes_feedback_test_001",
+      ratification: "rat_hermes_feedback_test_001",
+      diagnostic: "diag_hermes_feedback_test_001",
+      canonical: "mem_hermes_feedback_test_001",
+      canon_artifact: "part_hermes_feedback_canon_001",
+      world_artifact: "part_hermes_feedback_world_001",
+      wiki_artifact: "part_hermes_feedback_wiki_001",
+      projection_manifest: "pmf_hermes_feedback_test_001",
+    },
+    labels: {
+      agent: "Cristalina Test Agent",
+      owner: "Test Owner",
+      session_objective: "Write Hermes projection feedback",
+      session_summary: "Hermes projection feedback session",
+      thread_summary: "Hermes projection feedback thread",
+    },
+    source: {
+      source_ref: "runtime/hermes-feedback-test#projection-feedback-001",
+      content_ref: "raw/sources/hermes-feedback-test-001.json",
+      runtime: "hermes",
+      message: "Hermes projection feedback says the owner prefers compact memory summaries.",
+      speaker_ref: "actor_agent_hermes_feedback_test_001",
+      message_refs: ["msg_hermes_feedback_test_001"],
+    },
+  }));
+
+  assert.equal(result.records.source_record.intake_profile_ref, "preference_signal/projection_feedback");
+  assert.equal(result.records.intake.runtime_instance?.runtime, "hermes");
+  assert.equal(result.records.projection_manifest.adapter, "hermes");
+  assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 1);
+  assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
 });

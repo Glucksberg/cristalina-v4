@@ -71,6 +71,7 @@ import {
   buildConversationPreferenceDispositionRecord,
   buildOpenClawPreferenceFeedbackIntake,
   buildConversationPreferenceIntake,
+  buildProjectionFeedbackIntake,
   buildStructuredPreferenceSignalIntake,
   detectWorldClaimContradiction,
   findConflictingWorldClaim,
@@ -1074,11 +1075,13 @@ function serializeSourcePayload(input: ConversationPreferenceStoreInput): string
 }
 
 function selectConversationPreferenceIntakeBuilder(input: ConversationPreferenceStoreInput): ConversationPreferenceIntakeBuilder {
-  return input.intake_kind === "openclaw_projection_feedback"
-    ? buildOpenClawPreferenceFeedbackIntake
-    : input.intake_kind === "structured_preference_signal"
-      ? buildStructuredPreferenceSignalIntake
-      : buildConversationPreferenceIntake;
+  return input.intake_kind === "projection_feedback"
+    ? buildProjectionFeedbackIntake
+    : input.intake_kind === "openclaw_projection_feedback"
+      ? buildOpenClawPreferenceFeedbackIntake
+      : input.intake_kind === "structured_preference_signal"
+        ? buildStructuredPreferenceSignalIntake
+        : buildConversationPreferenceIntake;
 }
 
 function buildSourceRecord(
@@ -3690,9 +3693,15 @@ export async function readConversationPreferenceFlowResult(
 export async function writeOpenClawPreferenceFeedbackFlowToStore(
   input: Omit<AuthenticatedConversationPreferenceStoreInput, "intake_kind">,
 ): Promise<ConversationPreferenceStoreResult> {
+  return writePreferenceFeedbackFlowToStore(input);
+}
+
+export async function writePreferenceFeedbackFlowToStore(
+  input: Omit<AuthenticatedConversationPreferenceStoreInput, "intake_kind">,
+): Promise<ConversationPreferenceStoreResult> {
   return writeConversationPreferenceFlowToStore({
     ...input,
-    intake_kind: "openclaw_projection_feedback",
+    intake_kind: "projection_feedback",
   });
 }
 

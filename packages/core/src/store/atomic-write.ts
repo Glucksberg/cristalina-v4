@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
+export interface AtomicWriteHooks {
+  rename?: typeof rename;
+  rm?: typeof rm;
+}
+
 export function isMissingFileError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
@@ -19,9 +24,11 @@ async function syncDirectory(dirPath: string): Promise<void> {
   }
 }
 
-export async function atomicWriteText(filePath: string, content: string): Promise<void> {
+export async function atomicWriteText(filePath: string, content: string, hooks: AtomicWriteHooks = {}): Promise<void> {
   const parentDir = dirname(filePath);
   const tempPath = join(parentDir, `.${basename(filePath)}.tmp-${randomUUID()}`);
+  const renameFile = hooks.rename ?? rename;
+  const removeFile = hooks.rm ?? rm;
 
   await mkdir(parentDir, { recursive: true });
   const handle = await open(tempPath, "w");
@@ -33,10 +40,17 @@ export async function atomicWriteText(filePath: string, content: string): Promis
   }
 
   try {
-    await rename(tempPath, filePath);
+    await renameFile(tempPath, filePath);
     await syncDirectory(parentDir);
   } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => undefined);
+    try {
+      await removeFile(tempPath, { force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `Atomic write failed and temp cleanup failed for ${filePath}`,
+      );
+    }
     throw error;
   }
 }

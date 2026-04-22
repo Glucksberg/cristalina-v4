@@ -19,6 +19,7 @@
       "type": "string",
       "enum": [
         "conversation_preference",
+        "projection_feedback",
         "openclaw_projection_feedback",
         "structured_preference_signal"
       ]

@@ -369,13 +369,16 @@ export function executeLexicalCandidateSearch(input: LexicalCandidateSearchInput
 function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandidate[] {
   const byId = new Map<string, RetrievalCandidate>();
   for (const candidate of candidates) {
-    const existing = byId.get(candidate.id);
+    const key = candidateMergeKey(candidate);
+    const existing = byId.get(key);
     if (!existing) {
-      byId.set(candidate.id, candidate);
+      byId.set(key, candidate);
       continue;
     }
-    byId.set(candidate.id, {
-      ...existing,
+    const base = preferredMergeBase(existing, candidate);
+    const other = base === existing ? candidate : existing;
+    byId.set(key, {
+      ...base,
       vector_score: Math.max(existing.vector_score ?? 0, candidate.vector_score ?? 0) || undefined,
       lexical_score: Math.max(existing.lexical_score ?? 0, candidate.lexical_score ?? 0) || undefined,
       symbolic_score: Math.max(existing.symbolic_score ?? 0, candidate.symbolic_score ?? 0) || undefined,
@@ -383,7 +386,7 @@ function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandi
       authority_score: Math.max(existing.authority_score ?? 0, candidate.authority_score ?? 0) || undefined,
       temporal_score: Math.max(existing.temporal_score ?? 0, candidate.temporal_score ?? 0) || undefined,
       provenance_score: Math.max(existing.provenance_score ?? 0, candidate.provenance_score ?? 0) || undefined,
-      why_retrieved: [...new Set([...existing.why_retrieved, ...candidate.why_retrieved])],
+      why_retrieved: [...new Set([...base.why_retrieved, ...other.why_retrieved])],
       suppression_reasons: [...new Set([...(existing.suppression_reasons ?? []), ...(candidate.suppression_reasons ?? [])])],
       symbol_refs: [...new Set([...existing.symbol_refs, ...candidate.symbol_refs])],
       can_support_proposal: existing.can_support_proposal || candidate.can_support_proposal,
@@ -396,6 +399,17 @@ function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandi
     suppression_reasons: candidate.suppression_reasons?.length ? candidate.suppression_reasons : undefined,
     eligible_upstream_refs: candidate.eligible_upstream_refs?.length ? candidate.eligible_upstream_refs : undefined,
   }));
+}
+
+function candidateMergeKey(candidate: RetrievalCandidate): string {
+  return `${candidate.ref.layer ?? candidate.layer}:${candidate.ref.kind ?? candidate.authority}:${candidate.ref.id}`;
+}
+
+function preferredMergeBase(existing: RetrievalCandidate, candidate: RetrievalCandidate): RetrievalCandidate {
+  if (existing.id.startsWith("candidate_external_") && !candidate.id.startsWith("candidate_external_")) {
+    return candidate;
+  }
+  return existing;
 }
 
 export function executeHybridRetrieval(input: HybridRetrievalInput): RetrievalResult {

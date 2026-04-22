@@ -809,6 +809,15 @@ export function buildOpenClawPreferenceFeedbackIntake(
   });
 }
 
+export function buildProjectionFeedbackIntake(
+  input: Omit<ConversationPreferenceIntakeInput, "intake_kind">,
+): ConversationPreferenceIntakeArtifacts {
+  return buildPreferenceSignalIntake({
+    ...input,
+    intake_kind: "projection_feedback",
+  });
+}
+
 export function buildStructuredPreferenceSignalIntake(
   input: Omit<ConversationPreferenceIntakeInput, "intake_kind">,
 ): ConversationPreferenceIntakeArtifacts {
@@ -895,8 +904,8 @@ export interface AcceptedContradictionResolutionApplicationResult extends Contra
 function referenceMatchesWorldClaim(reference: Reference, claim: WorldClaim): boolean {
   return (
     reference.id === claim.id &&
-    (reference.kind === undefined || reference.kind === claim.kind) &&
-    (reference.layer === undefined || reference.layer === claim.layer)
+    reference.kind === claim.kind &&
+    reference.layer === claim.layer
   );
 }
 
@@ -1239,8 +1248,8 @@ function mergeExistingCanonRecords(input: CanonicalProposalWorkflowInput): Canon
 function referenceMatchesCanonicalRecord(reference: Reference, record: CanonicalMemoryObject): boolean {
   return (
     reference.id === record.id &&
-    (reference.kind === undefined || reference.kind === record.kind) &&
-    (reference.layer === undefined || reference.layer === record.layer)
+    reference.kind === record.kind &&
+    reference.layer === record.layer
   );
 }
 

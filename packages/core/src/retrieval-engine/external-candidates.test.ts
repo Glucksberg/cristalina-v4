@@ -37,7 +37,7 @@ test("external candidate normalization preserves mapped refs without granting pr
         retrieved_at: "2026-04-21T00:00:00.000Z",
         symbol_refs: [fixture.symbol_anchor.id],
         semantic_slot: fixture.canonical_record.semantic_slot,
-        text_preview: fixture.canonical_record.statement,
+        text_preview: "provider supplied text that must not replace the local canonical preview",
       },
     ],
   });
@@ -47,6 +47,7 @@ test("external candidate normalization preserves mapped refs without granting pr
   assert.equal(candidate.layer, "canon");
   assert.equal(candidate.authority, "canon");
   assert.equal(candidate.vector_score, 0.99);
+  assert.equal(candidate.text_preview, fixture.canonical_record.statement);
   assert.equal(candidate.can_support_proposal, false);
   assert.equal(candidate.suppression_reasons, undefined);
   assert.deepEqual(validateRetrievalContract(candidate), []);
@@ -334,6 +335,42 @@ test("external candidate batches reject provider and recipe drift", () => {
     /provider_id does not match batch provider_id/,
   );
   assert.throws(
+    () =>
+      normalizeExternalCandidateBatch({
+        recipe: fixture.recipe,
+        batch: {
+          ...batch,
+          recipe_ref: undefined,
+          candidates: [
+            {
+              provider_id: "graphiti",
+              external_candidate_id: "candidate_missing_recipe_001",
+              retrieved_at: "2026-04-21T00:00:00.000Z",
+            },
+          ],
+        } as unknown as typeof batch,
+      }),
+    /recipe_ref must equal current recipe/,
+  );
+  assert.throws(
+    () =>
+      normalizeExternalCandidateBatch({
+        recipe: fixture.recipe,
+        batch: {
+          ...batch,
+          recipe_ref: null,
+          candidates: [
+            {
+              provider_id: "graphiti",
+              external_candidate_id: "candidate_null_recipe_001",
+              retrieved_at: "2026-04-21T00:00:00.000Z",
+            },
+          ],
+        } as unknown as typeof batch,
+      }),
+    /recipe_ref must equal current recipe/,
+  );
+  assert.throws(
     () => normalizeExternalCandidateBatch({
       recipe: {
         ...fixture.recipe,
@@ -350,7 +387,7 @@ test("external candidate batches reject provider and recipe drift", () => {
         ],
       },
     }),
-    /recipe_ref does not match recipe/,
+    /recipe_ref must equal current recipe/,
   );
 });
 
@@ -449,6 +486,26 @@ test("external candidate provider runner fails closed on provider and recipe dri
         },
       },
       query_ref: "retrieval_query_external_recipe_drift_001",
+      recipe: fixture.recipe,
+      now: "2026-04-22T00:00:00.000Z",
+    }),
+    /recipe_ref drift/,
+  );
+
+  await assert.rejects(
+    () => runExternalCandidateProvider({
+      provider: {
+        provider_id: "mem0",
+        retrieve() {
+          return {
+            id: "external_candidate_batch_missing_recipe_001",
+            provider_id: "mem0",
+            retrieved_at: "2026-04-22T00:00:00.000Z",
+            candidates: [],
+          } as any;
+        },
+      },
+      query_ref: "retrieval_query_external_missing_recipe_001",
       recipe: fixture.recipe,
       now: "2026-04-22T00:00:00.000Z",
     }),

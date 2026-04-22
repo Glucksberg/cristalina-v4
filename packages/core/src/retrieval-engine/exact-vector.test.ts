@@ -219,6 +219,38 @@ test("lexical candidates merge with vector candidates without duplicating retrie
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
 
+test("hybrid retrieval merges native and external signals by local memory ref", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const native = fixture.retrieval_result.included_candidates.find((candidate) => candidate.ref.id === fixture.canonical_record.id);
+  assert.ok(native);
+
+  const external = {
+    ...native,
+    id: "candidate_external_mem0_canon_symbolic_001",
+    vector_score: 0.98,
+    can_support_proposal: false,
+    eligible_upstream_refs: undefined,
+    why_retrieved: ["normalized external candidate from mem0"],
+  };
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_native_external_merge_001",
+    recipe: {
+      ...fixture.recipe,
+      final_top_k: 4,
+    },
+    candidates: [external, native],
+  });
+  const matches = hybrid.included_candidates.filter((candidate) => candidate.ref.id === fixture.canonical_record.id);
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]!.id, native.id);
+  assert.equal(matches[0]!.vector_score, 0.98);
+  assert.equal(matches[0]!.can_support_proposal, true);
+  assert.ok(matches[0]!.why_retrieved.includes("normalized external candidate from mem0"));
+  assert.ok(matches[0]!.why_retrieved.includes("matched deterministic vector"));
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
+
 test("hybrid retrieval suppresses stale and contradicted candidates before proposal support", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const staleCanon = {
@@ -302,6 +334,11 @@ test("hybrid retrieval records projection budget suppression after legal filters
   const extraRaw = {
     ...raw,
     id: "candidate_raw_symbolic_002",
+    ref: {
+      id: "src_symbolic_002",
+      kind: raw.ref.kind,
+      layer: raw.ref.layer,
+    },
     vector_score: 0.8,
     final_score: 0.8,
   };

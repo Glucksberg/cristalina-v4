@@ -100,6 +100,14 @@ function authorityForLayer(layer: Layer): RetrievalAuthority {
   }
 }
 
+function recordText(record: CoreRecord): string | undefined {
+  if ("statement" in record && typeof record.statement === "string") return record.statement;
+  if ("summary" in record && typeof record.summary === "string") return record.summary;
+  if ("content_ref" in record && typeof record.content_ref === "string") return record.content_ref;
+  if ("title" in record && typeof record.title === "string") return record.title;
+  return undefined;
+}
+
 function localRefForRecord(record: CoreRecord): Reference {
   return {
     id: record.id,
@@ -171,7 +179,7 @@ export function normalizeExternalCandidates(input: NormalizeExternalCandidatesIn
       ref,
       layer,
       authority,
-      text_preview: readPolicySuppressed ? undefined : candidate.text_preview,
+      text_preview: readPolicySuppressed ? undefined : mappedRecord ? recordText(mappedRecord) : candidate.text_preview,
       symbol_refs: unique(candidate.symbol_refs ?? []),
       semantic_slot: candidate.semantic_slot,
       vector_score: candidate.score,
@@ -190,8 +198,8 @@ export function normalizeExternalCandidates(input: NormalizeExternalCandidatesIn
 }
 
 export function normalizeExternalCandidateBatch(input: NormalizeExternalCandidateBatchInput): RetrievalCandidate[] {
-  if (input.batch.recipe_ref !== undefined && input.batch.recipe_ref !== null && input.batch.recipe_ref !== input.recipe.id) {
-    throw new Error(`External candidate batch recipe_ref does not match recipe: ${input.batch.recipe_ref}`);
+  if (input.batch.recipe_ref !== input.recipe.id) {
+    throw new Error(`External candidate batch recipe_ref must equal current recipe: got ${String(input.batch.recipe_ref)}`);
   }
 
   for (const candidate of input.batch.candidates) {
@@ -248,8 +256,8 @@ export async function runExternalCandidateProvider(input: RunExternalCandidatePr
   if (batch.provider_id !== input.provider.provider_id) {
     throw new Error(`External provider batch provider_id drift: ${batch.provider_id}`);
   }
-  if (batch.recipe_ref !== undefined && batch.recipe_ref !== null && batch.recipe_ref !== input.recipe.id) {
-    throw new Error(`External provider batch recipe_ref drift: ${batch.recipe_ref}`);
+  if (batch.recipe_ref !== input.recipe.id) {
+    throw new Error(`External provider batch recipe_ref drift: ${String(batch.recipe_ref)}`);
   }
   if (batch.query_ref !== undefined && batch.query_ref !== null && batch.query_ref !== input.query_ref) {
     throw new Error(`External provider batch query_ref drift: ${batch.query_ref}`);

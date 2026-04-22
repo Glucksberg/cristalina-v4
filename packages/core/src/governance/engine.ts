@@ -29,8 +29,8 @@ function normalizeStatement(value: string): string {
 function referenceMatchesRecord(record: CanonicalMemoryObject, reference: Reference): boolean {
   return (
     record.id === reference.id &&
-    (reference.kind === undefined || reference.kind === record.kind) &&
-    (reference.layer === undefined || reference.layer === record.layer)
+    reference.kind === record.kind &&
+    reference.layer === record.layer
   );
 }
 

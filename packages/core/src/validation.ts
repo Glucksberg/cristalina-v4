@@ -90,6 +90,7 @@ export class ValidationError extends Error {
 }
 
 const SAFE_RECORD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const WINDOWS_RESERVED_PATH_SEGMENT_PATTERN = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -135,6 +136,17 @@ function pushSafeRecordId(issues: ValidationIssue[], value: unknown, path: strin
   }
 }
 
+function pushSafePathSegmentRef(issues: ValidationIssue[], value: unknown, path: string): void {
+  pushSafeRecordId(issues, value, path);
+  if (typeof value !== "string") return;
+  if (WINDOWS_RESERVED_PATH_SEGMENT_PATTERN.test(value) || value.endsWith(".")) {
+    issues.push({
+      path,
+      message: "expected safe path segment ref that is not a reserved filename or trailing dot",
+    });
+  }
+}
+
 function pushEnum<T extends string>(
   issues: ValidationIssue[],
   record: Record<string, unknown>,
@@ -167,13 +179,8 @@ function pushReference(issues: ValidationIssue[], value: unknown, path: string):
 
   pushSafeRecordId(issues, value.id, `${path}.id`);
 
-  if (value.kind !== undefined && typeof value.kind !== "string") {
-    issues.push({ path: `${path}.kind`, message: "expected string" });
-  }
-
-  if (value.layer !== undefined && !isEnumValue(value.layer, LAYERS)) {
-    issues.push({ path: `${path}.layer`, message: `expected one of: ${LAYERS.join(", ")}` });
-  }
+  pushRequiredString(issues, value, "kind", `${path}.kind`);
+  pushEnum(issues, value, "layer", LAYERS, `${path}.layer`);
 }
 
 function pushAuthenticatedPrincipal(issues: ValidationIssue[], value: unknown, path: string): void {
@@ -1161,10 +1168,10 @@ function validateWorkingMemoryCheckpoint(value: unknown): ValidationIssue[] {
   if (value.kind !== "working_memory_checkpoint") issues.push({ path: "kind", message: 'expected "working_memory_checkpoint"' });
   if (value.layer !== "runtime") issues.push({ path: "layer", message: 'expected "runtime"' });
   if (value.authoritative_home !== "runtime") issues.push({ path: "authoritative_home", message: 'expected "runtime"' });
-  pushRequiredString(issues, value, "runtime_instance_ref");
-  pushRequiredString(issues, value, "runtime_session_ref");
-  pushRequiredString(issues, value, "conversation_thread_ref");
-  pushRequiredString(issues, value, "continuity_epoch");
+  pushSafePathSegmentRef(issues, value.runtime_instance_ref, "runtime_instance_ref");
+  pushSafePathSegmentRef(issues, value.runtime_session_ref, "runtime_session_ref");
+  pushSafePathSegmentRef(issues, value.conversation_thread_ref, "conversation_thread_ref");
+  pushSafePathSegmentRef(issues, value.continuity_epoch, "continuity_epoch");
   pushRequiredString(issues, value, "read_policy_version");
   pushPositiveInteger(issues, value.generation, "generation");
   if (!isStringArray(value.upstream_refs) || value.upstream_refs.length === 0 || !hasUniqueEntries(value.upstream_refs)) {
@@ -1190,12 +1197,12 @@ function validateSessionResumeReceipt(value: unknown): ValidationIssue[] {
   if (value.authoritative_home !== "governance") issues.push({ path: "authoritative_home", message: 'expected "governance"' });
   pushEnum(issues, value, "receipt_status", SESSION_RESUME_RECEIPT_STATUSES);
   pushEnum(issues, value, "adapter", ["openclaw", "hermes"] as const);
-  pushRequiredString(issues, value, "projection_manifest_ref");
-  pushRequiredString(issues, value, "checkpoint_ref");
-  pushRequiredString(issues, value, "runtime_instance_ref");
-  pushRequiredString(issues, value, "runtime_session_ref");
-  pushRequiredString(issues, value, "conversation_thread_ref");
-  pushRequiredString(issues, value, "continuity_epoch");
+  pushSafePathSegmentRef(issues, value.projection_manifest_ref, "projection_manifest_ref");
+  pushSafePathSegmentRef(issues, value.checkpoint_ref, "checkpoint_ref");
+  pushSafePathSegmentRef(issues, value.runtime_instance_ref, "runtime_instance_ref");
+  pushSafePathSegmentRef(issues, value.runtime_session_ref, "runtime_session_ref");
+  pushSafePathSegmentRef(issues, value.conversation_thread_ref, "conversation_thread_ref");
+  pushSafePathSegmentRef(issues, value.continuity_epoch, "continuity_epoch");
   pushRequiredString(issues, value, "read_policy_version");
   pushPositiveInteger(issues, value.generation, "generation");
   if (
@@ -1327,6 +1334,9 @@ export function validateRetrievalContract(value: unknown): ValidationIssue[] {
     }
   }
   if (Array.isArray(value.candidates) && typeof value.provider_id === "string") {
+    if (typeof value.recipe_ref !== "string" || value.recipe_ref.length === 0) {
+      issues.push({ path: "recipe_ref", message: "external candidate batches require recipe_ref" });
+    }
     value.candidates.forEach((candidate, index) => {
       if (isRecord(candidate) && candidate.provider_id !== value.provider_id) {
         issues.push({

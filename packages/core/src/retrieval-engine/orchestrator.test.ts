@@ -96,6 +96,67 @@ test("deterministic retrieval orchestrator rejects query and recipe drift", () =
   );
 });
 
+test("deterministic retrieval orchestrator enforces recipe authenticated authority", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const baseInput = {
+    now: "2026-04-21T00:00:00.000Z",
+    query: {
+      id: "retrieval_query_orchestrator_authority_001",
+      query_text: "answer style",
+      recipe_ref: fixture.recipe.id,
+      requested_layers: fixture.recipe.layer_scope,
+      read_policy_version: fixture.recipe.read_policy_version,
+    },
+    recipe: {
+      ...fixture.recipe,
+      required_authenticated_principal_kind: "owner" as const,
+    },
+    records: [fixture.canonical_record],
+    embedding_model: fixture.embedding_model,
+    chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+    corpus_id: "vector_corpus_orchestrator_authority_001",
+    corpus_generation: "corpus_gen_orchestrator_authority_001",
+    chunk_generation: "chunk_gen_orchestrator_authority_001",
+    embedding_generation: "embedding_gen_orchestrator_authority_001",
+    embedding_batch_id: "embedding_batch_orchestrator_authority_001",
+    index_manifest_id: "vector_index_orchestrator_authority_001",
+    index_generation: "index_gen_orchestrator_authority_001",
+    search_run_id: "vector_search_orchestrator_authority_001",
+    search_generation: "search_gen_orchestrator_authority_001",
+  };
+
+  assert.throws(
+    () => executeDeterministicRetrieval(baseInput),
+    /requires authenticated principal kind owner; got none/,
+  );
+  assert.throws(
+    () =>
+      executeDeterministicRetrieval({
+        ...baseInput,
+        query: {
+          ...baseInput.query,
+          authenticated_principal: {
+            kind: "participant",
+            actor_ref: "actor_participant_orchestrator_authority_001",
+          },
+        },
+      }),
+    /requires authenticated principal kind owner; got participant/,
+  );
+
+  const run = executeDeterministicRetrieval({
+    ...baseInput,
+    query: {
+      ...baseInput.query,
+      authenticated_principal: {
+        kind: "owner",
+        actor_ref: "actor_owner_orchestrator_authority_001",
+      },
+    },
+  });
+  assert.equal(run.result.query_ref, baseInput.query.id);
+});
+
 test("deterministic retrieval orchestrator narrows recipe scope to requested query layers", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const run = executeDeterministicRetrieval({

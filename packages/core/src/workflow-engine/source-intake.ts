@@ -63,6 +63,17 @@ const DEFAULT_PREFERENCE_SIGNAL_PROFILE: Record<SourceIntakeKind, Omit<Preferenc
     preference_topic_label: "User Interaction Preferences",
     relation_type: "expressed_preference",
   },
+  projection_feedback: {
+    observation_prefix: "Runtime projection feedback: ",
+    episode_summary: "Runtime feedback produced a bounded preference episode.",
+    wiki_title: "Runtime Preference Feedback",
+    wiki_path: "wiki/pages/runtime-preference-feedback.md",
+    proposal_reason: "Runtime projection feedback indicates a user interaction preference that should become governed memory.",
+    subject_entity_kind: "participant",
+    subject_authority_role: "participant",
+    preference_topic_label: "User Interaction Preferences",
+    relation_type: "expressed_preference",
+  },
   openclaw_projection_feedback: {
     observation_prefix: "OpenClaw runtime feedback: ",
     episode_summary: "Runtime feedback produced a bounded preference episode.",

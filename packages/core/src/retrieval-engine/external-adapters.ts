@@ -33,7 +33,7 @@ export interface ImportMem0CandidateBatchInput {
   provider_id?: string;
   external_run_id?: string | null;
   query_ref?: string | null;
-  recipe_ref?: string | null;
+  recipe_ref: string;
   score_normalization?: string | null;
   model_ref?: string | null;
   index_ref?: string | null;
@@ -60,7 +60,7 @@ export interface ImportGraphitiCandidateBatchInput {
   provider_id?: string;
   external_run_id?: string | null;
   query_ref?: string | null;
-  recipe_ref?: string | null;
+  recipe_ref: string;
   score_normalization?: string | null;
   model_ref?: string | null;
   index_ref?: string | null;
@@ -123,7 +123,7 @@ export function importMem0CandidateBatch(input: ImportMem0CandidateBatchInput): 
     provider_id,
     external_run_id: input.external_run_id ?? null,
     query_ref: input.query_ref ?? null,
-    recipe_ref: input.recipe_ref ?? null,
+    recipe_ref: input.recipe_ref,
     retrieved_at: input.retrieved_at,
     score_normalization: input.score_normalization ?? null,
     model_ref: input.model_ref ?? null,
@@ -155,7 +155,7 @@ export function importGraphitiCandidateBatch(input: ImportGraphitiCandidateBatch
     provider_id,
     external_run_id: input.external_run_id ?? null,
     query_ref: input.query_ref ?? null,
-    recipe_ref: input.recipe_ref ?? null,
+    recipe_ref: input.recipe_ref,
     retrieved_at: input.retrieved_at,
     score_normalization: input.score_normalization ?? null,
     model_ref: input.model_ref ?? null,

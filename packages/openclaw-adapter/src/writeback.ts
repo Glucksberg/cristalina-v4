@@ -3,7 +3,7 @@ import {
   ratifyQueuedConversationPreferenceProposalToStore,
   rejectQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
-  writeOpenClawPreferenceFeedbackFlowToStore,
+  writePreferenceFeedbackFlowToStore,
   type AuthenticatedPrincipal,
   type ConversationPreferenceQueuedExpirationInput,
   type ConversationPreferenceQueuedRatificationInput,
@@ -67,7 +67,7 @@ export async function writeOpenClawProjectionFeedbackToStore(
   input: OpenClawProjectionFeedbackWriteInput,
 ): Promise<ConversationPreferenceStoreResult> {
   const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
-  return writeOpenClawPreferenceFeedbackFlowToStore({
+  return writePreferenceFeedbackFlowToStore({
     ...input,
     authenticated_principal,
     source: {

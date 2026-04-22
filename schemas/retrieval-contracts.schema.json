@@ -42,7 +42,9 @@
     "Reference": {
       "type": "object",
       "required": [
-        "id"
+        "id",
+        "kind",
+        "layer"
       ],
       "properties": {
         "id": {
@@ -356,6 +358,7 @@
       "required": [
         "id",
         "provider_id",
+        "recipe_ref",
         "retrieved_at",
         "candidates"
       ],
@@ -381,10 +384,8 @@
           ]
         },
         "recipe_ref": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string",
+          "minLength": 1
         },
         "retrieved_at": {
           "type": "string",
