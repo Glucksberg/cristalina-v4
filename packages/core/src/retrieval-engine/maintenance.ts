@@ -24,6 +24,7 @@ export interface ValidateVectorArtifactsInput {
   embeddings: EmbeddingRecord[];
   embedding_vectors?: Record<string, number[]>;
   index_manifest?: VectorIndexManifest;
+  exact_baseline_index_manifest?: VectorIndexManifest;
   visibility_state?: VisibilityState;
 }
 
@@ -218,6 +219,37 @@ export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): Ve
     if (input.index_manifest.index_checksum !== undefined && input.index_manifest.index_checksum !== input.index_manifest.index_ref.checksum) {
       issueCodes.add("index_checksum_mismatch");
     }
+    if (input.index_manifest.index_kind === "ann") {
+      const baseline = input.exact_baseline_index_manifest;
+      if (!baseline) {
+        issueCodes.add("ann_baseline_manifest_missing");
+      } else {
+        if (baseline.index_kind !== "exact") {
+          issueCodes.add("ann_exact_baseline_required");
+        }
+        if (input.index_manifest.exact_baseline_index_ref !== baseline.id) {
+          issueCodes.add("ann_baseline_ref_mismatch");
+        }
+        if (input.index_manifest.corpus_ref !== baseline.corpus_ref) {
+          issueCodes.add("ann_baseline_corpus_ref_mismatch");
+        }
+        if (input.index_manifest.embedding_model_ref !== baseline.embedding_model_ref) {
+          issueCodes.add("ann_baseline_embedding_model_ref_mismatch");
+        }
+        if (input.index_manifest.dimensions !== baseline.dimensions) {
+          issueCodes.add("ann_baseline_dimension_mismatch");
+        }
+        if (input.index_manifest.metric !== baseline.metric) {
+          issueCodes.add("ann_baseline_metric_mismatch");
+        }
+        if (!sameSet(input.index_manifest.source_refs, baseline.source_refs)) {
+          issueCodes.add("ann_baseline_source_membership_mismatch");
+        }
+        if (input.index_manifest.embedding_generation !== baseline.embedding_generation) {
+          issueCodes.add("ann_baseline_embedding_generation_mismatch");
+        }
+      }
+    }
   }
 
   const checked_artifact_refs = unique([
@@ -226,6 +258,7 @@ export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): Ve
     ...(input.embedding_model ? [input.embedding_model.id] : []),
     ...input.embeddings.map((embedding) => embedding.id),
     ...(input.index_manifest ? [input.index_manifest.id] : []),
+    ...(input.exact_baseline_index_manifest ? [input.exact_baseline_index_manifest.id] : []),
   ]);
   const issue_codes = [...issueCodes].sort();
 

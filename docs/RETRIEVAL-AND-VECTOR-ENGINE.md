@@ -338,6 +338,11 @@ Maintenance validation may inspect supplied sidecar payloads, but sidecar drift
 must be reported as explicit maintenance issues rather than silently repaired
 during retrieval.
 
+ANN validation must also inspect the exact baseline manifest when supplied. An
+ANN manifest whose `exact_baseline_index_ref`, corpus, model, dimensions,
+metric, source refs, or embedding generation drift from the baseline is invalid
+until a new explicit ANN rebuild and exact-vs-ANN eval run are produced.
+
 ---
 
 ## 6. Storage Layout

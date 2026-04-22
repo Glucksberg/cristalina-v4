@@ -409,6 +409,123 @@ test("vector maintenance rebuilds deterministic ANN index from an exact baseline
   assert.deepEqual(validateVectorArtifact(rejected.maintenance_run), []);
 });
 
+test("vector maintenance detects ANN baseline manifest drift", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const retrievalRun = executeDeterministicRetrieval({
+    now: "2026-04-21T00:00:00.000Z",
+    query: {
+      id: "retrieval_query_ann_drift_001",
+      query_text: "answer style",
+      recipe_ref: fixture.recipe.id,
+      requested_layers: fixture.recipe.layer_scope,
+      read_policy_version: fixture.recipe.read_policy_version,
+    },
+    recipe: fixture.recipe,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    symbol_anchors: [fixture.symbol_anchor],
+    embedding_model: {
+      ...fixture.embedding_model,
+      dimensions: 8,
+      normalization_mode: "deterministic_fixture_sha256_unit",
+    },
+    chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+    corpus_id: "vector_corpus_ann_drift_001",
+    corpus_generation: "corpus_gen_ann_drift_001",
+    chunk_generation: "chunk_gen_ann_drift_001",
+    embedding_generation: "embedding_gen_ann_drift_001",
+    embedding_batch_id: "embedding_batch_ann_drift_001",
+    index_manifest_id: "vector_index_ann_drift_seed_001",
+    index_generation: "index_gen_ann_drift_seed_001",
+    search_run_id: "vector_search_ann_drift_001",
+    search_generation: "search_gen_ann_drift_001",
+  });
+  const embeddingModel = retrievalRun.vector_artifacts.find((artifact) => artifact.kind === "embedding_model_manifest");
+  assert.ok(embeddingModel);
+  const exact = rebuildExactIndex({
+    id: "vector_maintenance_run_ann_drift_exact_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    index_manifest_id: "vector_index_ann_drift_exact_001",
+    index_generation: "index_gen_ann_drift_exact_001",
+  });
+  assert.ok(exact.index_manifest);
+  const ann = rebuildAnnIndex({
+    id: "vector_maintenance_run_ann_drift_rebuild_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    exact_baseline_index: exact.index_manifest,
+    index_manifest_id: "vector_index_ann_drift_ann_001",
+    index_generation: "index_gen_ann_drift_ann_001",
+    ann_strategy: "deterministic_fixture_lsh",
+    ann_parameters: {
+      bucket_count: 8,
+    },
+    ann_recall_floor: 1,
+  });
+  assert.ok(ann.index_manifest);
+
+  const clean = validateVectorArtifacts({
+    id: "vector_maintenance_run_ann_drift_clean_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    chunks: retrievalRun.chunks,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    index_manifest: ann.index_manifest,
+    exact_baseline_index_manifest: exact.index_manifest,
+  });
+
+  assert.equal(clean.status, "passed");
+  assert.deepEqual(clean.issue_codes, []);
+  assert.ok(clean.checked_artifact_refs.includes(exact.index_manifest.id));
+
+  const drifted = validateVectorArtifacts({
+    id: "vector_maintenance_run_ann_drift_bad_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    chunks: retrievalRun.chunks,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    index_manifest: {
+      ...ann.index_manifest,
+      exact_baseline_index_ref: "vector_index_other_exact_001",
+      embedding_generation: "embedding_gen_ann_drifted_001",
+    },
+    exact_baseline_index_manifest: {
+      ...exact.index_manifest,
+      source_refs: exact.index_manifest.source_refs.slice(1),
+    },
+  });
+
+  assert.equal(drifted.status, "completed_with_issues");
+  assert.ok(drifted.issue_codes.includes("ann_baseline_ref_mismatch"));
+  assert.ok(drifted.issue_codes.includes("ann_baseline_embedding_generation_mismatch"));
+  assert.ok(drifted.issue_codes.includes("ann_baseline_source_membership_mismatch"));
+  assert.deepEqual(validateVectorArtifact(drifted), []);
+
+  const missingBaseline = validateVectorArtifacts({
+    id: "vector_maintenance_run_ann_drift_missing_baseline_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    chunks: retrievalRun.chunks,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    index_manifest: ann.index_manifest,
+  });
+
+  assert.equal(missingBaseline.status, "completed_with_issues");
+  assert.ok(missingBaseline.issue_codes.includes("ann_baseline_manifest_missing"));
+});
+
 test("vector maintenance refreshes deterministic embedding batches as an explicit job", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const retrievalRun = executeDeterministicRetrieval({
