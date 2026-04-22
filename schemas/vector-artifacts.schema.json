@@ -80,6 +80,20 @@
         "ann"
       ]
     },
+    "VectorMaintenanceJob": {
+      "type": "string",
+      "enum": [
+        "validate_vector_artifacts",
+        "invalidate_changed_chunks",
+        "rebuild_vector_corpus",
+        "refresh_embedding_batch",
+        "rebuild_exact_index",
+        "rebuild_ann_index",
+        "repair_vector_manifest",
+        "run_retrieval_eval",
+        "audit_vector_drift"
+      ]
+    },
     "RetrievalSuppressionReason": {
       "type": "string",
       "enum": [
@@ -879,7 +893,7 @@
               "const": "derived"
             },
             "job": {
-              "const": "validate_vector_artifacts"
+              "$ref": "#/$defs/VectorMaintenanceJob"
             },
             "status": {
               "type": "string",
@@ -916,6 +930,20 @@
               "uniqueItems": true
             },
             "diagnostic_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "invalidated_artifact_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "rebuild_candidate_refs": {
               "type": "array",
               "items": {
                 "type": "string"

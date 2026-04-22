@@ -813,6 +813,7 @@ Possible entrypoints:
 rebuildVectorCorpus()
 refreshEmbeddingBatch()
 validateVectorIndex()
+planVectorInvalidation()
 runRetrievalEval()
 repairVectorManifest()
 ```
@@ -823,18 +824,32 @@ Initial executable maintenance shape:
 interface VectorMaintenanceRun {
   kind: "vector_maintenance_run";
   layer: "derived";
-  job: "validate_vector_artifacts";
+  job:
+    | "validate_vector_artifacts"
+    | "invalidate_changed_chunks"
+    | "rebuild_vector_corpus"
+    | "refresh_embedding_batch"
+    | "rebuild_exact_index"
+    | "rebuild_ann_index"
+    | "repair_vector_manifest"
+    | "run_retrieval_eval"
+    | "audit_vector_drift";
   status: "passed" | "completed_with_issues" | "rejected";
   corpus_ref?: string | null;
   index_manifest_ref?: string | null;
   checked_artifact_refs: string[];
   issue_codes: string[];
   diagnostic_refs?: string[];
+  invalidated_artifact_refs?: string[];
+  rebuild_candidate_refs?: string[];
   repair_candidate_refs?: string[];
 }
 ```
 
-The first maintenance job should validate and report. Rebuild, repair, invalidation, and ANN refresh must be later explicit jobs with their own durable run records.
+The first maintenance jobs should validate and plan invalidation. Rebuild,
+repair, and ANN refresh must remain explicit durable runs; validation and
+invalidation planning may identify candidate refs but must not rewrite vector
+artifacts as a side effect.
 
 Maintenance must check generation consistency:
 

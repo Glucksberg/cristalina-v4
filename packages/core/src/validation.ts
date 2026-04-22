@@ -43,6 +43,7 @@ import {
   VECTOR_BLOB_ENCODINGS,
   VECTOR_ENCODINGS,
   VECTOR_INDEX_KINDS,
+  VECTOR_MAINTENANCE_JOBS,
   VECTOR_METRICS,
   VISIBILITY_SCOPES,
   WIKI_GRAPH_EDGE_TYPES,
@@ -1347,9 +1348,7 @@ export function validateVectorArtifact(value: unknown): ValidationIssue[] {
       }
       break;
     case "vector_maintenance_run":
-      if (value.job !== "validate_vector_artifacts") {
-        issues.push({ path: "job", message: 'expected "validate_vector_artifacts"' });
-      }
+      pushEnum(issues, value, "job", VECTOR_MAINTENANCE_JOBS);
       if (!isEnumValue(value.status, ["passed", "completed_with_issues", "rejected"] as const)) {
         issues.push({ path: "status", message: "expected legal vector maintenance status" });
       }
@@ -1366,6 +1365,12 @@ export function validateVectorArtifact(value: unknown): ValidationIssue[] {
       }
       if (value.diagnostic_refs !== undefined && (!isStringArray(value.diagnostic_refs) || !hasUniqueEntries(value.diagnostic_refs))) {
         issues.push({ path: "diagnostic_refs", message: "expected unique string array" });
+      }
+      if (value.invalidated_artifact_refs !== undefined && (!isStringArray(value.invalidated_artifact_refs) || !hasUniqueEntries(value.invalidated_artifact_refs))) {
+        issues.push({ path: "invalidated_artifact_refs", message: "expected unique string array" });
+      }
+      if (value.rebuild_candidate_refs !== undefined && (!isStringArray(value.rebuild_candidate_refs) || !hasUniqueEntries(value.rebuild_candidate_refs))) {
+        issues.push({ path: "rebuild_candidate_refs", message: "expected unique string array" });
       }
       if (value.repair_candidate_refs !== undefined && (!isStringArray(value.repair_candidate_refs) || !hasUniqueEntries(value.repair_candidate_refs))) {
         issues.push({ path: "repair_candidate_refs", message: "expected unique string array" });

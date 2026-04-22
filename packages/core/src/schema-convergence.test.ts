@@ -27,6 +27,7 @@ import {
   VECTOR_BLOB_ENCODINGS,
   VECTOR_ENCODINGS,
   VECTOR_INDEX_KINDS,
+  VECTOR_MAINTENANCE_JOBS,
   VECTOR_METRICS,
   VISIBILITY_SCOPES,
   WIKI_GRAPH_EDGE_TYPES,
@@ -244,6 +245,7 @@ test("vector artifact schema stays aligned with vector object enums", async () =
   assert.deepEqual(expectEnum(defs.VectorEncoding), [...VECTOR_ENCODINGS]);
   assert.deepEqual(expectEnum(defs.VectorBlobEncoding), [...VECTOR_BLOB_ENCODINGS]);
   assert.deepEqual(expectEnum(defs.VectorIndexKind), [...VECTOR_INDEX_KINDS]);
+  assert.deepEqual(expectEnum(defs.VectorMaintenanceJob), [...VECTOR_MAINTENANCE_JOBS]);
   assert.deepEqual(expectEnum(defs.RetrievalSuppressionReason), [...RETRIEVAL_SUPPRESSION_REASONS]);
 });
 

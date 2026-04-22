@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type {
+  CoreRecord,
   EmbeddingModelManifest,
   EmbeddingRecord,
   VectorChunk,
@@ -19,6 +20,17 @@ export interface ValidateVectorArtifactsInput {
   embedding_model?: EmbeddingModelManifest;
   embeddings: EmbeddingRecord[];
   embedding_vectors?: Record<string, number[]>;
+  index_manifest?: VectorIndexManifest;
+  visibility_state?: VisibilityState;
+}
+
+export interface PlanVectorInvalidationInput {
+  id: string;
+  now: string;
+  records: CoreRecord[];
+  chunks: VectorChunk[];
+  embeddings: EmbeddingRecord[];
+  corpus?: VectorCorpus;
   index_manifest?: VectorIndexManifest;
   visibility_state?: VisibilityState;
 }
@@ -165,5 +177,79 @@ export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): Ve
     index_manifest_ref: input.index_manifest?.id ?? null,
     checked_artifact_refs,
     issue_codes,
+  };
+}
+
+export function planVectorInvalidation(input: PlanVectorInvalidationInput): VectorMaintenanceRun {
+  const issueCodes = new Set<string>();
+  const invalidatedRefs = new Set<string>();
+  const rebuildCandidateRefs = new Set<string>();
+  const recordsById = new Map(input.records.map((record) => [record.id, record]));
+  const invalidatedChunkRefs = new Set<string>();
+
+  for (const chunk of input.chunks) {
+    const sourceRecord = recordsById.get(chunk.source_ref);
+    if (!sourceRecord) {
+      issueCodes.add("missing_source_record");
+      invalidatedRefs.add(chunk.id);
+      invalidatedChunkRefs.add(chunk.id);
+      continue;
+    }
+
+    if (chunk.source_record_hash !== sha256(JSON.stringify(sourceRecord))) {
+      issueCodes.add("source_record_hash_mismatch");
+      invalidatedRefs.add(chunk.id);
+      invalidatedChunkRefs.add(chunk.id);
+    }
+  }
+
+  for (const embedding of input.embeddings) {
+    if (invalidatedChunkRefs.has(embedding.chunk_ref)) {
+      issueCodes.add("embedding_depends_on_invalidated_chunk");
+      invalidatedRefs.add(embedding.id);
+      rebuildCandidateRefs.add(embedding.id);
+    }
+  }
+
+  if (invalidatedRefs.size > 0 && input.corpus) {
+    rebuildCandidateRefs.add(input.corpus.id);
+  }
+  if (invalidatedRefs.size > 0 && input.index_manifest) {
+    issueCodes.add("index_depends_on_invalidated_artifact");
+    rebuildCandidateRefs.add(input.index_manifest.id);
+  }
+
+  const checked_artifact_refs = unique([
+    ...(input.corpus ? [input.corpus.id] : []),
+    ...input.chunks.map((chunk) => chunk.id),
+    ...input.embeddings.map((embedding) => embedding.id),
+    ...(input.index_manifest ? [input.index_manifest.id] : []),
+  ]);
+  const issue_codes = [...issueCodes].sort();
+  const invalidated_artifact_refs = [...invalidatedRefs].sort();
+  const rebuild_candidate_refs = [...rebuildCandidateRefs].sort();
+
+  return {
+    id: input.id,
+    kind: "vector_maintenance_run",
+    layer: "derived",
+    authoritative_home: "governance",
+    created_at: input.now,
+    visibility_state: input.visibility_state ?? {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "vector_maintenance",
+      source_ref: "invalidate_changed_chunks",
+      evidence_refs: checked_artifact_refs,
+    },
+    job: "invalidate_changed_chunks",
+    status: issue_codes.length === 0 ? "passed" : "completed_with_issues",
+    corpus_ref: input.corpus?.id ?? null,
+    index_manifest_ref: input.index_manifest?.id ?? null,
+    checked_artifact_refs,
+    issue_codes,
+    ...(invalidated_artifact_refs.length > 0 ? { invalidated_artifact_refs } : {}),
+    ...(rebuild_candidate_refs.length > 0 ? { rebuild_candidate_refs } : {}),
   };
 }

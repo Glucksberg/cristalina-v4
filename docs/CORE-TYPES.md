@@ -751,7 +751,7 @@ Every vector artifact must be recoverable from upstream records or from schema-v
 
 Retrieval eval runs are derived audit artifacts. They compare expected relevance and legal labels against an observed retrieval result, and they must report authority correctness and provenance completeness separately from relevance metrics.
 
-Vector maintenance runs are derived audit artifacts. They may detect drift, missing metadata, generation mismatches, and invalid refs, but repair or rebuild work must remain explicit and replayable rather than hidden inside retrieval.
+Vector maintenance runs are derived audit artifacts. They may detect drift, missing metadata, generation mismatches, invalid refs, and invalidation candidates, but repair or rebuild work must remain explicit and replayable rather than hidden inside retrieval.
 
 ---
 

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateVectorArtifact } from "../validation.js";
-import { validateVectorArtifacts } from "./maintenance.js";
+import { planVectorInvalidation, validateVectorArtifacts } from "./maintenance.js";
 import { executeDeterministicRetrieval } from "./orchestrator.js";
 
 test("vector maintenance validates consistent fixture vector artifacts", () => {
@@ -133,4 +133,94 @@ test("vector maintenance validates supplied chunk text and embedding vector side
   assert.ok(drifted.issue_codes.includes("embedding_vector_dimension_mismatch"));
   assert.ok(drifted.issue_codes.includes("embedding_vector_checksum_mismatch"));
   assert.deepEqual(validateVectorArtifact(drifted), []);
+});
+
+test("vector maintenance plans invalidation and rebuild candidates without repairing artifacts", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const retrievalRun = executeDeterministicRetrieval({
+    now: "2026-04-21T00:00:00.000Z",
+    query: {
+      id: "retrieval_query_invalidation_001",
+      query_text: "answer style",
+      recipe_ref: fixture.recipe.id,
+      requested_layers: fixture.recipe.layer_scope,
+      read_policy_version: fixture.recipe.read_policy_version,
+    },
+    recipe: fixture.recipe,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    symbol_anchors: [fixture.symbol_anchor],
+    embedding_model: {
+      ...fixture.embedding_model,
+      dimensions: 8,
+      normalization_mode: "deterministic_fixture_sha256_unit",
+    },
+    chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+    corpus_id: "vector_corpus_invalidation_001",
+    corpus_generation: "corpus_gen_invalidation_001",
+    chunk_generation: "chunk_gen_invalidation_001",
+    embedding_generation: "embedding_gen_invalidation_001",
+    embedding_batch_id: "embedding_batch_invalidation_001",
+    index_manifest_id: "vector_index_invalidation_001",
+    index_generation: "index_gen_invalidation_001",
+    search_run_id: "vector_search_invalidation_001",
+    search_generation: "search_gen_invalidation_001",
+  });
+  const clean = planVectorInvalidation({
+    id: "vector_maintenance_run_invalidation_clean_001",
+    now: "2026-04-21T00:00:00.000Z",
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    chunks: retrievalRun.chunks,
+    embeddings: retrievalRun.embeddings,
+    corpus: retrievalRun.corpus,
+    index_manifest: retrievalRun.index_manifest,
+  });
+  assert.equal(clean.job, "invalidate_changed_chunks");
+  assert.equal(clean.status, "passed");
+  assert.deepEqual(clean.issue_codes, []);
+
+  const canonicalChunk = retrievalRun.chunks.find((chunk) => chunk.source_ref === fixture.canonical_record.id);
+  const canonicalEmbedding = retrievalRun.embeddings.find((embedding) => embedding.chunk_ref === canonicalChunk?.id);
+  assert.ok(canonicalChunk);
+  assert.ok(canonicalEmbedding);
+
+  const driftedCanonical = {
+    ...fixture.canonical_record,
+    statement: `${fixture.canonical_record.statement} Prefer exactness over speed when they conflict.`,
+  };
+  const run = planVectorInvalidation({
+    id: "vector_maintenance_run_invalidation_drift_001",
+    now: "2026-04-21T00:00:00.000Z",
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      driftedCanonical,
+    ],
+    chunks: retrievalRun.chunks,
+    embeddings: retrievalRun.embeddings,
+    corpus: retrievalRun.corpus,
+    index_manifest: retrievalRun.index_manifest,
+  });
+
+  assert.equal(run.job, "invalidate_changed_chunks");
+  assert.equal(run.status, "completed_with_issues");
+  assert.ok(run.issue_codes.includes("source_record_hash_mismatch"));
+  assert.ok(run.issue_codes.includes("embedding_depends_on_invalidated_chunk"));
+  assert.ok(run.issue_codes.includes("index_depends_on_invalidated_artifact"));
+  assert.ok(run.invalidated_artifact_refs?.includes(canonicalChunk.id));
+  assert.ok(run.invalidated_artifact_refs?.includes(canonicalEmbedding.id));
+  assert.ok(run.rebuild_candidate_refs?.includes(retrievalRun.corpus.id));
+  assert.ok(run.rebuild_candidate_refs?.includes(retrievalRun.index_manifest.id));
+  assert.ok(run.rebuild_candidate_refs?.includes(canonicalEmbedding.id));
+  assert.deepEqual(validateVectorArtifact(run), []);
 });

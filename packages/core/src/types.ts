@@ -205,6 +205,18 @@ export const VECTOR_BLOB_ENCODINGS = [
   "binary_float16",
 ] as const;
 
+export const VECTOR_MAINTENANCE_JOBS = [
+  "validate_vector_artifacts",
+  "invalidate_changed_chunks",
+  "rebuild_vector_corpus",
+  "refresh_embedding_batch",
+  "rebuild_exact_index",
+  "rebuild_ann_index",
+  "repair_vector_manifest",
+  "run_retrieval_eval",
+  "audit_vector_drift",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -266,6 +278,7 @@ export type VectorMetric = typeof VECTOR_METRICS[number];
 export type VectorEncoding = typeof VECTOR_ENCODINGS[number];
 export type VectorIndexKind = typeof VECTOR_INDEX_KINDS[number];
 export type VectorBlobEncoding = typeof VECTOR_BLOB_ENCODINGS[number];
+export type VectorMaintenanceJob = typeof VECTOR_MAINTENANCE_JOBS[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
@@ -620,13 +633,15 @@ export interface RetrievalEvalRun extends RecordEnvelope {
 export interface VectorMaintenanceRun extends RecordEnvelope {
   kind: "vector_maintenance_run";
   layer: "derived";
-  job: "validate_vector_artifacts";
+  job: VectorMaintenanceJob;
   status: "passed" | "completed_with_issues" | "rejected";
   corpus_ref?: string | null;
   index_manifest_ref?: string | null;
   checked_artifact_refs: string[];
   issue_codes: string[];
   diagnostic_refs?: string[];
+  invalidated_artifact_refs?: string[];
+  rebuild_candidate_refs?: string[];
   repair_candidate_refs?: string[];
 }
 
