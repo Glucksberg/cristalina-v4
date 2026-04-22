@@ -531,3 +531,5 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     manifest,
   };
 }
+
+export const compileRuntimeBootstrapProjection = compileOpenClawBootstrapProjection;

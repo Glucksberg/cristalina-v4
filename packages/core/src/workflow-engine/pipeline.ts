@@ -1,7 +1,7 @@
 import { applyApprovedCanonicalProposal } from "../canon/engine.js";
 import { evaluateCanonicalProposal, type GovernanceEvaluationResult } from "../governance/engine.js";
 import {
-  compileOpenClawBootstrapProjection,
+  compileRuntimeBootstrapProjection,
   defaultRuntimeBootstrapProjectionPath,
 } from "../projection-engine/openclaw.js";
 import { resolvePreferenceSignalSemanticProfile, type PreferenceSignalSemanticProfile } from "./source-intake.js";
@@ -1347,7 +1347,7 @@ export interface OpenClawBootstrapWorkflowResult {
 
 export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflowInput): OpenClawBootstrapWorkflowResult {
   const adapter = input.adapter ?? "openclaw";
-  return compileOpenClawBootstrapProjection({
+  return compileRuntimeBootstrapProjection({
     adapter,
     now: input.now,
     visibility_state: input.visibility_state,
@@ -1368,3 +1368,7 @@ export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflo
     ids: input.ids,
   });
 }
+
+export type RuntimeBootstrapWorkflowInput = OpenClawBootstrapWorkflowInput;
+export type RuntimeBootstrapWorkflowResult = OpenClawBootstrapWorkflowResult;
+export const executeRuntimeBootstrapWorkflow = executeOpenClawBootstrapWorkflow;

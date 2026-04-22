@@ -359,6 +359,38 @@ test("non-canonical intake rejects reuse when payload or authenticated authority
   );
 });
 
+test("non-canonical intake serializes concurrent writes for the same stable ids", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const left = buildInput(rootDir, "evidence_only");
+  const right: NonCanonicalIntakeInput = {
+    ...left,
+    source: {
+      ...left.source,
+      payload: {
+        note: "Concurrent evidence with the same ids must not interleave.",
+      },
+    },
+  };
+
+  const settled = await Promise.allSettled([
+    writeNonCanonicalIntakeToStore(left),
+    writeNonCanonicalIntakeToStore(right),
+  ]);
+  const fulfilled = settled.filter((result) => result.status === "fulfilled");
+  const rejected = settled.filter((result) => result.status === "rejected");
+
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.match(String((rejected[0] as PromiseRejectedResult).reason), /does not match input: raw_payload/);
+  assert.equal((await loadDispositionRecords(rootDir)).length, 1);
+  const auditLog = await readFile(join(rootDir, "audits/changes.log"), "utf8");
+  assert.equal((auditLog.match(/non_canonical_intake/g) ?? []).length, 1);
+});
+
 test("non-canonical intake repairs partial materialization when raw payload is missing", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
   t.after(async () => {

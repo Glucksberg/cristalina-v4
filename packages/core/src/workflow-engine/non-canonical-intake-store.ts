@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as relativePosix } from "node:path/posix";
 
@@ -37,6 +37,11 @@ const LEGAL_SOURCE_CONTENT_ROOTS = [
 const LEGAL_ATTACHMENT_ROOT = "raw/attachments";
 const NON_CANONICAL_RECOVERY_PREFIX = "recovery-non-canonical-intake-";
 const NON_CANONICAL_RECOVERY_SUFFIX = ".json";
+const NON_CANONICAL_INTAKE_LOCK_PREFIX = ".non-canonical-intake-";
+const NON_CANONICAL_INTAKE_LOCK_SUFFIX = ".lock";
+const NON_CANONICAL_INTAKE_LOCK_TIMEOUT_MS = 120_000;
+const NON_CANONICAL_INTAKE_LOCK_STALE_MS = 120_000;
+const NON_CANONICAL_INTAKE_LOCK_POLL_MS = 25;
 
 export interface NonCanonicalIntakeIds {
   source: string;
@@ -275,6 +280,75 @@ function recoveryJournalPath(rootDir: string, stableId: string): string {
     rootDir,
     `audits/snapshots/${NON_CANONICAL_RECOVERY_PREFIX}${safeJournalSegment(stableId)}${NON_CANONICAL_RECOVERY_SUFFIX}`,
   );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+
+function nonCanonicalIntakeLockPath(rootDir: string, stableId: string): string {
+  return resolveStorePath(
+    rootDir,
+    `audits/snapshots/${NON_CANONICAL_INTAKE_LOCK_PREFIX}${safeJournalSegment(stableId)}${NON_CANONICAL_INTAKE_LOCK_SUFFIX}`,
+  );
+}
+
+async function nonCanonicalIntakeLockIsStale(lockPath: string, nowMs: number): Promise<boolean> {
+  const lockStat = await stat(lockPath).catch((error) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
+  if (!lockStat) {
+    return false;
+  }
+  return nowMs - lockStat.mtimeMs > NON_CANONICAL_INTAKE_LOCK_STALE_MS;
+}
+
+async function acquireNonCanonicalIntakeLock(rootDir: string, stableId: string): Promise<() => Promise<void>> {
+  const lockPath = nonCanonicalIntakeLockPath(rootDir, stableId);
+  const deadline = Date.now() + NON_CANONICAL_INTAKE_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      await mkdir(lockPath, { recursive: false });
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw error;
+      }
+
+      const nowMs = Date.now();
+      if (await nonCanonicalIntakeLockIsStale(lockPath, nowMs)) {
+        await rm(lockPath, { recursive: true, force: true });
+        continue;
+      }
+
+      if (nowMs >= deadline) {
+        throw new Error(`Timed out acquiring non-canonical intake lock for ${stableId}`);
+      }
+
+      await sleep(NON_CANONICAL_INTAKE_LOCK_POLL_MS);
+    }
+  }
+}
+
+async function withNonCanonicalIntakeLock<T>(
+  rootDir: string,
+  stableId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const release = await acquireNonCanonicalIntakeLock(rootDir, stableId);
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
 }
 
 function buildRecoveryJournal(input: {
@@ -607,7 +681,15 @@ export async function writeNonCanonicalIntakeToStore(
   const rootDir = resolve(input.rootDir);
   assertAuthenticatedPrincipal(input);
   await initializeStore(rootDir, input.now);
+  return withNonCanonicalIntakeLock(rootDir, input.ids.disposition, () =>
+    writeNonCanonicalIntakeToStoreLocked(rootDir, input),
+  );
+}
 
+async function writeNonCanonicalIntakeToStoreLocked(
+  rootDir: string,
+  input: NonCanonicalIntakeInput,
+): Promise<NonCanonicalIntakeResult> {
   const content_ref = normalizeLegalRawContentRef(input.source.content_ref);
   const attachment_refs = [...new Set(input.source.attachment_refs?.map(normalizeAttachmentRef) ?? [])];
   const source_record = buildSourceRecord(input, content_ref, attachment_refs);

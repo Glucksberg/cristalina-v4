@@ -40,6 +40,7 @@ import type {
   Diagnostic,
   Proposal,
   Reference,
+  RuntimeKind,
   SourceRecord,
   VisibilityState,
   WikiClaim,
@@ -70,6 +71,7 @@ export interface WikiMaintenanceInput {
   now: string;
   actor: string;
   authenticated_principal: AuthenticatedPrincipal;
+  memory_browser_adapter?: Exclude<RuntimeKind, "generic">;
   memory_browser_read_context?: ProjectionReadContext;
   event: WikiMaintenanceEvent;
   ids: WikiMaintenanceIds;
@@ -685,6 +687,7 @@ async function compileMemoryBrowserFromStoreState(
   },
 ): Promise<MemoryBrowserProjectionResult> {
   return compileMemoryBrowserProjection({
+    adapter: input.memory_browser_adapter ?? input.memory_browser_read_context?.adapter,
     now: input.now,
     visibility_state: defaultVisibility(input),
     read_context: input.memory_browser_read_context,

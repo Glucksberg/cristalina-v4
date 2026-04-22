@@ -128,6 +128,36 @@ test("source_ingested refreshes wiki pages, claim lifecycle metadata, audit, and
   assert.equal((result.memory_browser.snapshot as { read_only: boolean }).read_only, true);
 });
 
+test("memory browser maintenance can materialize under Hermes with the same projection contract", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-hermes-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const result = await runWikiMaintenanceToStore({
+    ...baseInput(rootDir, "query_captured", {
+      run: "wiki_run_hermes_browser_001",
+      query_page: "wiki_page_hermes_query_001",
+      browser_json_artifact: "artifact_hermes_browser_json_001",
+      browser_html_artifact: "artifact_hermes_browser_html_001",
+      browser_manifest: "manifest_hermes_browser_001",
+    }),
+    memory_browser_adapter: "hermes",
+    query_capture: {
+      title: "Hermes Browser Query",
+      question: "Can Hermes render the memory browser?",
+      answer: "Hermes uses the same memory browser projection contract.",
+      upstream_refs: ["src_hermes_browser_001"],
+    },
+  });
+
+  assert.equal(result.memory_browser.manifest.adapter, "hermes");
+  assert.ok(result.memory_browser.artifacts.every((artifact) => artifact.adapter === "hermes"));
+  assert.ok(result.memory_browser.artifacts.every((artifact) => artifact.path.startsWith("derived/hermes/")));
+  assert.equal((await loadProjectionArtifacts(rootDir, "hermes")).length, 2);
+  assert.equal((await loadProjectionArtifacts(rootDir, "openclaw")).length, 0);
+});
+
 test("source_ingested updates an existing topic page instead of creating an isolated duplicate", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-refresh-"));
   t.after(async () => {

@@ -22,6 +22,7 @@ import type {
   RatificationRecord,
   Relation,
   RetrievalResult,
+  RuntimeKind,
   RuntimeInstance,
   RuntimeSession,
   SourceRecord,
@@ -36,6 +37,7 @@ import type {
 } from "../types.js";
 
 export interface MemoryBrowserProjectionInput {
+  adapter?: Exclude<RuntimeKind, "generic">;
   now: string;
   visibility_state: VisibilityState;
   read_context?: ProjectionReadContext;
@@ -109,8 +111,8 @@ function renderList(title: string, items: Array<{ id: string; label: string; met
   return `<section><h2>${text(title)}</h2><ul>${rows}</ul></section>`;
 }
 
-function artifactPath(manifestId: string, filename: string): string {
-  return `derived/openclaw/${manifestId}/${filename}`;
+function artifactPath(adapter: Exclude<RuntimeKind, "generic">, manifestId: string, filename: string): string {
+  return `derived/${adapter}/${manifestId}/${filename}`;
 }
 
 function summarizeRetrievalTraces(results: RetrievalResult[]): ProjectionRetrievalTrace[] {
@@ -127,8 +129,12 @@ function summarizeRetrievalTraces(results: RetrievalResult[]): ProjectionRetriev
 }
 
 export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInput): MemoryBrowserProjectionResult {
+  const adapter = input.adapter ?? input.read_context?.adapter ?? "openclaw";
+  if (input.adapter && input.read_context?.adapter && input.adapter !== input.read_context.adapter) {
+    throw new Error(`Memory browser adapter ${input.adapter} does not match read context adapter ${input.read_context.adapter}`);
+  }
   const projectionContext = input.read_context ?? {
-    adapter: "openclaw" as const,
+    adapter,
     audience: "memory_browser",
   };
   const sourceFilter = filterProjectionRecords(input.source_records, projectionContext);
@@ -428,9 +434,9 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
   const artifacts = [
     createProjectionArtifact({
       id: input.ids.json_artifact,
-      adapter: "openclaw",
+      adapter,
       artifact_kind: "memory_browser_json",
-      path: artifactPath(input.ids.manifest, "memory-browser.json.txt"),
+      path: artifactPath(adapter, input.ids.manifest, "memory-browser.json.txt"),
       source_layer: "derived",
       authoritative_home: "wiki",
       upstream_refs,
@@ -439,9 +445,9 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
     }),
     createProjectionArtifact({
       id: input.ids.html_artifact,
-      adapter: "openclaw",
+      adapter,
       artifact_kind: "memory_browser_html",
-      path: artifactPath(input.ids.manifest, "index.html"),
+      path: artifactPath(adapter, input.ids.manifest, "index.html"),
       source_layer: "derived",
       authoritative_home: "wiki",
       upstream_refs,
@@ -451,7 +457,7 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
   ];
   const manifest = createProjectionManifest({
     id: input.ids.manifest,
-    adapter: "openclaw",
+    adapter,
     projection_profile: "memory_browser",
     audience: "memory_browser",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,

@@ -28,6 +28,7 @@ import {
   loadLatestHermesProjectionRuntimeView,
 } from "./runtime-projection.js";
 import {
+  ratifyHermesQueuedConversationPreference,
   writeHermesConversationPreferenceToStore,
   type HermesAuthenticatedPrincipal,
   type HermesConversationPreferenceWriteInput,
@@ -246,10 +247,10 @@ test("Hermes adapter forwards authenticated principals through write-through ing
       ratification: "rat_hermes_adapter_test_001",
       diagnostic: "diag_hermes_adapter_test_001",
       canonical: "mem_hermes_adapter_test_001",
-      canon_artifact: "part_openclaw_canon_hermes_adapter_test_001",
-      world_artifact: "part_openclaw_world_hermes_adapter_test_001",
-      wiki_artifact: "part_openclaw_wiki_hermes_adapter_test_001",
-      projection_manifest: "pmf_openclaw_hermes_adapter_test_001",
+      canon_artifact: "part_hermes_canon_hermes_adapter_test_001",
+      world_artifact: "part_hermes_world_hermes_adapter_test_001",
+      wiki_artifact: "part_hermes_wiki_hermes_adapter_test_001",
+      projection_manifest: "pmf_hermes_adapter_test_write_001",
     },
     labels: {
       agent: "Cristalina Test Agent",
@@ -280,6 +281,25 @@ test("Hermes adapter forwards authenticated principals through write-through ing
   assert.equal(deferred.records.ratification_record.decision, "deferred");
   assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 1);
   assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
+
+  const ratified = await ratifyHermesQueuedConversationPreference({
+    rootDir,
+    queue_id: deferred.records.owner_ratification_queue!.id,
+    now: "2026-04-16T03:30:00.000Z",
+    actor: "actor_owner_hermes_adapter_test_001",
+    authenticated_principal: {
+      kind: "owner",
+      actor_ref: "actor_owner_hermes_adapter_test_001",
+    },
+    validation_scope: "test:hermes-adapter:write-through:queued-ratification",
+  });
+  assert.equal(ratified.records.projection_manifest.adapter, "hermes");
+  assert.equal(ratified.records.owner_ratification_queue?.status, "applied");
+  assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 1);
+  assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
+  const ratifiedView = await loadLatestHermesProjectionRuntimeView(rootDir);
+  assert.ok(ratifiedView);
+  assert.match(ratifiedView!.markdown, /\[review:cur_owner_ratification_prop_hermes_adapter_test_001\] \(owner_ratification; applied\)/);
 
   const ownerRootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-owner-"));
   t.after(async () => {
@@ -318,10 +338,10 @@ test("Hermes adapter forwards authenticated principals through write-through ing
       ratification: "rat_hermes_adapter_test_owner_001",
       diagnostic: "diag_hermes_adapter_test_owner_001",
       canonical: "mem_hermes_adapter_test_owner_001",
-      canon_artifact: "part_openclaw_canon_hermes_adapter_test_owner_001",
-      world_artifact: "part_openclaw_world_hermes_adapter_test_owner_001",
-      wiki_artifact: "part_openclaw_wiki_hermes_adapter_test_owner_001",
-      projection_manifest: "pmf_openclaw_hermes_adapter_test_owner_001",
+      canon_artifact: "part_hermes_canon_hermes_adapter_test_owner_001",
+      world_artifact: "part_hermes_world_hermes_adapter_test_owner_001",
+      wiki_artifact: "part_hermes_wiki_hermes_adapter_test_owner_001",
+      projection_manifest: "pmf_hermes_adapter_test_owner_001",
     },
     labels: {
       agent: "Cristalina Test Agent",

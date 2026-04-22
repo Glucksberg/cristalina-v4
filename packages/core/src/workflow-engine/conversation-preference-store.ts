@@ -20,6 +20,7 @@ import {
   loadContradictionResolutions,
   loadCurationPackets,
   loadDiagnostics,
+  loadProjectionManifests,
   loadProposals,
   loadRatificationRecords,
   loadRuntimeInstances,
@@ -75,7 +76,7 @@ import {
   findConflictingWorldClaim,
   proposeContradictionResolution,
   executeCanonicalProposalWorkflow,
-  executeOpenClawBootstrapWorkflow,
+  executeRuntimeBootstrapWorkflow,
   type ConversationPreferenceIntakeArtifacts,
   type ConversationPreferenceDispositionStrategy,
   type ConversationPreferenceRuntimeIdentityContext,
@@ -1349,13 +1350,12 @@ async function resolveStoredProjectionAdapter(
   rootDir: string,
   manifestId: string,
 ): Promise<ProjectionAdapterKind> {
-  for (const adapter of ["openclaw", "hermes"] as const) {
-    if (await pathExists(projectionManifestPathForAdapter(rootDir, manifestId, adapter))) {
-      return adapter;
-    }
+  const manifest = (await loadProjectionManifests(rootDir)).find((record) => record.id === manifestId);
+  if (manifest?.adapter === "openclaw" || manifest?.adapter === "hermes") {
+    return manifest.adapter;
   }
 
-  throw new Error(`Projection manifest ${manifestId} does not exist in derived/openclaw or derived/hermes`);
+  throw new Error(`Projection manifest ${manifestId} does not exist or does not declare a supported adapter`);
 }
 
 function writeFlowBaselinePaths(paths: ConversationPreferenceStorePaths): string[] {
@@ -3086,7 +3086,7 @@ async function buildProjectionFromStoreState(
       ],
     );
 
-  return executeOpenClawBootstrapWorkflow({
+  return executeRuntimeBootstrapWorkflow({
     adapter: projectionAdapter,
     now,
     projection_path: relativeStorePath(rootDir, paths.projection_markdown),
