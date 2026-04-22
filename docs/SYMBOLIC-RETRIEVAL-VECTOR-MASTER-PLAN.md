@@ -1,7 +1,7 @@
 # Cristalina v4
 ## Symbolic Retrieval And Vector Master Plan
 
-**Status:** Draft  
+**Status:** Executable roadmap complete for the native deterministic slice; production ANN remains gated by corpus-size or latency evidence.  
 **Created:** 2026-04-21  
 **Purpose:** Consolidate the session plan for symbolic anchors, Cristalina-native retrieval, full vector search, wiki maintenance, non-canonical intake, projection integration, memory browser, compatibility adapters, and execution sequencing.
 
@@ -112,6 +112,12 @@ The first slice should use deterministic fixtures only:
 10. Memory Browser output can inspect the symbol, chunks, search run, and suppression reasons
 
 This slice is the first proof that retrieval is useful without becoming memory law.
+
+Current executable status: complete. The deterministic native slice now covers
+symbol anchors, layer-aware chunks, deterministic embeddings, exact and
+deterministic ANN search, hybrid retrieval, projection traces, memory-browser
+inspection, external compatibility adapters, operational session packs,
+session resume receipts, evals, and maintenance jobs.
 
 ### Slice Acceptance Criteria
 

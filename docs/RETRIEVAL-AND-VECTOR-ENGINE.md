@@ -1,7 +1,7 @@
 # Cristalina v4
 ## Retrieval And Vector Engine Plan
 
-**Status:** Draft  
+**Status:** Executable deterministic slice complete; production ANN remains gated by corpus-size or latency evidence.  
 **Created:** 2026-04-21  
 **Purpose:** Define a full Cristalina-native retrieval and vector-search plan that preserves layer law, provenance, symbolic navigation, and governance authority.
 

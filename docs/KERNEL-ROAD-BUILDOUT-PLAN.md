@@ -85,7 +85,7 @@ These exist in docs and layout, but still need executable routes:
 - wiki maintenance: source summaries, page refresh, claim extraction, index/log maintenance, stale-page diagnostics, link linting
 - ontology definitions and policy snapshots as live governed records
 - runtime working memory as a bounded operational layer
-- operational/session continuity from `docs/OPERATIONAL-SESSION-MEMORY-RFC-V2.md`: immutable `working_memory_checkpoint` records, derived session packs, and resume receipts
+- richer operational/session continuity beyond the executable baseline from `docs/OPERATIONAL-SESSION-MEMORY-RFC-V2.md`; immutable `working_memory_checkpoint` records, derived session packs, and resume receipts are now implemented as the first slice
 - raw attachments/imports as first-class intake inputs beyond path containment
 - richer proposal operations beyond `create`, `revise`, and `supersede`
 - adapter drift handling and runtime diagnostics feedback
