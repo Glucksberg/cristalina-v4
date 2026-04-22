@@ -229,6 +229,13 @@ Planned object families:
 - `vector_search_run`
 - `retrieval_audit`
 
+`retrieval_audit` is the durable audit envelope for a retrieval result. It
+should be buildable from explicit retrieval results and provider/search run
+records without reading hidden provider state. The audit may summarize included
+and suppressed candidate refs, suppression reasons, trace refs, and vector
+search run refs, but it must not recompute authority or turn retrieval rank into
+truth.
+
 Initial `VectorChunk` shape:
 
 ```ts

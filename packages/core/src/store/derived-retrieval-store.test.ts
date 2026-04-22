@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
+import { buildRetrievalAudit } from "../retrieval-engine/audit.js";
 import { executeDeterministicRetrieval } from "../retrieval-engine/orchestrator.js";
 import { runRetrievalEval } from "../retrieval-engine/evals.js";
 import { executeExactVectorSearch } from "../retrieval-engine/exact-vector.js";
@@ -59,6 +60,13 @@ test("derived retrieval store writes and reloads symbol anchors and vector artif
     result: fixture.retrieval_result,
     k: 2,
   });
+  const audit = buildRetrievalAudit({
+    id: "retrieval_audit_symbolic_store_001",
+    now: "2026-04-21T00:00:00.000Z",
+    result: fixture.retrieval_result,
+    vector_search_runs: [exact.search_run],
+    result_ref: "retrieval_result_symbolic_store_001",
+  });
   const maintenanceRun = validateVectorArtifacts({
     id: "vector_maintenance_run_symbolic_store_001",
     now: "2026-04-21T00:00:00.000Z",
@@ -73,13 +81,14 @@ test("derived retrieval store writes and reloads symbol anchors and vector artif
 
   const symbolPath = await writeSymbolAnchor(rootDir, fixture.symbol_anchor);
   const artifactPaths = await Promise.all(
-    [...fixture.vector_artifacts, exact.search_run, evalRun, maintenanceRun].map((artifact) => writeVectorArtifact(rootDir, artifact)),
+    [...fixture.vector_artifacts, exact.search_run, audit, evalRun, maintenanceRun].map((artifact) => writeVectorArtifact(rootDir, artifact)),
   );
 
   assert.equal(symbolPath, symbolAnchorPath(rootDir, fixture.symbol_anchor));
   assert.ok(symbolPath.endsWith("derived/symbols/sym_concept__user-interaction-preferences.json"));
   assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/chunks/vchunk_raw_symbolic_001.json")));
   assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/search-runs/vector_search_run_symbolic_001.json")));
+  assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/evals/retrieval-audits/retrieval_audit_symbolic_store_001.json")));
   assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/evals/retrieval-runs/retrieval_eval_run_symbolic_store_001.json")));
   assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/evals/maintenance-runs/vector_maintenance_run_symbolic_store_001.json")));
 
@@ -93,9 +102,10 @@ test("derived retrieval store writes and reloads symbol anchors and vector artif
   const artifacts = await loadVectorArtifacts(rootDir);
 
   assert.deepEqual(symbols.map((symbol) => symbol.id), [fixture.symbol_anchor.id]);
-  assert.equal(artifacts.length, fixture.vector_artifacts.length + 3);
+  assert.equal(artifacts.length, fixture.vector_artifacts.length + 4);
   assert.ok(artifacts.some((artifact) => artifact.kind === "vector_index_manifest"));
   assert.ok(artifacts.some((artifact) => artifact.kind === "vector_search_run"));
+  assert.ok(artifacts.some((artifact) => artifact.kind === "retrieval_audit"));
   assert.ok(artifacts.some((artifact) => artifact.kind === "retrieval_eval_run"));
   assert.ok(artifacts.some((artifact) => artifact.kind === "vector_maintenance_run"));
 });

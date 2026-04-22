@@ -14,6 +14,7 @@ export * from "./adapter-sdk/projection.js";
 export * from "./adapter-sdk/runtime-projection.js";
 export * from "./projection-engine/openclaw.js";
 export * from "./projection-engine/memory-browser.js";
+export * from "./retrieval-engine/audit.js";
 export * from "./retrieval-engine/chunking.js";
 export * from "./retrieval-engine/embedding-provider.js";
 export * from "./retrieval-engine/evals.js";
