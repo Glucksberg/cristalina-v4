@@ -733,13 +733,25 @@ Ensure retrieval and vector search can support future session continuity without
 
 Add approximate vector search after exact search and evals are stable.
 
+### Current Status
+
+The first executable ANN slice is complete as a deterministic fixture path:
+ANN manifests declare their strategy, parameters, exact baseline, recall floor,
+and checksum; maintenance can rebuild a `deterministic_fixture_lsh` index from
+an exact baseline; search emits an auditable ANN search run; evals compare ANN
+candidate refs against exact search; validation detects baseline drift.
+
+Real approximate strategies such as HNSW or IVF remain future work. They still
+require corpus-size or latency evidence, their own eval runs, and explicit drift
+evidence before adoption.
+
 ### Work
 
-- Add ANN index strategy.
-- Keep exact fallback.
-- Persist ANN manifests.
-- Add rebuild and validation jobs.
-- Compare ANN results against exact results in evals.
+- Add ANN index strategy. Done for `deterministic_fixture_lsh`; HNSW/IVF remain gated.
+- Keep exact fallback. Done.
+- Persist ANN manifests. Done.
+- Add rebuild and validation jobs. Done.
+- Compare ANN results against exact results in evals. Done.
 
 ### Adoption Gates
 
@@ -871,7 +883,7 @@ Expose retrieval to OpenClaw, Hermes, and future runtimes through core contracts
 16. Add memory browser retrieval inspection. Done.
 17. Add retrieval evals. Done.
 18. Add vector maintenance jobs. Done.
-19. Add ANN index. Pending; still gated on stable exact/eval baselines.
+19. Add ANN index. Done for deterministic fixture ANN; real approximate indexes remain gated on corpus-size or latency evidence plus strategy-specific evals and drift evidence.
 20. Add external compatibility adapters. Partial; external candidate normalization is executable, but import/export adapters remain pending.
 21. Add adapter SDK consumption. Done; OpenClaw and Hermes consume projection manifest retrieval context through the shared core SDK without redefining retrieval law.
 

@@ -514,6 +514,11 @@ V1 should:
 
 After V1 is proven, add approximate indexing.
 
+The first executable ANN slice is deterministic and fixture-scoped. It provides
+ANN manifests, rebuild validation, search run materialization, exact-vs-ANN
+eval comparison, and baseline drift detection without introducing a production
+approximate-nearest-neighbor algorithm.
+
 Possible shape:
 
 - HNSW-like index
@@ -987,7 +992,7 @@ The browser remains read-only and downstream of core records, manifests, diagnos
 18. Add retrieval eval fixtures. Done.
 19. Add vector maintenance jobs. Done.
 20. Add adapter SDK retrieval-context consumption. Done; OpenClaw and Hermes consume shared projection retrieval context without redefining ranking, authority, or suppression law.
-21. Add ANN index only after exact index and evals are stable. Pending.
+21. Add ANN index only after exact index and evals are stable. Done for deterministic fixture ANN; production ANN strategies remain gated on corpus-size or latency evidence plus strategy-specific evals and drift evidence.
 22. Add external compatibility adapters. Partial; candidate normalization exists, provider/import/export adapters remain pending.
 
 ### Required First Slice
