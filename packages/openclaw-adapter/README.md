@@ -13,7 +13,8 @@ Current executable surface:
 
 - projection runtime loader by manifest id
 - latest projection runtime loader
-- explicit access to `diagnostics`, `reviews`, `pending_reviews`, and `closed_reviews`
+- explicit access to `diagnostics`, `retrieval_context`, `reviews`, `pending_reviews`, and `closed_reviews`
 - consumption of `ProjectionManifest.review_refs` and bootstrap review sections without defining new memory law in the adapter
+- consumption of projection manifest retrieval traces without redefining retrieval ranking, authority, or suppression law
 - authenticated write-through ingress for conversation preference and OpenClaw feedback flows
 - authenticated owner/system queue actions forwarded to the core without redefining authority law

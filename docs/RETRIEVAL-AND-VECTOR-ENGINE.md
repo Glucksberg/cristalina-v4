@@ -930,27 +930,28 @@ The browser remains read-only and downstream of core records, manifests, diagnos
 
 ## 18. Implementation Order
 
-1. Write this retrieval/vector plan.
-2. Write `docs/SYMBOLIC-ANCHORS.md` or fold symbolic anchors into this doc if duplication stays low.
-3. Define `SymbolAnchor` in docs, then types.
-4. Add `symbol-anchor.schema.json`.
-5. Define retrieval query/candidate/result/recipe docs, then types.
-6. Add retrieval schemas.
-7. Define vector chunk, embedding, index manifest, and search run docs, then types.
-8. Add vector schemas.
-9. Add a minimal fixture proving symbol + wiki/world/canon refs.
-10. Add deterministic layer-aware chunking.
-11. Add embedding provider interface.
-12. Add test embedding provider for deterministic fixtures.
-13. Add exact vector index.
-14. Add vector search run materialization.
-15. Add hybrid retrieval scorer.
-16. Add retrieval governance tests.
-17. Add projection integration.
-18. Add retrieval eval fixtures.
-19. Add vector maintenance jobs.
-20. Add ANN index only after exact index and evals are stable.
-21. Add external compatibility adapters.
+1. Write this retrieval/vector plan. Done.
+2. Write `docs/SYMBOLIC-ANCHORS.md` or fold symbolic anchors into this doc if duplication stays low. Done by folding anchors into this plan.
+3. Define `SymbolAnchor` in docs, then types. Done.
+4. Add `symbol-anchor.schema.json`. Done.
+5. Define retrieval query/candidate/result/recipe docs, then types. Done.
+6. Add retrieval schemas. Done.
+7. Define vector chunk, embedding, index manifest, and search run docs, then types. Done.
+8. Add vector schemas. Done.
+9. Add a minimal fixture proving symbol + wiki/world/canon refs. Done.
+10. Add deterministic layer-aware chunking. Done.
+11. Add embedding provider interface. Done.
+12. Add test embedding provider for deterministic fixtures. Done.
+13. Add exact vector index. Done.
+14. Add vector search run materialization. Done.
+15. Add hybrid retrieval scorer. Done.
+16. Add retrieval governance tests. Done.
+17. Add projection integration. Done.
+18. Add retrieval eval fixtures. Done.
+19. Add vector maintenance jobs. Done.
+20. Add adapter SDK retrieval-context consumption. Done; OpenClaw and Hermes consume shared projection retrieval context without redefining ranking, authority, or suppression law.
+21. Add ANN index only after exact index and evals are stable. Pending.
+22. Add external compatibility adapters. Partial; candidate normalization exists, provider/import/export adapters remain pending.
 
 ### Required First Slice
 

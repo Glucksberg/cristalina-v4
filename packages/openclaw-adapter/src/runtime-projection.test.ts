@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
+  compileOpenClawBootstrapProjection,
+  initializeStore,
   listConversationPreferenceOwnerRatificationQueue,
+  writeCoreRecord,
+  type Diagnostic,
 } from "../../core/dist/index.js";
+import {
+  buildSymbolicRetrievalFixture,
+} from "../../core/dist/test-support/symbolic-retrieval-fixtures.js";
 import {
   buildConversationPreferenceFlowInput,
   type ConversationPreferenceFlowInputFixtureInput,
@@ -127,6 +134,77 @@ test("OpenClaw adapter exposes pending owner review items from the latest projec
   assert.equal(latest!.pending_reviews[0]!.status, "pending");
   assert.match(latest!.markdown, /## Review Queue/);
   assert.match(latest!.markdown, /\[review:cur_owner_ratification_prop_openclaw_adapter_test_001\]/);
+});
+
+test("OpenClaw adapter exposes core retrieval context without redefining retrieval law", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-openclaw-adapter-retrieval-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const now = "2026-04-21T00:00:00.000Z";
+  const fixture = buildSymbolicRetrievalFixture();
+  const diagnostic: Diagnostic = {
+    id: "diag_openclaw_adapter_retrieval_001",
+    kind: "diagnostic",
+    layer: "audits",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+    provenance: {
+      source_type: "test_fixture",
+      source_ref: "tests/openclaw-adapter/retrieval-context",
+      evidence_refs: ["candidate_wiki_symbolic_001"],
+    },
+    code: "retrieval_recipe_partial",
+    severity: "warning",
+    message: "OpenClaw adapter received suppressed retrieval context from the core projection manifest.",
+    related_refs: ["candidate_wiki_symbolic_001"],
+  };
+  const projectionPath = "derived/openclaw/pmf_openclaw_adapter_retrieval_001/bootstrap-memory.md";
+  const projection = compileOpenClawBootstrapProjection({
+    now,
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+    projection_path: projectionPath,
+    canonical_records: [fixture.canonical_record],
+    world_claims: [fixture.world_claim],
+    wiki_pages: [fixture.wiki_page],
+    wiki_claims: [fixture.wiki_claim],
+    diagnostics: [diagnostic],
+    retrieval_results: [fixture.retrieval_result],
+    ids: {
+      canon_artifact: "part_openclaw_adapter_retrieval_canon_001",
+      world_artifact: "part_openclaw_adapter_retrieval_world_001",
+      wiki_artifact: "part_openclaw_adapter_retrieval_wiki_001",
+      manifest: "pmf_openclaw_adapter_retrieval_001",
+    },
+  });
+
+  await initializeStore(rootDir, now);
+  await mkdir(join(rootDir, "derived/openclaw/pmf_openclaw_adapter_retrieval_001"), { recursive: true });
+  await writeFile(join(rootDir, projectionPath), projection.markdown, "utf8");
+  await Promise.all([
+    ...projection.artifacts.map((artifact) => writeCoreRecord(rootDir, artifact)),
+    writeCoreRecord(rootDir, diagnostic),
+    writeCoreRecord(rootDir, projection.manifest),
+  ]);
+
+  const latest = await loadLatestOpenClawProjectionRuntimeView(rootDir);
+
+  assert.ok(latest);
+  assert.equal(latest!.retrieval_context.available, true);
+  assert.deepEqual(latest!.retrieval_context.included_candidate_refs, [
+    "candidate_canon_symbolic_001",
+    "candidate_raw_symbolic_001",
+  ]);
+  assert.deepEqual(latest!.retrieval_context.suppressed_candidate_refs, ["candidate_wiki_symbolic_001"]);
+  assert.deepEqual(latest!.retrieval_context.suppression_reasons, ["unsupported_wiki_claim"]);
+  assert.deepEqual(latest!.retrieval_context.diagnostics.map((record) => record.id), [diagnostic.id]);
 });
 
 test("OpenClaw adapter exposes closed owner review items after queue ratification", async (t) => {

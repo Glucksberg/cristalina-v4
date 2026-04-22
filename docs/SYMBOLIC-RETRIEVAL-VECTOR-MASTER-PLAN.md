@@ -853,27 +853,27 @@ Expose retrieval to OpenClaw, Hermes, and future runtimes through core contracts
 
 ## 25. Implementation Order
 
-1. Save this master plan.
-2. Cross-reference this master plan from `docs/KERNEL-ROAD-BUILDOUT-PLAN.md`.
-3. Keep `docs/RETRIEVAL-AND-VECTOR-ENGINE.md` as focused subsystem detail.
-4. Formalize `SymbolAnchor` docs.
-5. Add `SymbolAnchor` types and schema.
-6. Add retrieval contracts docs, types, and schemas.
-7. Add vector object docs, types, and schemas.
-8. Add symbol fixture spanning wiki/world/canon/raw refs.
-9. Add deterministic chunking fixtures.
-10. Add deterministic embedding provider.
-11. Add exact vector index.
-12. Add vector search run materialization.
-13. Add hybrid retrieval scorer.
-14. Add governance tests for retrieval legality.
-15. Add projection integration.
-16. Add memory browser retrieval inspection.
-17. Add retrieval evals.
-18. Add vector maintenance jobs.
-19. Add ANN index.
-20. Add external compatibility adapters.
-21. Add adapter SDK consumption.
+1. Save this master plan. Done.
+2. Cross-reference this master plan from `docs/KERNEL-ROAD-BUILDOUT-PLAN.md`. Done.
+3. Keep `docs/RETRIEVAL-AND-VECTOR-ENGINE.md` as focused subsystem detail. Done.
+4. Formalize `SymbolAnchor` docs. Done.
+5. Add `SymbolAnchor` types and schema. Done.
+6. Add retrieval contracts docs, types, and schemas. Done.
+7. Add vector object docs, types, and schemas. Done.
+8. Add symbol fixture spanning wiki/world/canon/raw refs. Done.
+9. Add deterministic chunking fixtures. Done.
+10. Add deterministic embedding provider. Done.
+11. Add exact vector index. Done.
+12. Add vector search run materialization. Done.
+13. Add hybrid retrieval scorer. Done.
+14. Add governance tests for retrieval legality. Done.
+15. Add projection integration. Done.
+16. Add memory browser retrieval inspection. Done.
+17. Add retrieval evals. Done.
+18. Add vector maintenance jobs. Done.
+19. Add ANN index. Pending; still gated on stable exact/eval baselines.
+20. Add external compatibility adapters. Partial; external candidate normalization is executable, but import/export adapters remain pending.
+21. Add adapter SDK consumption. Done; OpenClaw and Hermes consume projection manifest retrieval context through the shared core SDK without redefining retrieval law.
 
 ---
 
