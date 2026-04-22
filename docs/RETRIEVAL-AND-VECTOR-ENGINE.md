@@ -708,6 +708,13 @@ External tools may:
 - provide candidate refs
 - provide similarity scores
 - import/export chunks and metadata
+
+External candidate normalization must produce Cristalina retrieval candidates
+before projection or governance sees them. A normalized external candidate may
+be useful retrieval context only when it maps to an explicit Cristalina ref with
+layer and authority labels allowed by the recipe. Unmapped or forbidden
+external candidates must be suppressed with `invalid_external_candidate` and
+must never support proposal generation.
 - serve as benchmarks
 
 External tools may not:

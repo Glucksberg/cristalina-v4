@@ -13,6 +13,9 @@
       "$ref": "#/$defs/RetrievalCandidate"
     },
     {
+      "$ref": "#/$defs/ExternalRetrievalCandidate"
+    },
+    {
       "$ref": "#/$defs/RetrievalResult"
     },
     {
@@ -239,6 +242,103 @@
           "type": "boolean"
         },
         "eligible_upstream_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExternalRetrievalCandidate": {
+      "type": "object",
+      "required": [
+        "provider_id",
+        "external_candidate_id",
+        "retrieved_at"
+      ],
+      "properties": {
+        "provider_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "external_candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mapped_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_layer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Layer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authority": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "evidence",
+            "runtime",
+            "world",
+            "editorial",
+            "canon",
+            "governance",
+            "derived",
+            null
+          ]
+        },
+        "score": {
+          "type": "number"
+        },
+        "score_normalization": {
+          "type": "string"
+        },
+        "model_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retrieved_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "semantic_slot": {
+          "type": "string"
+        },
+        "text_preview": {
+          "type": "string"
+        },
+        "unsupported_mapping_reasons": {
           "type": "array",
           "items": {
             "type": "string"

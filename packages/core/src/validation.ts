@@ -5,6 +5,7 @@ import type {
   ConversationThread,
   CoreRecord,
   DispositionRecord,
+  ExternalRetrievalCandidate,
   Observation,
   Proposal,
   RetrievalCandidate,
@@ -1247,7 +1248,7 @@ export function validateRetrievalContract(value: unknown): ValidationIssue[] {
 
 export function assertRetrievalContract(
   value: unknown,
-): asserts value is RetrievalCandidate | RetrievalQuery | RetrievalRecipe | RetrievalResult | RetrievalTrace {
+): asserts value is ExternalRetrievalCandidate | RetrievalCandidate | RetrievalQuery | RetrievalRecipe | RetrievalResult | RetrievalTrace {
   const issues = validateRetrievalContract(value);
   if (issues.length > 0) {
     throw new ValidationError("Invalid retrieval contract", issues);

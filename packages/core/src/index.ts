@@ -19,6 +19,7 @@ export * from "./retrieval-engine/chunking.js";
 export * from "./retrieval-engine/embedding-provider.js";
 export * from "./retrieval-engine/evals.js";
 export * from "./retrieval-engine/exact-vector.js";
+export * from "./retrieval-engine/external-candidates.js";
 export * from "./retrieval-engine/maintenance.js";
 export * from "./retrieval-engine/orchestrator.js";
 export * from "./workflow-engine/source-intake.js";

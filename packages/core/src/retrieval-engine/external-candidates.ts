@@ -1,0 +1,95 @@
+import type {
+  ExternalRetrievalCandidate,
+  Layer,
+  Reference,
+  RetrievalAuthority,
+  RetrievalCandidate,
+  RetrievalRecipe,
+  RetrievalSuppressionReason,
+} from "../types.js";
+
+export interface NormalizeExternalCandidatesInput {
+  recipe: RetrievalRecipe;
+  candidates: ExternalRetrievalCandidate[];
+}
+
+function safeId(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "external";
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+function fallbackRef(candidate: ExternalRetrievalCandidate): Reference {
+  return {
+    id: `external_${safeId(candidate.provider_id)}_${safeId(candidate.external_candidate_id)}`,
+    kind: "external_candidate",
+    layer: "derived",
+  };
+}
+
+function isMappedCandidate(
+  candidate: ExternalRetrievalCandidate,
+): candidate is ExternalRetrievalCandidate & { mapped_ref: Reference; source_layer: Layer; authority: RetrievalAuthority } {
+  return candidate.mapped_ref !== undefined &&
+    candidate.mapped_ref !== null &&
+    candidate.source_layer !== undefined &&
+    candidate.source_layer !== null &&
+    candidate.authority !== undefined &&
+    candidate.authority !== null;
+}
+
+function suppressionReasons(input: {
+  recipe: RetrievalRecipe;
+  candidate: ExternalRetrievalCandidate;
+}): RetrievalSuppressionReason[] {
+  const reasons = new Set<RetrievalSuppressionReason>();
+  if (input.recipe.external_candidate_policy !== "allow_normalized") {
+    reasons.add("invalid_external_candidate");
+  }
+  if (!isMappedCandidate(input.candidate)) {
+    reasons.add("invalid_external_candidate");
+  } else if (!input.recipe.layer_scope.includes(input.candidate.source_layer)) {
+    reasons.add("authority_mismatch");
+  }
+  if ((input.candidate.unsupported_mapping_reasons ?? []).length > 0) {
+    reasons.add("invalid_external_candidate");
+  }
+  return [...reasons];
+}
+
+export function normalizeExternalCandidates(input: NormalizeExternalCandidatesInput): RetrievalCandidate[] {
+  return input.candidates.map((candidate) => {
+    const reasons = suppressionReasons({
+      recipe: input.recipe,
+      candidate,
+    });
+    const mapped = isMappedCandidate(candidate);
+    const ref = mapped ? candidate.mapped_ref : fallbackRef(candidate);
+    const layer = mapped ? candidate.source_layer : "derived";
+    const authority = mapped ? candidate.authority : "derived";
+    const suppression_reasons = reasons.length > 0 ? reasons : undefined;
+
+    return {
+      id: `candidate_external_${safeId(candidate.provider_id)}_${safeId(candidate.external_candidate_id)}`,
+      ref,
+      layer,
+      authority,
+      text_preview: candidate.text_preview,
+      symbol_refs: unique(candidate.symbol_refs ?? []),
+      semantic_slot: candidate.semantic_slot,
+      vector_score: candidate.score,
+      final_score: candidate.score,
+      why_retrieved: [
+        `normalized external candidate from ${candidate.provider_id}`,
+        ...(candidate.score_normalization ? [`external score normalization: ${candidate.score_normalization}`] : []),
+        ...(candidate.model_ref ? [`external model: ${candidate.model_ref}`] : []),
+        ...(candidate.index_ref ? [`external index: ${candidate.index_ref}`] : []),
+        ...unique(candidate.unsupported_mapping_reasons ?? []).map((reason) => `unsupported mapping: ${reason}`),
+      ],
+      suppression_reasons,
+      can_support_proposal: false,
+    };
+  });
+}

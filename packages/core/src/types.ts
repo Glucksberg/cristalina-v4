@@ -431,6 +431,23 @@ export interface RetrievalCandidate {
   eligible_upstream_refs?: string[];
 }
 
+export interface ExternalRetrievalCandidate {
+  provider_id: string;
+  external_candidate_id: string;
+  mapped_ref?: Reference | null;
+  source_layer?: Layer | null;
+  authority?: RetrievalAuthority | null;
+  score?: number;
+  score_normalization?: string;
+  model_ref?: string | null;
+  index_ref?: string | null;
+  retrieved_at: string;
+  symbol_refs?: string[];
+  semantic_slot?: string;
+  text_preview?: string;
+  unsupported_mapping_reasons?: string[];
+}
+
 export interface RetrievalResult {
   query_ref: string;
   recipe_ref: string;

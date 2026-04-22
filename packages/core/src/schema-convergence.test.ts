@@ -213,6 +213,7 @@ test("retrieval contracts schema stays aligned with core retrieval enums", async
     "RetrievalQuery",
     "RetrievalRecipe",
     "RetrievalCandidate",
+    "ExternalRetrievalCandidate",
     "RetrievalResult",
     "RetrievalTrace",
   ]);
