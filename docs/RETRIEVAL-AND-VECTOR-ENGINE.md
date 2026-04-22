@@ -524,6 +524,12 @@ Initial ANN manifests must declare:
 - `index_checksum`
 - optional `ann_baseline_eval_ref`
 
+The first executable ANN maintenance job should only support
+`deterministic_fixture_lsh`. HNSW and IVF remain declared compatibility targets
+until they have their own eval and drift evidence. A rebuild must reject ANN
+manifests without an exact baseline manifest that matches corpus, model,
+dimensions, metric, source refs, and embedding generation.
+
 V2 must keep:
 
 - exact-index fallback for tests

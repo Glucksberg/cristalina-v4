@@ -5,6 +5,7 @@ import type {
   EmbeddingBatchRun,
   EmbeddingModelManifest,
   EmbeddingRecord,
+  VectorAnnStrategy,
   VectorChunk,
   VectorCorpus,
   VectorIndexManifest,
@@ -53,6 +54,27 @@ export interface RebuildExactIndexResult {
   maintenance_run: VectorMaintenanceRun;
 }
 
+export interface RebuildAnnIndexInput {
+  id: string;
+  now: string;
+  corpus: VectorCorpus;
+  embedding_model: EmbeddingModelManifest;
+  embeddings: EmbeddingRecord[];
+  exact_baseline_index: VectorIndexManifest;
+  index_manifest_id: string;
+  index_generation: string;
+  ann_strategy: VectorAnnStrategy;
+  ann_parameters: Record<string, string | number | boolean>;
+  ann_recall_floor: number;
+  ann_baseline_eval_ref?: string | null;
+  visibility_state?: VisibilityState;
+}
+
+export interface RebuildAnnIndexResult {
+  index_manifest?: VectorIndexManifest;
+  maintenance_run: VectorMaintenanceRun;
+}
+
 export interface RefreshEmbeddingBatchInput {
   id: string;
   now: string;
@@ -88,6 +110,19 @@ function sameSet(left: string[], right: string[]): boolean {
     if (!rightSet.has(value)) return false;
   }
   return true;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): VectorMaintenanceRun {
@@ -397,6 +432,164 @@ export function rebuildExactIndex(input: RebuildExactIndexInput): RebuildExactIn
     index_generation: input.index_generation,
     vector_encoding: input.embedding_model.vector_encoding,
     index_checksum: indexChecksum,
+  };
+
+  return {
+    index_manifest,
+    maintenance_run: {
+      ...baseRun,
+      status: "passed",
+      index_manifest_ref: index_manifest.id,
+      issue_codes: [],
+      rebuilt_artifact_refs: [index_manifest.id],
+    },
+  };
+}
+
+export function rebuildAnnIndex(input: RebuildAnnIndexInput): RebuildAnnIndexResult {
+  const issueCodes = new Set<string>();
+  const chunkRefs = new Set(input.corpus.chunk_refs);
+  const embeddingGenerations = unique(input.embeddings.map((embedding) => embedding.embedding_generation));
+
+  if (input.ann_strategy !== "deterministic_fixture_lsh") {
+    issueCodes.add("ann_strategy_not_implemented");
+  }
+  if (Object.keys(input.ann_parameters).length === 0) {
+    issueCodes.add("ann_parameters_missing");
+  }
+  if (input.ann_recall_floor < 0 || input.ann_recall_floor > 1) {
+    issueCodes.add("ann_recall_floor_invalid");
+  }
+  if (input.exact_baseline_index.index_kind !== "exact") {
+    issueCodes.add("ann_exact_baseline_required");
+  }
+  if (input.exact_baseline_index.corpus_ref !== input.corpus.id) {
+    issueCodes.add("ann_baseline_corpus_ref_mismatch");
+  }
+  if (input.exact_baseline_index.embedding_model_ref !== input.embedding_model.id) {
+    issueCodes.add("ann_baseline_embedding_model_ref_mismatch");
+  }
+  if (input.exact_baseline_index.dimensions !== input.embedding_model.dimensions) {
+    issueCodes.add("ann_baseline_dimension_mismatch");
+  }
+  if (input.exact_baseline_index.metric !== input.embedding_model.metric) {
+    issueCodes.add("ann_baseline_metric_mismatch");
+  }
+  if (!sameSet(input.exact_baseline_index.source_refs, input.corpus.source_refs)) {
+    issueCodes.add("ann_baseline_source_membership_mismatch");
+  }
+  if (input.exact_baseline_index.embedding_generation !== embeddingGenerations[0]) {
+    issueCodes.add("ann_baseline_embedding_generation_mismatch");
+  }
+  if (input.corpus.embedding_model_ref !== undefined && input.corpus.embedding_model_ref !== null && input.corpus.embedding_model_ref !== input.embedding_model.id) {
+    issueCodes.add("corpus_embedding_model_ref_mismatch");
+  }
+  if (embeddingGenerations.length !== 1) {
+    issueCodes.add("embedding_generation_mismatch");
+  }
+  for (const embedding of input.embeddings) {
+    if (!chunkRefs.has(embedding.chunk_ref)) {
+      issueCodes.add("embedding_chunk_not_in_corpus");
+    }
+    if (embedding.embedding_model_ref !== input.embedding_model.id) {
+      issueCodes.add("embedding_model_ref_mismatch");
+    }
+    if (embedding.dimensions !== input.embedding_model.dimensions) {
+      issueCodes.add("embedding_model_dimension_mismatch");
+    }
+    if (embedding.metric !== input.embedding_model.metric) {
+      issueCodes.add("embedding_model_metric_mismatch");
+    }
+  }
+
+  const checked_artifact_refs = unique([
+    input.corpus.id,
+    input.embedding_model.id,
+    input.exact_baseline_index.id,
+    ...input.embeddings.map((embedding) => embedding.id),
+  ]);
+  const issue_codes = [...issueCodes].sort();
+  const baseRun = {
+    id: input.id,
+    kind: "vector_maintenance_run" as const,
+    layer: "derived" as const,
+    authoritative_home: "governance" as const,
+    created_at: input.now,
+    visibility_state: input.visibility_state ?? {
+      privacy_scope: "project_private" as const,
+    },
+    provenance: {
+      source_type: "vector_maintenance",
+      source_ref: "rebuild_ann_index",
+      evidence_refs: checked_artifact_refs,
+    },
+    job: "rebuild_ann_index" as const,
+    corpus_ref: input.corpus.id,
+    checked_artifact_refs,
+  };
+
+  if (issue_codes.length > 0) {
+    return {
+      maintenance_run: {
+        ...baseRun,
+        status: "rejected",
+        index_manifest_ref: null,
+        issue_codes,
+      },
+    };
+  }
+
+  const embeddingGeneration = embeddingGenerations[0];
+  const indexChecksum = sha256(stableJson({
+    ann_parameters: input.ann_parameters,
+    ann_recall_floor: input.ann_recall_floor,
+    ann_strategy: input.ann_strategy,
+    corpus_ref: input.corpus.id,
+    embedding_refs: input.embeddings.map((embedding) => embedding.id),
+    exact_baseline_index_ref: input.exact_baseline_index.id,
+    exact_baseline_index_checksum: input.exact_baseline_index.index_checksum,
+    vector_checksums: input.embeddings.map((embedding) => embedding.vector_checksum),
+  }));
+  const index_manifest: VectorIndexManifest = {
+    id: input.index_manifest_id,
+    kind: "vector_index_manifest",
+    layer: "derived",
+    authoritative_home: "governance",
+    created_at: input.now,
+    visibility_state: input.visibility_state ?? {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "rebuild_ann_index",
+      source_ref: input.corpus.id,
+      evidence_refs: checked_artifact_refs,
+      actor_ref: "system:vector_maintenance",
+    },
+    index_ref: {
+      path: `derived/vector/indexes/${input.index_manifest_id}.ann.json`,
+      checksum: indexChecksum,
+      encoding: input.embedding_model.vector_encoding,
+      dimensions: input.embedding_model.dimensions,
+      generation_id: input.index_generation,
+      producing_ref: input.index_manifest_id,
+    },
+    corpus_ref: input.corpus.id,
+    embedding_model_ref: input.embedding_model.id,
+    dimensions: input.embedding_model.dimensions,
+    metric: input.embedding_model.metric,
+    index_kind: "ann",
+    chunk_policy_version: input.corpus.chunk_policy_version,
+    source_refs: input.corpus.source_refs,
+    corpus_generation: input.corpus.corpus_generation,
+    embedding_generation: embeddingGeneration,
+    index_generation: input.index_generation,
+    vector_encoding: input.embedding_model.vector_encoding,
+    index_checksum: indexChecksum,
+    ann_strategy: input.ann_strategy,
+    ann_parameters: input.ann_parameters,
+    exact_baseline_index_ref: input.exact_baseline_index.id,
+    ann_recall_floor: input.ann_recall_floor,
+    ann_baseline_eval_ref: input.ann_baseline_eval_ref ?? null,
   };
 
   return {

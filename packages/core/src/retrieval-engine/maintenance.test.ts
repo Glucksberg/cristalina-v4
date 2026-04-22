@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateVectorArtifact } from "../validation.js";
-import { planVectorInvalidation, rebuildExactIndex, refreshEmbeddingBatch, validateVectorArtifacts } from "./maintenance.js";
+import { planVectorInvalidation, rebuildAnnIndex, rebuildExactIndex, refreshEmbeddingBatch, validateVectorArtifacts } from "./maintenance.js";
 import { executeDeterministicRetrieval } from "./orchestrator.js";
 
 test("vector maintenance validates consistent fixture vector artifacts", () => {
@@ -299,6 +299,113 @@ test("vector maintenance rebuilds exact index as an explicit durable job", () =>
   assert.equal(rejected.index_manifest, undefined);
   assert.equal(rejected.maintenance_run.status, "rejected");
   assert.ok(rejected.maintenance_run.issue_codes.includes("embedding_model_dimension_mismatch"));
+  assert.deepEqual(validateVectorArtifact(rejected.maintenance_run), []);
+});
+
+test("vector maintenance rebuilds deterministic ANN index from an exact baseline", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const retrievalRun = executeDeterministicRetrieval({
+    now: "2026-04-21T00:00:00.000Z",
+    query: {
+      id: "retrieval_query_ann_rebuild_001",
+      query_text: "answer style",
+      recipe_ref: fixture.recipe.id,
+      requested_layers: fixture.recipe.layer_scope,
+      read_policy_version: fixture.recipe.read_policy_version,
+    },
+    recipe: fixture.recipe,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    symbol_anchors: [fixture.symbol_anchor],
+    embedding_model: {
+      ...fixture.embedding_model,
+      dimensions: 8,
+      normalization_mode: "deterministic_fixture_sha256_unit",
+    },
+    chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+    corpus_id: "vector_corpus_ann_rebuild_001",
+    corpus_generation: "corpus_gen_ann_rebuild_001",
+    chunk_generation: "chunk_gen_ann_rebuild_001",
+    embedding_generation: "embedding_gen_ann_rebuild_001",
+    embedding_batch_id: "embedding_batch_ann_rebuild_001",
+    index_manifest_id: "vector_index_ann_rebuild_seed_001",
+    index_generation: "index_gen_ann_rebuild_seed_001",
+    search_run_id: "vector_search_ann_rebuild_001",
+    search_generation: "search_gen_ann_rebuild_001",
+  });
+  const embeddingModel = retrievalRun.vector_artifacts.find((artifact) => artifact.kind === "embedding_model_manifest");
+  assert.ok(embeddingModel);
+
+  const exact = rebuildExactIndex({
+    id: "vector_maintenance_run_ann_exact_seed_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    index_manifest_id: "vector_index_ann_exact_seed_001",
+    index_generation: "index_gen_ann_exact_seed_001",
+  });
+  assert.ok(exact.index_manifest);
+
+  const ann = rebuildAnnIndex({
+    id: "vector_maintenance_run_ann_rebuild_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    exact_baseline_index: exact.index_manifest,
+    index_manifest_id: "vector_index_ann_rebuilt_001",
+    index_generation: "index_gen_ann_rebuilt_001",
+    ann_strategy: "deterministic_fixture_lsh",
+    ann_parameters: {
+      bucket_count: 8,
+      seed: "fixture",
+    },
+    ann_recall_floor: 1,
+    ann_baseline_eval_ref: "retrieval_eval_run_exact_vs_ann_fixture_001",
+  });
+
+  assert.ok(ann.index_manifest);
+  assert.equal(ann.index_manifest.index_kind, "ann");
+  assert.equal(ann.index_manifest.ann_strategy, "deterministic_fixture_lsh");
+  assert.deepEqual(ann.index_manifest.ann_parameters, {
+    bucket_count: 8,
+    seed: "fixture",
+  });
+  assert.equal(ann.index_manifest.exact_baseline_index_ref, exact.index_manifest.id);
+  assert.equal(ann.index_manifest.ann_recall_floor, 1);
+  assert.equal(ann.maintenance_run.job, "rebuild_ann_index");
+  assert.equal(ann.maintenance_run.status, "passed");
+  assert.deepEqual(ann.maintenance_run.rebuilt_artifact_refs, [ann.index_manifest.id]);
+  assert.deepEqual(validateVectorArtifact(ann.index_manifest), []);
+  assert.deepEqual(validateVectorArtifact(ann.maintenance_run), []);
+
+  const rejected = rebuildAnnIndex({
+    id: "vector_maintenance_run_ann_rebuild_rejected_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: retrievalRun.corpus,
+    embedding_model: embeddingModel,
+    embeddings: retrievalRun.embeddings,
+    exact_baseline_index: {
+      ...exact.index_manifest,
+      index_kind: "ann",
+    },
+    index_manifest_id: "vector_index_ann_rejected_001",
+    index_generation: "index_gen_ann_rejected_001",
+    ann_strategy: "hnsw",
+    ann_parameters: {},
+    ann_recall_floor: 1,
+  });
+
+  assert.equal(rejected.index_manifest, undefined);
+  assert.equal(rejected.maintenance_run.status, "rejected");
+  assert.ok(rejected.maintenance_run.issue_codes.includes("ann_exact_baseline_required"));
+  assert.ok(rejected.maintenance_run.issue_codes.includes("ann_parameters_missing"));
+  assert.ok(rejected.maintenance_run.issue_codes.includes("ann_strategy_not_implemented"));
   assert.deepEqual(validateVectorArtifact(rejected.maintenance_run), []);
 });
 
