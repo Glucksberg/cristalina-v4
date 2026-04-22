@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type {
   CoreRecord,
+  EmbeddingBatchRun,
   EmbeddingModelManifest,
   EmbeddingRecord,
   VectorChunk,
@@ -10,6 +11,7 @@ import type {
   VectorMaintenanceRun,
   VisibilityState,
 } from "../types.js";
+import { createDeterministicFixtureEmbeddingProvider, type EmbeddingProvider } from "./embedding-provider.js";
 
 export interface ValidateVectorArtifactsInput {
   id: string;
@@ -48,6 +50,25 @@ export interface RebuildExactIndexInput {
 
 export interface RebuildExactIndexResult {
   index_manifest?: VectorIndexManifest;
+  maintenance_run: VectorMaintenanceRun;
+}
+
+export interface RefreshEmbeddingBatchInput {
+  id: string;
+  now: string;
+  chunks: VectorChunk[];
+  chunk_texts: Record<string, string>;
+  embedding_model: EmbeddingModelManifest;
+  embedding_generation: string;
+  batch_id: string;
+  provider?: EmbeddingProvider;
+  visibility_state?: VisibilityState;
+}
+
+export interface RefreshEmbeddingBatchResult {
+  batch_run?: EmbeddingBatchRun;
+  embeddings?: EmbeddingRecord[];
+  embedding_vectors?: Record<string, number[]>;
   maintenance_run: VectorMaintenanceRun;
 }
 
@@ -386,6 +407,83 @@ export function rebuildExactIndex(input: RebuildExactIndexInput): RebuildExactIn
       index_manifest_ref: index_manifest.id,
       issue_codes: [],
       rebuilt_artifact_refs: [index_manifest.id],
+    },
+  };
+}
+
+export function refreshEmbeddingBatch(input: RefreshEmbeddingBatchInput): RefreshEmbeddingBatchResult {
+  const provider = input.provider ?? createDeterministicFixtureEmbeddingProvider(input.embedding_model.provider_id);
+  const issueCodes = new Set<string>();
+
+  if (input.chunks.length === 0) {
+    issueCodes.add("empty_chunk_set");
+  }
+  if (provider.provider_id !== input.embedding_model.provider_id) {
+    issueCodes.add("embedding_provider_mismatch");
+  }
+  for (const chunk of input.chunks) {
+    if (input.chunk_texts[chunk.id] === undefined) {
+      issueCodes.add("missing_chunk_text_blob");
+    }
+  }
+
+  const checked_artifact_refs = unique([
+    input.embedding_model.id,
+    ...input.chunks.map((chunk) => chunk.id),
+  ]);
+  const issue_codes = [...issueCodes].sort();
+  const baseRun = {
+    id: input.id,
+    kind: "vector_maintenance_run" as const,
+    layer: "derived" as const,
+    authoritative_home: "governance" as const,
+    created_at: input.now,
+    visibility_state: input.visibility_state ?? {
+      privacy_scope: "project_private" as const,
+    },
+    provenance: {
+      source_type: "vector_maintenance",
+      source_ref: "refresh_embedding_batch",
+      evidence_refs: checked_artifact_refs,
+    },
+    job: "refresh_embedding_batch" as const,
+    corpus_ref: null,
+    index_manifest_ref: null,
+    checked_artifact_refs,
+  };
+
+  if (issue_codes.length > 0) {
+    return {
+      maintenance_run: {
+        ...baseRun,
+        status: "rejected",
+        issue_codes,
+      },
+    };
+  }
+
+  const refreshed = provider.embed({
+    now: input.now,
+    chunks: input.chunks,
+    chunk_texts: input.chunk_texts,
+    embedding_model: input.embedding_model,
+    embedding_generation: input.embedding_generation,
+    batch_id: input.batch_id,
+    visibility_state: input.visibility_state,
+  });
+
+  return {
+    batch_run: refreshed.batch_run,
+    embeddings: refreshed.embeddings,
+    embedding_vectors: refreshed.embedding_vectors,
+    maintenance_run: {
+      ...baseRun,
+      status: "passed",
+      issue_codes: [],
+      rebuilt_artifact_refs: [
+        refreshed.batch_run.id,
+        ...refreshed.embeddings.map((embedding) => embedding.id),
+      ],
     },
   };
 }

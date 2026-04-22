@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateVectorArtifact } from "../validation.js";
-import { planVectorInvalidation, rebuildExactIndex, validateVectorArtifacts } from "./maintenance.js";
+import { planVectorInvalidation, rebuildExactIndex, refreshEmbeddingBatch, validateVectorArtifacts } from "./maintenance.js";
 import { executeDeterministicRetrieval } from "./orchestrator.js";
 
 test("vector maintenance validates consistent fixture vector artifacts", () => {
@@ -299,5 +299,86 @@ test("vector maintenance rebuilds exact index as an explicit durable job", () =>
   assert.equal(rejected.index_manifest, undefined);
   assert.equal(rejected.maintenance_run.status, "rejected");
   assert.ok(rejected.maintenance_run.issue_codes.includes("embedding_model_dimension_mismatch"));
+  assert.deepEqual(validateVectorArtifact(rejected.maintenance_run), []);
+});
+
+test("vector maintenance refreshes deterministic embedding batches as an explicit job", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const retrievalRun = executeDeterministicRetrieval({
+    now: "2026-04-21T00:00:00.000Z",
+    query: {
+      id: "retrieval_query_embedding_refresh_001",
+      query_text: "answer style",
+      recipe_ref: fixture.recipe.id,
+      requested_layers: fixture.recipe.layer_scope,
+      read_policy_version: fixture.recipe.read_policy_version,
+    },
+    recipe: fixture.recipe,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    symbol_anchors: [fixture.symbol_anchor],
+    embedding_model: {
+      ...fixture.embedding_model,
+      dimensions: 8,
+      normalization_mode: "deterministic_fixture_sha256_unit",
+    },
+    chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+    corpus_id: "vector_corpus_embedding_refresh_001",
+    corpus_generation: "corpus_gen_embedding_refresh_001",
+    chunk_generation: "chunk_gen_embedding_refresh_001",
+    embedding_generation: "embedding_gen_embedding_refresh_seed_001",
+    embedding_batch_id: "embedding_batch_embedding_refresh_seed_001",
+    index_manifest_id: "vector_index_embedding_refresh_seed_001",
+    index_generation: "index_gen_embedding_refresh_seed_001",
+    search_run_id: "vector_search_embedding_refresh_001",
+    search_generation: "search_gen_embedding_refresh_001",
+  });
+  const embeddingModel = retrievalRun.vector_artifacts.find((artifact) => artifact.kind === "embedding_model_manifest");
+  assert.ok(embeddingModel);
+
+  const refreshed = refreshEmbeddingBatch({
+    id: "vector_maintenance_run_embedding_refresh_001",
+    now: "2026-04-21T00:00:00.000Z",
+    chunks: retrievalRun.chunks,
+    chunk_texts: retrievalRun.chunk_texts,
+    embedding_model: embeddingModel,
+    embedding_generation: "embedding_gen_embedding_refresh_001",
+    batch_id: "embedding_batch_embedding_refresh_001",
+  });
+
+  assert.ok(refreshed.batch_run);
+  assert.ok(refreshed.embeddings);
+  assert.ok(refreshed.embedding_vectors);
+  assert.equal(refreshed.batch_run.embedding_generation, "embedding_gen_embedding_refresh_001");
+  assert.equal(refreshed.embeddings.length, retrievalRun.chunks.length);
+  assert.deepEqual(refreshed.maintenance_run.rebuilt_artifact_refs, [
+    refreshed.batch_run.id,
+    ...refreshed.embeddings.map((embedding) => embedding.id),
+  ]);
+  assert.deepEqual(validateVectorArtifact(refreshed.batch_run), []);
+  for (const embedding of refreshed.embeddings) {
+    assert.deepEqual(validateVectorArtifact(embedding), []);
+  }
+  assert.deepEqual(validateVectorArtifact(refreshed.maintenance_run), []);
+
+  const rejected = refreshEmbeddingBatch({
+    id: "vector_maintenance_run_embedding_refresh_rejected_001",
+    now: "2026-04-21T00:00:00.000Z",
+    chunks: retrievalRun.chunks,
+    chunk_texts: {},
+    embedding_model: embeddingModel,
+    embedding_generation: "embedding_gen_embedding_refresh_rejected_001",
+    batch_id: "embedding_batch_embedding_refresh_rejected_001",
+  });
+
+  assert.equal(rejected.batch_run, undefined);
+  assert.equal(rejected.embeddings, undefined);
+  assert.equal(rejected.embedding_vectors, undefined);
+  assert.equal(rejected.maintenance_run.status, "rejected");
+  assert.ok(rejected.maintenance_run.issue_codes.includes("missing_chunk_text_blob"));
   assert.deepEqual(validateVectorArtifact(rejected.maintenance_run), []);
 });

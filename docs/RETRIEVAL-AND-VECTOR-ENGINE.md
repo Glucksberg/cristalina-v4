@@ -857,6 +857,11 @@ new exact-index manifest from already validated corpus, embedding model, and
 embedding records. It must record the rebuilt manifest ref in the maintenance
 run and must not introduce ANN behavior.
 
+Embedding batch refresh is also safe while it remains bound to the deterministic
+fixture provider. It may produce embedding records and vector sidecars from
+explicit chunk text inputs, but provider/model mismatch and missing chunk text
+must reject the run rather than falling back to hidden provider behavior.
+
 Maintenance must check generation consistency:
 
 - source record hash vs chunk source hash
