@@ -218,6 +218,13 @@ The authoritative continuity source remains the upstream objects it references.
 5. If the runtime actually re-attaches or restores the projected state, the system records an `applied` receipt.
 6. Runtime continues and later emits a new checkpoint or projection manifest as needed.
 
+Executable receipt shape: `session_resume_receipt` is an audit-layer record with
+`authoritative_home: governance`. It records the adapter, checkpoint ref,
+projection manifest ref, projection artifact refs, runtime/session/thread refs,
+continuity epoch, generation, read policy, authenticated principal when known,
+and upstream refs. The receipt proves consumption or application of a derived
+pack; it does not authorize canon, world, or runtime writes by itself.
+
 ---
 
 ## 6. Authority rules

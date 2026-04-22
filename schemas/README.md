@@ -19,5 +19,6 @@ Planned schema families:
 - retrieval query, recipe, candidate, result, and trace contracts
 - vector artifact contracts
 - projection manifests
+- session resume receipts
 - OpenClaw adapter contracts
 - Hermes adapter contracts

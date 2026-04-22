@@ -228,6 +228,12 @@ export const VECTOR_EXPORT_JSONL_ROW_KINDS = [
   "embedding_metadata",
 ] as const;
 
+export const SESSION_RESUME_RECEIPT_STATUSES = [
+  "consumed",
+  "applied",
+  "rejected",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -292,6 +298,7 @@ export type VectorAnnStrategy = typeof VECTOR_ANN_STRATEGIES[number];
 export type VectorBlobEncoding = typeof VECTOR_BLOB_ENCODINGS[number];
 export type VectorMaintenanceJob = typeof VECTOR_MAINTENANCE_JOBS[number];
 export type VectorExportJsonlRowKind = typeof VECTOR_EXPORT_JSONL_ROW_KINDS[number];
+export type SessionResumeReceiptStatus = typeof SESSION_RESUME_RECEIPT_STATUSES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
@@ -816,6 +823,26 @@ export interface WorkingMemoryCheckpoint extends RecordEnvelope {
   policy_snapshot_ref?: string | null;
 }
 
+export interface SessionResumeReceipt extends RecordEnvelope {
+  kind: "session_resume_receipt";
+  layer: "audits";
+  authoritative_home: "governance";
+  receipt_status: SessionResumeReceiptStatus;
+  adapter: Exclude<RuntimeKind, "generic">;
+  projection_manifest_ref: string;
+  projection_artifact_refs: string[];
+  checkpoint_ref: string;
+  runtime_instance_ref: string;
+  runtime_session_ref: string;
+  conversation_thread_ref: string;
+  continuity_epoch: string;
+  generation: number;
+  read_policy_version: string;
+  upstream_refs: string[];
+  authenticated_principal?: AuthenticatedPrincipal | null;
+  diagnostic_refs?: string[];
+}
+
 export interface ConversationThread extends RecordEnvelope {
   kind: "conversation_thread";
   layer: "runtime";
@@ -1103,6 +1130,7 @@ export type CoreRecord =
   | RuntimeSession
   | RuntimeMemoryBlock
   | WorkingMemoryCheckpoint
+  | SessionResumeReceipt
   | ConversationThread
   | Episode
   | Entity

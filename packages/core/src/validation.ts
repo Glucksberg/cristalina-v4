@@ -17,6 +17,7 @@ import type {
   RetrievalTrace,
   RuntimeInstance,
   RuntimeSession,
+  SessionResumeReceipt,
   WorkingMemoryCheckpoint,
   SymbolAnchor,
   VectorArtifact,
@@ -40,6 +41,7 @@ import {
   PROPOSAL_OPERATIONS,
   RUNTIMES,
   RETRIEVAL_SUPPRESSION_REASONS,
+  SESSION_RESUME_RECEIPT_STATUSES,
   SUBJECT_AUTHORITY_ROLES,
   SYMBOL_ANCHOR_LIFECYCLE_STATES,
   TEMPORAL_STATUSES,
@@ -62,6 +64,7 @@ import {
   PROJECTION_MANIFEST_SCHEMA_ID,
   RETRIEVAL_CONTRACTS_SCHEMA_ID,
   RUNTIME_IDENTITY_SCHEMA_ID,
+  SESSION_RESUME_RECEIPT_SCHEMA_ID,
   SYMBOL_ANCHOR_SCHEMA_ID,
   STORE_MANIFEST_SCHEMA_ID,
   TEMPORAL_WORLD_RECORD_SCHEMA_ID,
@@ -1179,6 +1182,45 @@ function validateWorkingMemoryCheckpoint(value: unknown): ValidationIssue[] {
   return issues;
 }
 
+function validateSessionResumeReceipt(value: unknown): ValidationIssue[] {
+  const issues = validateAgainstSchema(value, SESSION_RESUME_RECEIPT_SCHEMA_ID);
+  if (!isRecord(value)) return issues;
+  if (value.kind !== "session_resume_receipt") issues.push({ path: "kind", message: 'expected "session_resume_receipt"' });
+  if (value.layer !== "audits") issues.push({ path: "layer", message: 'expected "audits"' });
+  if (value.authoritative_home !== "governance") issues.push({ path: "authoritative_home", message: 'expected "governance"' });
+  pushEnum(issues, value, "receipt_status", SESSION_RESUME_RECEIPT_STATUSES);
+  pushEnum(issues, value, "adapter", ["openclaw", "hermes"] as const);
+  pushRequiredString(issues, value, "projection_manifest_ref");
+  pushRequiredString(issues, value, "checkpoint_ref");
+  pushRequiredString(issues, value, "runtime_instance_ref");
+  pushRequiredString(issues, value, "runtime_session_ref");
+  pushRequiredString(issues, value, "conversation_thread_ref");
+  pushRequiredString(issues, value, "continuity_epoch");
+  pushRequiredString(issues, value, "read_policy_version");
+  pushPositiveInteger(issues, value.generation, "generation");
+  if (
+    !isStringArray(value.projection_artifact_refs) ||
+    value.projection_artifact_refs.length === 0 ||
+    !hasUniqueEntries(value.projection_artifact_refs)
+  ) {
+    issues.push({ path: "projection_artifact_refs", message: "session resume receipts require unique projection artifact refs" });
+  }
+  if (!isStringArray(value.upstream_refs) || value.upstream_refs.length === 0 || !hasUniqueEntries(value.upstream_refs)) {
+    issues.push({ path: "upstream_refs", message: "session resume receipts require unique upstream refs" });
+  }
+  if (value.authenticated_principal !== undefined && value.authenticated_principal !== null) {
+    pushAuthenticatedPrincipal(issues, value.authenticated_principal, "authenticated_principal");
+  }
+  if (isStringArray(value.upstream_refs)) {
+    for (const requiredRef of [value.projection_manifest_ref, value.checkpoint_ref]) {
+      if (typeof requiredRef === "string" && !value.upstream_refs.includes(requiredRef)) {
+        issues.push({ path: "upstream_refs", message: `missing required upstream ref ${requiredRef}` });
+      }
+    }
+  }
+  return issues;
+}
+
 export function validateStoreManifest(value: unknown): ValidationIssue[] {
   return validateAgainstSchema(value, STORE_MANIFEST_SCHEMA_ID);
 }
@@ -1202,6 +1244,17 @@ export function assertRuntimeIdentityRecord(
   const issues = validateRuntimeIdentityRecord(value);
   if (issues.length > 0) {
     throw new ValidationError("Invalid runtime identity record", issues);
+  }
+}
+
+export function validateSessionResumeReceiptRecord(value: unknown): ValidationIssue[] {
+  return validateSessionResumeReceipt(value);
+}
+
+export function assertSessionResumeReceiptRecord(value: unknown): asserts value is SessionResumeReceipt {
+  const issues = validateSessionResumeReceipt(value);
+  if (issues.length > 0) {
+    throw new ValidationError("Invalid session resume receipt", issues);
   }
 }
 
@@ -1522,6 +1575,8 @@ export function validateCoreRecord(value: unknown): ValidationIssue[] {
       return validateRuntimeMemoryBlock(value);
     case "working_memory_checkpoint":
       return validateWorkingMemoryCheckpoint(value);
+    case "session_resume_receipt":
+      return validateSessionResumeReceipt(value);
     case "episode":
       return validateEpisode(value);
     case "entity":

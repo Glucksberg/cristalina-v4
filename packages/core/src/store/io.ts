@@ -19,6 +19,7 @@ import type {
   Relation,
   RuntimeInstance,
   RuntimeSession,
+  SessionResumeReceipt,
   WorkingMemoryCheckpoint,
   SourceRecord,
   ConversationThread,
@@ -80,6 +81,8 @@ function extensionlessRecordPath(record: CoreRecord): string {
       return join(STORAGE_LAYOUT.runtime.blocks, record.id);
     case "working_memory_checkpoint":
       return join(STORAGE_LAYOUT.runtime.workingMemory, "checkpoints", record.runtime_session_ref, record.id);
+    case "session_resume_receipt":
+      return join(STORAGE_LAYOUT.audits.sessionResumeReceipts, record.runtime_session_ref, record.id);
     case "conversation_thread":
       return join(STORAGE_LAYOUT.runtime.threads, record.id);
     case "episode":
@@ -285,6 +288,7 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
     STORAGE_LAYOUT.audits.root,
     STORAGE_LAYOUT.audits.snapshots,
     STORAGE_LAYOUT.audits.diagnostics,
+    STORAGE_LAYOUT.audits.sessionResumeReceipts,
   ];
 
   await Promise.all(directories.map((directory) => mkdir(join(rootDir, directory), { recursive: true })));
@@ -598,6 +602,11 @@ export async function loadRuntimeSessions(rootDir: string): Promise<RuntimeSessi
 export async function loadWorkingMemoryCheckpoints(rootDir: string): Promise<WorkingMemoryCheckpoint[]> {
   const records = await loadLayerRecords(rootDir, join(STORAGE_LAYOUT.runtime.workingMemory, "checkpoints"));
   return records.filter((record): record is WorkingMemoryCheckpoint => record.kind === "working_memory_checkpoint");
+}
+
+export async function loadSessionResumeReceipts(rootDir: string): Promise<SessionResumeReceipt[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.audits.sessionResumeReceipts);
+  return records.filter((record): record is SessionResumeReceipt => record.kind === "session_resume_receipt");
 }
 
 export async function loadConversationThreads(rootDir: string): Promise<ConversationThread[]> {

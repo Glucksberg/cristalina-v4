@@ -227,6 +227,7 @@ Expected contents:
 
 - change logs
 - validation logs
+- session resume receipts
 - rollback manifests
 - snapshot manifests
 
@@ -295,6 +296,7 @@ Expected contents:
   audits/
     changes.log
     validation.log
+    session-resume-receipts/
     snapshots/
 ```
 

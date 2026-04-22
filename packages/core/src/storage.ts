@@ -84,6 +84,7 @@ export const STORAGE_LAYOUT = {
     changes: "audits/changes.log",
     validation: "audits/validation.log",
     diagnostics: "audits/diagnostics",
+    sessionResumeReceipts: "audits/session-resume-receipts",
     snapshots: "audits/snapshots",
   },
 } as const;

@@ -53,6 +53,7 @@ export const STORE_MANIFEST_SCHEMA_ID = "https://cristalina-v4.local/schemas/sto
 export const SYMBOL_ANCHOR_SCHEMA_ID = "https://cristalina-v4.local/schemas/symbol-anchor.schema.json";
 export const RETRIEVAL_CONTRACTS_SCHEMA_ID = "https://cristalina-v4.local/schemas/retrieval-contracts.schema.json";
 export const VECTOR_ARTIFACTS_SCHEMA_ID = "https://cristalina-v4.local/schemas/vector-artifacts.schema.json";
+export const SESSION_RESUME_RECEIPT_SCHEMA_ID = "https://cristalina-v4.local/schemas/session-resume-receipt.schema.json";
 
 const SCHEMA_PATHS = [
   "../../../schemas/object-envelope.schema.json",
@@ -67,6 +68,7 @@ const SCHEMA_PATHS = [
   "../../../schemas/symbol-anchor.schema.json",
   "../../../schemas/retrieval-contracts.schema.json",
   "../../../schemas/vector-artifacts.schema.json",
+  "../../../schemas/session-resume-receipt.schema.json",
 ] as const;
 
 function loadSchema(relativePath: string): JsonSchema {

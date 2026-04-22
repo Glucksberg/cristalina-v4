@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { RuntimeInstance, RuntimeSession, ConversationThread, WorkingMemoryCheckpoint } from "../types.js";
 import { validateCoreRecord } from "../validation.js";
-import { compileSessionPack } from "./session-pack.js";
+import { compileSessionPack, recordSessionResumeReceipt } from "./session-pack.js";
 
 const now = "2026-04-22T00:00:00.000Z";
 
@@ -135,6 +135,30 @@ test("session pack compilation emits derived projection artifacts from an active
   assert.ok(compiled.manifest.upstream_refs.includes(activeCheckpoint.id));
   assert.ok(compiled.manifest.upstream_refs.includes(session.id));
   assert.match(compiled.artifact_contents[compiled.artifact.path] ?? "", /derived resume context only/);
+
+  const receipt = recordSessionResumeReceipt({
+    id: "session_resume_receipt_consumed_001",
+    now,
+    receipt_status: "consumed",
+    adapter: "openclaw",
+    manifest: compiled.manifest,
+    checkpoint: activeCheckpoint,
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:session_resume",
+      system_scope: "session_resume",
+    },
+  });
+
+  assert.deepEqual(validateCoreRecord(receipt), []);
+  assert.equal(receipt.layer, "audits");
+  assert.equal(receipt.authoritative_home, "governance");
+  assert.equal(receipt.projection_manifest_ref, compiled.manifest.id);
+  assert.deepEqual(receipt.projection_artifact_refs, [compiled.artifact.id]);
+  assert.equal(receipt.checkpoint_ref, activeCheckpoint.id);
+  assert.ok(receipt.upstream_refs.includes(compiled.manifest.id));
+  assert.ok(receipt.upstream_refs.includes(compiled.artifact.id));
+  assert.ok(receipt.upstream_refs.includes(activeCheckpoint.id));
 });
 
 test("session pack compilation rejects stale checkpoints and unresolved upstream refs", () => {
@@ -187,5 +211,55 @@ test("session pack compilation rejects stale checkpoints and unresolved upstream
       audience: "runtime_resume",
     }),
     /generation mismatch/,
+  );
+});
+
+test("session resume receipts reject manifests outside the session resume contract", () => {
+  const session = runtimeSession();
+  const thread = conversationThread();
+  const activeCheckpoint = checkpoint();
+  const compiled = compileSessionPack({
+    id: "projection_manifest_session_resume_receipt_reject_001",
+    artifact_id: "projection_artifact_session_resume_receipt_reject_001",
+    now,
+    adapter: "hermes",
+    checkpoint: activeCheckpoint,
+    upstream_records: [session, thread],
+    continuity_epoch: "epoch_session_pack_001",
+    generation: 1,
+    read_policy_version: "runtime_read_policy.v1",
+    audience: "runtime_resume",
+  });
+
+  assert.throws(
+    () =>
+      recordSessionResumeReceipt({
+        id: "session_resume_receipt_bad_profile_001",
+        now,
+        receipt_status: "applied",
+        adapter: "hermes",
+        manifest: {
+          ...compiled.manifest,
+          projection_profile: "openclaw_runtime_v1",
+        },
+        checkpoint: activeCheckpoint,
+      }),
+    /session_resume_v2/,
+  );
+
+  assert.throws(
+    () =>
+      recordSessionResumeReceipt({
+        id: "session_resume_receipt_bad_policy_001",
+        now,
+        receipt_status: "applied",
+        adapter: "hermes",
+        manifest: {
+          ...compiled.manifest,
+          read_policy_version: "other_policy",
+        },
+        checkpoint: activeCheckpoint,
+      }),
+    /read policy mismatch/,
   );
 });

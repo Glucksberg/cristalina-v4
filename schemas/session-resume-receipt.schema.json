@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cristalina-v4.local/schemas/session-resume-receipt.schema.json",
+  "title": "Cristalina v4 Session Resume Receipt",
+  "allOf": [
+    {
+      "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "layer",
+        "authoritative_home",
+        "receipt_status",
+        "adapter",
+        "projection_manifest_ref",
+        "projection_artifact_refs",
+        "checkpoint_ref",
+        "runtime_instance_ref",
+        "runtime_session_ref",
+        "conversation_thread_ref",
+        "continuity_epoch",
+        "generation",
+        "read_policy_version",
+        "upstream_refs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "session_resume_receipt"
+        },
+        "layer": {
+          "const": "audits"
+        },
+        "authoritative_home": {
+          "const": "governance"
+        },
+        "receipt_status": {
+          "type": "string",
+          "enum": [
+            "consumed",
+            "applied",
+            "rejected"
+          ]
+        },
+        "adapter": {
+          "type": "string",
+          "enum": [
+            "openclaw",
+            "hermes"
+          ]
+        },
+        "projection_manifest_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection_artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "checkpoint_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime_instance_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime_session_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conversation_thread_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "continuity_epoch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "read_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "upstream_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "authenticated_principal": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "actor_ref"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "owner",
+                    "agent",
+                    "participant",
+                    "system"
+                  ]
+                },
+                "actor_ref": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "system_scope": {
+                  "type": "string"
+                }
+              },
+              "if": {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "system"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "system_scope"
+                ]
+              },
+              "else": {
+                "not": {
+                  "required": [
+                    "system_scope"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diagnostic_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

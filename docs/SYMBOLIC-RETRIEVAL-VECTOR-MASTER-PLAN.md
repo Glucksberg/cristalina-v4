@@ -754,7 +754,13 @@ First executable slice:
 - require runtime instance, runtime session, conversation thread, continuity epoch, generation, read policy, status, and upstream refs
 - validate checkpoint supersession by explicit refs without mutating older checkpoints
 - compile the first `session_resume_v2` session pack as a derived `ProjectionManifest` plus adapter-specific `ProjectionArtifact`
-- keep resume receipts as later audit work
+- record consumed/applied/rejected resume receipts as audit-layer records downstream of the checkpoint and projection manifest
+
+Current status: done for the executable compatibility slice. `working_memory_checkpoint`
+records are immutable runtime records, `session_resume_v2` packs compile as
+derived projection manifests/artifacts, and `session_resume_receipt` records
+capture consumed/applied/rejected resume use under `audits/` without granting
+authority to session-pack prose.
 
 ### Acceptance Criteria
 

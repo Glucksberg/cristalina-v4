@@ -65,6 +65,7 @@ The MVP should begin with these type families:
 - `RetrievalAudit`
 - `RetrievalEvalRun`
 - `VectorMaintenanceRun`
+- `SessionResumeReceipt`
 
 These are not all equally mature.
 

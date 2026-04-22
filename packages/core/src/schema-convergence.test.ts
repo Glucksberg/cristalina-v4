@@ -19,6 +19,7 @@ import {
   RETRIEVAL_AUTHORITIES,
   RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES,
   RETRIEVAL_SUPPRESSION_REASONS,
+  SESSION_RESUME_RECEIPT_STATUSES,
   SOURCE_INTAKE_KINDS,
   SUBJECT_AUTHORITY_ROLES,
   SYMBOL_ANCHOR_KINDS,
@@ -125,6 +126,15 @@ test("runtime identity schema stays aligned with runtime and actor enums", async
   assert.deepEqual(expectEnum(actorVariant?.properties?.actor_kind), [...ACTOR_KINDS]);
   assert.deepEqual(expectEnum(runtimeInstanceVariant?.properties?.runtime), [...RUNTIMES]);
   assert.deepEqual(expectEnum(checkpointVariant?.properties?.status), ["active", "superseded", "invalidated"]);
+});
+
+test("session resume receipt schema stays aligned with executable receipt statuses", async () => {
+  const schema = await readSchema("../../schemas/session-resume-receipt.schema.json");
+  const variant = schema.allOf?.[1];
+  const properties = variant?.properties ?? {};
+
+  assert.deepEqual(expectEnum(properties.receipt_status), [...SESSION_RESUME_RECEIPT_STATUSES]);
+  assert.deepEqual(expectEnum(properties.adapter), ["openclaw", "hermes"]);
 });
 
 test("temporal world schema stays aligned with executable world-model enums", async () => {
