@@ -359,7 +359,7 @@ test("non-canonical intake rejects reuse when payload or authenticated authority
   );
 });
 
-test("non-canonical intake rejects partial materialization when raw payload is missing", async (t) => {
+test("non-canonical intake repairs partial materialization when raw payload is missing", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
   t.after(async () => {
     await rm(rootDir, { recursive: true, force: true });
@@ -369,8 +369,12 @@ test("non-canonical intake rejects partial materialization when raw payload is m
   const first = await writeNonCanonicalIntakeToStore(input);
   await rm(first.paths.raw_payload, { force: true });
 
-  await assert.rejects(
-    () => writeNonCanonicalIntakeToStore(input),
-    /partially materialized/,
-  );
+  const repaired = await writeNonCanonicalIntakeToStore(input);
+  const payload = await readFile(repaired.paths.raw_payload, "utf8");
+
+  assert.equal(repaired.reused, false);
+  assert.equal(repaired.records.source_record.id, input.ids.source);
+  assert.equal(repaired.records.disposition_record.id, input.ids.disposition);
+  assert.match(payload, /non-canonical\/evidence_only\/001/);
+  assert.match(await readFile(join(rootDir, "audits/changes.log"), "utf8"), /non_canonical_intake/);
 });

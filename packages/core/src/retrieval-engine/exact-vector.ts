@@ -218,33 +218,47 @@ function applyReadPolicySuppression(candidate: RetrievalCandidate, record: CoreR
   };
 }
 
+function selectSearchCandidates(candidates: RetrievalCandidate[], scoreKey: "vector_score" | "lexical_score", topK: number): RetrievalCandidate[] {
+  const sorted = candidates.sort((left, right) => (right[scoreKey] ?? 0) - (left[scoreKey] ?? 0));
+  const included = sorted
+    .filter((candidate) => !candidate.suppression_reasons?.length)
+    .slice(0, topK);
+  const suppressed = sorted
+    .filter((candidate) => candidate.suppression_reasons?.length)
+    .slice(0, topK);
+
+  return [...included, ...suppressed];
+}
+
 export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVectorSearchResult {
   const recordsById = new Map(input.records.map((record) => [record.id, record]));
   const chunksById = new Map(input.chunks.map((chunk) => [chunk.id, chunk]));
 
-  const candidates = input.embeddings
-    .map((embedding) => {
-      const chunk = chunksById.get(embedding.chunk_ref);
-      if (!chunk) return undefined;
-      if (!input.recipe.layer_scope.includes(chunk.source_layer)) return undefined;
+  const candidates = selectSearchCandidates(
+    input.embeddings
+      .map((embedding) => {
+        const chunk = chunksById.get(embedding.chunk_ref);
+        if (!chunk) return undefined;
+        if (!input.recipe.layer_scope.includes(chunk.source_layer)) return undefined;
 
-      const vector = input.embedding_vectors[embedding.id];
-      if (!vector) return undefined;
+        const vector = input.embedding_vectors[embedding.id];
+        if (!vector) return undefined;
 
-      const record = recordsById.get(chunk.source_ref);
-      if (!record) return undefined;
+        const record = recordsById.get(chunk.source_ref);
+        if (!record) return undefined;
 
-      const candidate = candidateFor({
-        record,
-        chunk,
-        vector_score: cosineSimilarity(input.query_vector, vector),
-        recipe: input.recipe,
-      });
-      return applyReadPolicySuppression(candidate, record, input.read_context);
-    })
-    .filter((candidate): candidate is RetrievalCandidate => candidate !== undefined)
-    .sort((left, right) => (right.vector_score ?? 0) - (left.vector_score ?? 0))
-    .slice(0, input.recipe.vector_top_k);
+        const candidate = candidateFor({
+          record,
+          chunk,
+          vector_score: cosineSimilarity(input.query_vector, vector),
+          recipe: input.recipe,
+        });
+        return applyReadPolicySuppression(candidate, record, input.read_context);
+      })
+      .filter((candidate): candidate is RetrievalCandidate => candidate !== undefined),
+    "vector_score",
+    input.recipe.vector_top_k,
+  );
 
   const search_run: VectorSearchRun = {
     id: input.id,
@@ -257,7 +271,7 @@ export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVe
     },
     provenance: {
       source_type: "exact_vector_search",
-    source_ref: input.query_ref,
+      source_ref: input.query_ref,
       evidence_refs: candidates.map((candidate) => candidate.ref.id),
     },
     query_ref: input.query_ref,
@@ -322,32 +336,34 @@ export function executeDeterministicAnnVectorSearch(input: DeterministicAnnVecto
 export function executeLexicalCandidateSearch(input: LexicalCandidateSearchInput): RetrievalCandidate[] {
   const recordsById = new Map(input.records.map((record) => [record.id, record]));
 
-  return input.chunks
-    .map((chunk) => {
-      if (!input.recipe.layer_scope.includes(chunk.source_layer)) return undefined;
-      const record = recordsById.get(chunk.source_ref);
-      if (!record) return undefined;
-      const chunkText = input.chunk_texts[chunk.id];
-      if (!chunkText) return undefined;
+  return selectSearchCandidates(
+    input.chunks
+      .map((chunk) => {
+        if (!input.recipe.layer_scope.includes(chunk.source_layer)) return undefined;
+        const record = recordsById.get(chunk.source_ref);
+        if (!record) return undefined;
+        const chunkText = input.chunk_texts[chunk.id];
+        if (!chunkText) return undefined;
 
-      const lexical_score = lexicalOverlapScore(input.query_text, chunkText);
-      if (lexical_score <= 0) return undefined;
+        const lexical_score = lexicalOverlapScore(input.query_text, chunkText);
+        if (lexical_score <= 0) return undefined;
 
-      const candidate = candidateFor({
-        record,
-        chunk,
-        lexical_score,
-        recipe: input.recipe,
-        why_retrieved: [
-          "matched deterministic lexical search",
-          chunk.symbol_refs.length > 0 ? "matched symbol-linked chunk" : "matched chunk",
-        ],
-      });
-      return applyReadPolicySuppression(candidate, record, input.read_context);
-    })
-    .filter((candidate): candidate is RetrievalCandidate => candidate !== undefined)
-    .sort((left, right) => (right.lexical_score ?? 0) - (left.lexical_score ?? 0))
-    .slice(0, input.recipe.vector_top_k);
+        const candidate = candidateFor({
+          record,
+          chunk,
+          lexical_score,
+          recipe: input.recipe,
+          why_retrieved: [
+            "matched deterministic lexical search",
+            chunk.symbol_refs.length > 0 ? "matched symbol-linked chunk" : "matched chunk",
+          ],
+        });
+        return applyReadPolicySuppression(candidate, record, input.read_context);
+      })
+      .filter((candidate): candidate is RetrievalCandidate => candidate !== undefined),
+    "lexical_score",
+    input.recipe.vector_top_k,
+  );
 }
 
 function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandidate[] {

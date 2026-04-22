@@ -1,14 +1,13 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as relativePosix } from "node:path/posix";
 
-import { appendAuditChange, appendValidationLog } from "../audit/log.js";
+import { appendAuditChange, appendValidationLog, type AuditChangeEntry, type ValidationLogEntry } from "../audit/log.js";
 import { atomicWriteText, isMissingFileError } from "../store/atomic-write.js";
 import {
   coreRecordPath,
   initializeStore,
   readCoreRecord,
-  writeCoreRecord,
 } from "../store/io.js";
 import type {
   AuthenticatedPrincipal,
@@ -36,6 +35,8 @@ const LEGAL_SOURCE_CONTENT_ROOTS = [
   "raw/attachments",
 ] as const;
 const LEGAL_ATTACHMENT_ROOT = "raw/attachments";
+const NON_CANONICAL_RECOVERY_PREFIX = "recovery-non-canonical-intake-";
+const NON_CANONICAL_RECOVERY_SUFFIX = ".json";
 
 export interface NonCanonicalIntakeIds {
   source: string;
@@ -106,6 +107,32 @@ export interface NonCanonicalIntakeResult {
   paths: NonCanonicalIntakePaths;
   records: NonCanonicalIntakeRecords;
   validation_issues: ValidationIssue[];
+}
+
+interface MaterializedFile {
+  path: string;
+  content: string;
+}
+
+type NonCanonicalRecoveryJournalAppendEntry =
+  | {
+      kind: "audit_change";
+      entry: AuditChangeEntry;
+    }
+  | {
+      kind: "validation_log";
+      entry: ValidationLogEntry;
+    };
+
+interface NonCanonicalRecoveryJournal {
+  version: 1;
+  operation: "non_canonical_intake";
+  created_at: string;
+  files: Array<{
+    relative_path: string;
+    content: string;
+  }>;
+  append_entries: NonCanonicalRecoveryJournalAppendEntry[];
 }
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
@@ -204,6 +231,12 @@ async function writeTextFile(filePath: string, content: string): Promise<void> {
   await atomicWriteText(filePath, content);
 }
 
+async function materializeFiles(files: MaterializedFile[]): Promise<void> {
+  for (const file of files) {
+    await writeTextFile(file.path, file.content);
+  }
+}
+
 async function pathExists(filePath: string): Promise<boolean> {
   return readFile(filePath, "utf8")
     .then(() => true)
@@ -211,6 +244,90 @@ async function pathExists(filePath: string): Promise<boolean> {
       if (isMissingFileError(error)) return false;
       throw error;
     });
+}
+
+async function replayAppendEntries(
+  rootDir: string,
+  entries: NonCanonicalRecoveryJournalAppendEntry[],
+): Promise<void> {
+  for (const entry of entries) {
+    if (entry.kind === "validation_log") {
+      await appendValidationLog(rootDir, entry.entry);
+      continue;
+    }
+
+    await appendAuditChange(rootDir, entry.entry);
+  }
+}
+
+function safeJournalSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "non_canonical_intake";
+}
+
+function relativeStorePath(rootDir: string, filePath: string): string {
+  const rootPath = resolve(rootDir);
+  const targetPath = resolveStorePath(rootDir, filePath);
+  return relative(rootPath, targetPath);
+}
+
+function recoveryJournalPath(rootDir: string, stableId: string): string {
+  return resolveStorePath(
+    rootDir,
+    `audits/snapshots/${NON_CANONICAL_RECOVERY_PREFIX}${safeJournalSegment(stableId)}${NON_CANONICAL_RECOVERY_SUFFIX}`,
+  );
+}
+
+function buildRecoveryJournal(input: {
+  rootDir: string;
+  created_at: string;
+  files: MaterializedFile[];
+  append_entries: NonCanonicalRecoveryJournalAppendEntry[];
+}): NonCanonicalRecoveryJournal {
+  return {
+    version: 1,
+    operation: "non_canonical_intake",
+    created_at: input.created_at,
+    files: input.files.map((file) => ({
+      relative_path: relativeStorePath(input.rootDir, file.path),
+      content: file.content,
+    })),
+    append_entries: input.append_entries,
+  };
+}
+
+async function writeRecoveryJournal(filePath: string, journal: NonCanonicalRecoveryJournal): Promise<void> {
+  await writeTextFile(filePath, `${JSON.stringify(journal, null, 2)}\n`);
+}
+
+async function recoverPendingJournal(rootDir: string, filePath: string): Promise<boolean> {
+  if (!(await pathExists(filePath))) {
+    return false;
+  }
+
+  const parsed = JSON.parse(await readFile(filePath, "utf8")) as Partial<NonCanonicalRecoveryJournal>;
+  if (parsed.operation !== "non_canonical_intake" || !Array.isArray(parsed.files)) {
+    throw new Error(`Non-canonical intake recovery journal is malformed: ${relativeStorePath(rootDir, filePath)}`);
+  }
+
+  const files = parsed.files.map((file, index) => {
+    if (
+      typeof file !== "object" ||
+      file === null ||
+      typeof file.relative_path !== "string" ||
+      typeof file.content !== "string"
+    ) {
+      throw new Error(`Non-canonical intake recovery journal entry ${index} is malformed`);
+    }
+    return {
+      path: resolveStorePath(rootDir, file.relative_path),
+      content: file.content,
+    };
+  });
+
+  await materializeFiles(files);
+  await replayAppendEntries(rootDir, parsed.append_entries ?? []);
+  await rm(filePath, { force: true });
+  return true;
 }
 
 function definedIntakePaths(paths: NonCanonicalIntakePaths): Array<[string, string]> {
@@ -234,6 +351,12 @@ function assertNoPathCollisions(paths: NonCanonicalIntakePaths): void {
       throw new Error(`Non-canonical intake paths collide: ${previous} and ${label}`);
     }
     seen.set(filePath, label);
+  }
+}
+
+async function resetPartiallyMaterializedIntake(paths: NonCanonicalIntakePaths): Promise<void> {
+  for (const [, filePath] of definedIntakePaths(paths)) {
+    await rm(filePath, { force: true });
   }
 }
 
@@ -520,6 +643,8 @@ export async function writeNonCanonicalIntakeToStore(
     diagnostic: diagnostic ? coreRecordPath(rootDir, diagnostic) : undefined,
   };
   assertNoPathCollisions(paths);
+  const journalPath = recoveryJournalPath(rootDir, disposition_record.id);
+  await recoverPendingJournal(rootDir, journalPath);
 
   const validation_issues = [
     source_record,
@@ -537,9 +662,12 @@ export async function writeNonCanonicalIntakeToStore(
   const hasAnyState = requiredPresence.some(Boolean);
   const hasCompleteState = requiredPresence.every(Boolean);
   if (hasAnyState && !hasCompleteState) {
-    throw new Error("Existing non-canonical intake is partially materialized");
+    await resetPartiallyMaterializedIntake(paths);
   }
-  const reused = hasCompleteState;
+  const refreshedPresence = hasAnyState && !hasCompleteState
+    ? await Promise.all(requiredPaths.map((filePath) => pathExists(filePath)))
+    : requiredPresence;
+  const reused = refreshedPresence.every(Boolean);
   const raw_payload = serializePayload(input, attachment_refs);
 
   if (reused) {
@@ -557,37 +685,79 @@ export async function writeNonCanonicalIntakeToStore(
   }
 
   if (!reused) {
-    await writeTextFile(paths.raw_payload, raw_payload);
-    await writeCoreRecord(rootDir, source_record);
-    if (runtime_context.runtime_instance) await writeCoreRecord(rootDir, runtime_context.runtime_instance);
-    if (runtime_context.runtime_session) await writeCoreRecord(rootDir, runtime_context.runtime_session);
-    if (runtime_context.conversation_thread) await writeCoreRecord(rootDir, runtime_context.conversation_thread);
-    if (observation) await writeCoreRecord(rootDir, observation);
-    if (diagnostic) await writeCoreRecord(rootDir, diagnostic);
-    await writeCoreRecord(rootDir, disposition_record);
-    await appendValidationLog(rootDir, {
-      entry_id: `validation:${disposition_record.id}:non-canonical-intake`,
-      at: input.now,
-      scope: input.validation_scope ?? `workflow:non-canonical:${input.mode}`,
-      issues: validation_issues,
-    });
-    await appendAuditChange(rootDir, {
-      entry_id: `audit:${disposition_record.id}:non_canonical_intake`,
-      at: input.now,
-      operation: "record_observation",
-      record_id: disposition_record.id,
-      record_kind: disposition_record.kind,
-      record_layer: disposition_record.layer,
-      detail: `Recorded ${input.mode} non-canonical intake without canon proposal.`,
-      related_refs: [
-        source_record.id,
-        ...(runtime_context.runtime_instance ? [runtime_context.runtime_instance.id] : []),
-        ...(runtime_context.runtime_session ? [runtime_context.runtime_session.id] : []),
-        ...(runtime_context.conversation_thread ? [runtime_context.conversation_thread.id] : []),
-        ...(observation ? [observation.id] : []),
-        ...(diagnostic ? [diagnostic.id] : []),
-      ],
-    });
+    const files: MaterializedFile[] = [
+      {
+        path: paths.raw_payload,
+        content: raw_payload,
+      },
+      {
+        path: paths.source_record,
+        content: `${JSON.stringify(source_record, null, 2)}\n`,
+      },
+      ...(runtime_context.runtime_instance
+        ? [{ path: paths.runtime_instance!, content: `${JSON.stringify(runtime_context.runtime_instance, null, 2)}\n` }]
+        : []),
+      ...(runtime_context.runtime_session
+        ? [{ path: paths.runtime_session!, content: `${JSON.stringify(runtime_context.runtime_session, null, 2)}\n` }]
+        : []),
+      ...(runtime_context.conversation_thread
+        ? [{ path: paths.conversation_thread!, content: `${JSON.stringify(runtime_context.conversation_thread, null, 2)}\n` }]
+        : []),
+      ...(observation
+        ? [{ path: paths.observation!, content: `${JSON.stringify(observation, null, 2)}\n` }]
+        : []),
+      ...(diagnostic
+        ? [{ path: paths.diagnostic!, content: `${JSON.stringify(diagnostic, null, 2)}\n` }]
+        : []),
+      {
+        path: paths.disposition_record,
+        content: `${JSON.stringify(disposition_record, null, 2)}\n`,
+      },
+    ];
+    const append_entries: NonCanonicalRecoveryJournalAppendEntry[] = [
+      {
+        kind: "validation_log",
+        entry: {
+          entry_id: `validation:${disposition_record.id}:non-canonical-intake`,
+          at: input.now,
+          scope: input.validation_scope ?? `workflow:non-canonical:${input.mode}`,
+          issues: validation_issues,
+        },
+      },
+      {
+        kind: "audit_change",
+        entry: {
+          entry_id: `audit:${disposition_record.id}:non_canonical_intake`,
+          at: input.now,
+          operation: "record_observation",
+          record_id: disposition_record.id,
+          record_kind: disposition_record.kind,
+          record_layer: disposition_record.layer,
+          detail: `Recorded ${input.mode} non-canonical intake without canon proposal.`,
+          related_refs: [
+            source_record.id,
+            ...(runtime_context.runtime_instance ? [runtime_context.runtime_instance.id] : []),
+            ...(runtime_context.runtime_session ? [runtime_context.runtime_session.id] : []),
+            ...(runtime_context.conversation_thread ? [runtime_context.conversation_thread.id] : []),
+            ...(observation ? [observation.id] : []),
+            ...(diagnostic ? [diagnostic.id] : []),
+          ],
+        },
+      },
+    ];
+
+    await writeRecoveryJournal(
+      journalPath,
+      buildRecoveryJournal({
+        rootDir,
+        created_at: input.now,
+        files,
+        append_entries,
+      }),
+    );
+    await materializeFiles(files);
+    await replayAppendEntries(rootDir, append_entries);
+    await rm(journalPath, { force: true });
   }
 
   return {

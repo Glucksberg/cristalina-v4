@@ -128,6 +128,33 @@ test("writeConversationPreferenceFlowToStore materializes and reuses the same fl
   assert.equal(auditLogAfter, auditLogBefore);
 });
 
+test("writeConversationPreferenceFlowToStore rejects canonical id reuse across create flows", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const first = buildInput(rootDir);
+  const firstResult = await writeConversationPreferenceFlowToStore(first);
+  const second = cloneInputWithSuffix(
+    rootDir,
+    "canonical_id_collision_002",
+    "The user prefers thorough answers for architecture reviews.",
+  );
+  second.source.speaker_ref = "actor_external_person_canonical_collision_002";
+  second.ids.canonical = first.ids.canonical;
+
+  await assert.rejects(
+    () => writeConversationPreferenceFlowToStore(second),
+    /cannot reuse existing canonical id/,
+  );
+
+  const canonicalRecords = await loadCanonicalRecords(rootDir);
+  assert.equal(canonicalRecords.length, 1);
+  assert.equal(canonicalRecords[0]?.id, first.ids.canonical);
+  assert.equal(canonicalRecords[0]?.statement, firstResult.records.canonical_record?.statement);
+});
+
 test("writeConversationPreferenceFlowToStore requires an authenticated principal", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {

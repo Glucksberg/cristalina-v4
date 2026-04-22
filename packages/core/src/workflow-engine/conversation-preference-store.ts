@@ -15,6 +15,7 @@ import {
   initializeStore,
   loadActorIdentities,
   loadCanonicalRecords,
+  loadCanonicalRecordById,
   loadConversationThreads,
   loadContradictionResolutions,
   loadCurationPackets,
@@ -3408,6 +3409,25 @@ async function buildExpectedIntakeForStore(
   };
 }
 
+async function assertCanonicalCreateIdAvailable(input: {
+  rootDir: string;
+  proposal: Proposal;
+  canonical_id: string;
+}): Promise<void> {
+  if (input.proposal.operation !== "create") {
+    return;
+  }
+
+  const existing = await loadCanonicalRecordById(input.rootDir, input.canonical_id);
+  if (!existing) {
+    return;
+  }
+
+  throw new Error(
+    `Canonical create proposal ${input.proposal.id} cannot reuse existing canonical id ${input.canonical_id}; use revise or supersede with an explicit target_ref`,
+  );
+}
+
 async function reconcilePersistedRuntimeIdentityArtifacts(
   rootDir: string,
   intake: ConversationPreferenceIntakeArtifacts,
@@ -3496,6 +3516,12 @@ export async function writeConversationPreferenceFlowToStore(
         conflicting_world_claim,
       } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);
       const paths = buildPaths(rootDir, source_record, intake, input);
+
+      await assertCanonicalCreateIdAvailable({
+        rootDir,
+        proposal: intake.proposal,
+        canonical_id: input.ids.canonical,
+      });
 
       const canonicalWorkflow = executeCanonicalProposalWorkflow({
         proposal: intake.proposal,
@@ -4292,6 +4318,11 @@ async function applyOwnerRatificationToExistingFlow(
     loadCanonicalRecords(rootDir),
     loadWorldClaims(rootDir),
   ]);
+  await assertCanonicalCreateIdAvailable({
+    rootDir,
+    proposal: existingFlow.records.intake.proposal,
+    canonical_id: basename(existingFlow.paths.canonical_record, ".json"),
+  });
   const blockingWorldConflictRef = findConflictingWorldClaim(
     existingFlow.records.intake.world_claim,
     existingWorldClaims,

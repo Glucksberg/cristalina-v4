@@ -384,3 +384,102 @@ test("exact search preserves read-policy suppression as retrieval metadata", () 
   assert.equal(hybridPrivateCandidate.text_preview, undefined);
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
+
+test("exact search spends top-k on readable candidates before read-policy-suppressed traces", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const canonChunk = fixture.chunks.find((chunk) => chunk.source_ref === fixture.canonical_record.id);
+  const canonEmbedding = fixture.embeddings.find((embedding) => embedding.chunk_ref === canonChunk?.id);
+  assert.ok(canonChunk);
+  assert.ok(canonEmbedding);
+
+  const privateCanon = {
+    ...fixture.canonical_record,
+    id: "mem_private_top_k_001",
+    visibility_state: {
+      privacy_scope: "owner_private" as const,
+    },
+    provenance: {
+      ...fixture.canonical_record.provenance,
+      actor_ref: "owner:private-top-k",
+    },
+  };
+  const visibleCanon = {
+    ...fixture.canonical_record,
+    id: "mem_visible_top_k_001",
+    statement: "The owner prefers visible lower scoring retrieval evidence.",
+    visibility_state: {
+      privacy_scope: "project_private" as const,
+    },
+    provenance: {
+      ...fixture.canonical_record.provenance,
+      actor_ref: "owner:visible-top-k",
+    },
+  };
+  const privateChunk = {
+    ...canonChunk,
+    id: "vchunk_private_top_k_001",
+    source_ref: privateCanon.id,
+  };
+  const visibleChunk = {
+    ...canonChunk,
+    id: "vchunk_visible_top_k_001",
+    source_ref: visibleCanon.id,
+  };
+  const privateEmbedding = {
+    ...canonEmbedding,
+    id: "embed_private_top_k_001",
+    chunk_ref: privateChunk.id,
+  };
+  const visibleEmbedding = {
+    ...canonEmbedding,
+    id: "embed_visible_top_k_001",
+    chunk_ref: visibleChunk.id,
+  };
+
+  const exact = executeExactVectorSearch({
+    id: "vector_search_run_suppressed_budget_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_suppressed_budget_001",
+    query_vector: [1, 0, 0],
+    recipe: {
+      ...fixture.recipe,
+      vector_top_k: 1,
+      final_top_k: 1,
+      require_canon_for_truth_claims: false,
+    },
+    chunks: [privateChunk, visibleChunk],
+    embeddings: [privateEmbedding, visibleEmbedding],
+    embedding_vectors: {
+      [privateEmbedding.id]: [1, 0, 0],
+      [visibleEmbedding.id]: [0.9, 0, 0],
+    },
+    records: [privateCanon, visibleCanon],
+    index_manifest_ref: fixture.index_manifest.id,
+    search_generation: "search_gen_suppressed_budget_001",
+    read_context: {
+      adapter: "openclaw",
+      audience: "runtime",
+      owner_identity_ref: "owner:visible-top-k",
+    },
+  });
+
+  assert.ok(exact.candidates.some((candidate) => candidate.ref.id === visibleCanon.id && !candidate.suppression_reasons?.length));
+  const privateCandidate = exact.candidates.find((candidate) => candidate.ref.id === privateCanon.id);
+  assert.deepEqual(privateCandidate?.suppression_reasons, ["visibility_scope_mismatch"]);
+  assert.deepEqual(exact.search_run.candidate_refs, [`candidate_${visibleCanon.id}`]);
+  assert.deepEqual(exact.search_run.suppressed_candidate_refs, [`candidate_${privateCanon.id}`]);
+
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_suppressed_budget_001",
+    recipe: {
+      ...fixture.recipe,
+      final_top_k: 1,
+      require_canon_for_truth_claims: false,
+    },
+    candidates: exact.candidates,
+  });
+
+  assert.deepEqual(hybrid.included_candidates.map((candidate) => candidate.ref.id), [visibleCanon.id]);
+  assert.ok(!hybrid.included_candidates.some((candidate) => candidate.ref.id === privateCanon.id));
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
