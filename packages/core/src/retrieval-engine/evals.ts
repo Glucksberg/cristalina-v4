@@ -4,6 +4,7 @@ import type {
   RetrievalEvalRun,
   RetrievalResult,
   RetrievalSuppressionReason,
+  VectorSearchRun,
   VisibilityState,
 } from "../types.js";
 
@@ -40,6 +41,17 @@ export interface CompareRetrievalBaselinesInput {
   eval_case: RetrievalEvalCase;
   baselines: RetrievalEvalBaseline[];
   k: number;
+  visibility_state?: VisibilityState;
+}
+
+export interface RunVectorSearchComparisonEvalInput {
+  id: string;
+  now: string;
+  exact_search_run: VectorSearchRun;
+  candidate_search_run: VectorSearchRun;
+  k: number;
+  recall_floor: number;
+  result_ref?: string | null;
   visibility_state?: VisibilityState;
 }
 
@@ -166,4 +178,82 @@ export function compareRetrievalBaselines(input: CompareRetrievalBaselinesInput)
       visibility_state: input.visibility_state,
     }),
   );
+}
+
+export function runVectorSearchComparisonEval(input: RunVectorSearchComparisonEvalInput): RetrievalEvalRun {
+  const k = Math.max(0, Math.floor(input.k));
+  const recallFloor = Math.max(0, Math.min(1, input.recall_floor));
+  const expected_included_candidate_refs = unique(input.exact_search_run.candidate_refs.slice(0, k));
+  const expected_suppressed_candidate_refs = unique(input.exact_search_run.suppressed_candidate_refs);
+  const observed_included_candidate_refs = unique(input.candidate_search_run.candidate_refs.slice(0, k));
+  const observed_suppressed_candidate_refs = unique(input.candidate_search_run.suppressed_candidate_refs);
+  const matchedExpected = intersectionSize(observed_included_candidate_refs, expected_included_candidate_refs);
+  const recall_at_k = expected_included_candidate_refs.length === 0 ? 1 : matchedExpected / expected_included_candidate_refs.length;
+  const precision_at_k = observed_included_candidate_refs.length === 0
+    ? expected_included_candidate_refs.length === 0 ? 1 : 0
+    : matchedExpected / observed_included_candidate_refs.length;
+
+  const failures = new Set<string>();
+  if (input.exact_search_run.query_ref !== input.candidate_search_run.query_ref) {
+    failures.add("query_ref_mismatch");
+  }
+  if (input.exact_search_run.recipe_ref !== input.candidate_search_run.recipe_ref) {
+    failures.add("recipe_ref_mismatch");
+  }
+  if (input.exact_search_run.metric !== input.candidate_search_run.metric) {
+    failures.add("metric_mismatch");
+  }
+  if (
+    input.exact_search_run.requested_layers.length !== input.candidate_search_run.requested_layers.length ||
+    !input.exact_search_run.requested_layers.every((layer) => input.candidate_search_run.requested_layers.includes(layer))
+  ) {
+    failures.add("requested_layers_mismatch");
+  }
+  if (recall_at_k < recallFloor) {
+    failures.add(`recall_below_floor:${recall_at_k}:${recallFloor}`);
+  }
+  for (const expectedRef of expected_included_candidate_refs) {
+    if (!observed_included_candidate_refs.includes(expectedRef)) failures.add(`missing_included_candidate:${expectedRef}`);
+  }
+  for (const expectedRef of expected_suppressed_candidate_refs) {
+    if (!observed_suppressed_candidate_refs.includes(expectedRef)) failures.add(`missing_suppressed_candidate:${expectedRef}`);
+  }
+
+  return {
+    id: input.id,
+    kind: "retrieval_eval_run",
+    layer: "derived",
+    authoritative_home: "governance",
+    created_at: input.now,
+    visibility_state: input.visibility_state ?? {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "retrieval_eval",
+      source_ref: input.exact_search_run.id,
+      evidence_refs: [
+        input.exact_search_run.id,
+        input.candidate_search_run.id,
+        ...expected_included_candidate_refs,
+        ...expected_suppressed_candidate_refs,
+        ...observed_included_candidate_refs,
+        ...observed_suppressed_candidate_refs,
+      ],
+    },
+    eval_case_ref: `vector_search_compare:${input.exact_search_run.id}:${input.candidate_search_run.id}`,
+    query_ref: input.exact_search_run.query_ref,
+    recipe_ref: input.exact_search_run.recipe_ref ?? input.candidate_search_run.recipe_ref ?? "unknown_recipe",
+    result_ref: input.result_ref ?? input.candidate_search_run.id,
+    trace_ref: null,
+    expected_included_candidate_refs,
+    expected_suppressed_candidate_refs,
+    observed_included_candidate_refs,
+    observed_suppressed_candidate_refs,
+    recall_at_k,
+    precision_at_k,
+    authority_correct: true,
+    provenance_complete: true,
+    passed: failures.size === 0,
+    failure_reasons: [...failures].sort(),
+  };
 }

@@ -3,7 +3,8 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateVectorArtifact } from "../validation.js";
-import { compareRetrievalBaselines, runRetrievalEval, type RetrievalEvalCase } from "./evals.js";
+import { executeExactVectorSearch } from "./exact-vector.js";
+import { compareRetrievalBaselines, runRetrievalEval, runVectorSearchComparisonEval, type RetrievalEvalCase } from "./evals.js";
 
 test("retrieval eval passes only when relevance, authority, and provenance all match", () => {
   const fixture = buildSymbolicRetrievalFixture();
@@ -237,4 +238,73 @@ test("retrieval eval compares lexical, vector, and hybrid baselines with the sam
   for (const run of runs) {
     assert.deepEqual(validateVectorArtifact(run), []);
   }
+});
+
+test("retrieval eval compares ANN search run against exact vector baseline", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const exact = executeExactVectorSearch({
+    id: "vector_search_run_exact_ann_compare_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_ann_compare_001",
+    query_vector: [1, 0, 0],
+    recipe: fixture.recipe,
+    chunks: fixture.chunks,
+    embeddings: fixture.embeddings,
+    embedding_vectors: fixture.embedding_vectors,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    index_manifest_ref: fixture.index_manifest.id,
+    search_generation: "search_gen_exact_ann_compare_001",
+  });
+  const annSearchRun = {
+    ...exact.search_run,
+    id: "vector_search_run_ann_compare_001",
+    index_manifest_ref: "vector_index_ann_compare_001",
+    provenance: {
+      ...exact.search_run.provenance,
+      source_type: "ann_vector_search",
+    },
+    search_generation: "search_gen_ann_compare_001",
+  };
+
+  const passed = runVectorSearchComparisonEval({
+    id: "retrieval_eval_run_exact_vs_ann_compare_001",
+    now: "2026-04-21T00:00:00.000Z",
+    exact_search_run: exact.search_run,
+    candidate_search_run: annSearchRun,
+    k: fixture.recipe.vector_top_k,
+    recall_floor: 1,
+  });
+
+  assert.equal(passed.passed, true);
+  assert.equal(passed.result_ref, annSearchRun.id);
+  assert.equal(passed.recall_at_k, 1);
+  assert.equal(passed.precision_at_k, 1);
+  assert.deepEqual(passed.expected_included_candidate_refs, exact.search_run.candidate_refs);
+  assert.deepEqual(passed.observed_included_candidate_refs, annSearchRun.candidate_refs);
+  assert.deepEqual(validateVectorArtifact(passed), []);
+
+  const failed = runVectorSearchComparisonEval({
+    id: "retrieval_eval_run_exact_vs_ann_compare_bad_001",
+    now: "2026-04-21T00:00:00.000Z",
+    exact_search_run: exact.search_run,
+    candidate_search_run: {
+      ...annSearchRun,
+      candidate_refs: annSearchRun.candidate_refs.slice(0, -1),
+      requested_layers: ["canon"],
+    },
+    k: fixture.recipe.vector_top_k,
+    recall_floor: 1,
+  });
+
+  assert.equal(failed.passed, false);
+  assert.ok(failed.recall_at_k < 1);
+  assert.ok(failed.failure_reasons.some((reason) => reason.startsWith("recall_below_floor:")));
+  assert.ok(failed.failure_reasons.includes("requested_layers_mismatch"));
+  assert.ok(failed.failure_reasons.some((reason) => reason.startsWith("missing_included_candidate:")));
+  assert.deepEqual(validateVectorArtifact(failed), []);
 });

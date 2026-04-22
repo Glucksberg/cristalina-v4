@@ -838,6 +838,12 @@ named result variants such as lexical, vector, and hybrid, producing one eval
 run per baseline so recall, precision, authority correctness, and provenance
 completeness stay directly comparable.
 
+Exact-vs-ANN comparisons should also reuse `RetrievalEvalRun`. The exact search
+run supplies the expected candidate refs, the ANN search run supplies the
+observed candidate refs, and the eval must fail on query, recipe, metric, layer,
+or recall-floor drift instead of treating approximate search as an independent
+source of truth.
+
 ---
 
 ## 16. Maintenance Jobs
