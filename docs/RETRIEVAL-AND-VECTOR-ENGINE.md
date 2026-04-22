@@ -322,6 +322,10 @@ Every sidecar blob must be referenced by a metadata record with:
 - generation id
 - producing policy/model id
 
+Maintenance validation may inspect supplied sidecar payloads, but sidecar drift
+must be reported as explicit maintenance issues rather than silently repaired
+during retrieval.
+
 ---
 
 ## 6. Storage Layout

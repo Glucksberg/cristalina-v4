@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   EmbeddingModelManifest,
   EmbeddingRecord,
@@ -13,10 +15,16 @@ export interface ValidateVectorArtifactsInput {
   now: string;
   corpus?: VectorCorpus;
   chunks: VectorChunk[];
+  chunk_texts?: Record<string, string>;
   embedding_model?: EmbeddingModelManifest;
   embeddings: EmbeddingRecord[];
+  embedding_vectors?: Record<string, number[]>;
   index_manifest?: VectorIndexManifest;
   visibility_state?: VisibilityState;
+}
+
+function sha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function unique(values: string[]): string[] {
@@ -48,6 +56,19 @@ export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): Ve
     }
   }
 
+  if (input.chunk_texts) {
+    for (const chunk of input.chunks) {
+      const text = input.chunk_texts[chunk.id];
+      if (text === undefined) {
+        issueCodes.add("missing_chunk_text_blob");
+        continue;
+      }
+      if (chunk.chunk_text_ref.checksum !== sha256(text)) {
+        issueCodes.add("chunk_text_checksum_mismatch");
+      }
+    }
+  }
+
   for (const embedding of input.embeddings) {
     const chunk = chunksById.get(embedding.chunk_ref);
     if (!chunk) {
@@ -73,6 +94,19 @@ export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): Ve
     }
     if (embedding.vector_checksum !== embedding.vector_ref.checksum) {
       issueCodes.add("embedding_vector_checksum_mismatch");
+    }
+    if (input.embedding_vectors) {
+      const vector = input.embedding_vectors[embedding.id];
+      if (vector === undefined) {
+        issueCodes.add("missing_embedding_vector_blob");
+        continue;
+      }
+      if (vector.length !== embedding.dimensions) {
+        issueCodes.add("embedding_vector_dimension_mismatch");
+      }
+      if (embedding.vector_checksum !== sha256(JSON.stringify(vector))) {
+        issueCodes.add("embedding_vector_checksum_mismatch");
+      }
     }
   }
 
