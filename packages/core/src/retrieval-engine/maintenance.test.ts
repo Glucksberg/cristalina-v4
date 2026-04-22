@@ -60,6 +60,31 @@ test("vector maintenance reports orphan embeddings and generation drift", () => 
   assert.deepEqual(validateVectorArtifact(run), []);
 });
 
+test("vector maintenance detects stale exact index checksums against embedding membership", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const driftedEmbedding = {
+    ...fixture.embeddings[0],
+    vector_checksum: "sha256:changed-vector-checksum",
+    vector_ref: {
+      ...fixture.embeddings[0].vector_ref,
+      checksum: "sha256:changed-vector-checksum",
+    },
+  };
+  const run = validateVectorArtifacts({
+    id: "vector_maintenance_run_exact_index_checksum_drift_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: fixture.corpus,
+    chunks: fixture.chunks,
+    embedding_model: fixture.embedding_model,
+    embeddings: [driftedEmbedding, ...fixture.embeddings.slice(1)],
+    index_manifest: fixture.index_manifest,
+  });
+
+  assert.equal(run.status, "completed_with_issues");
+  assert.ok(run.issue_codes.includes("index_checksum_mismatch"));
+  assert.deepEqual(validateVectorArtifact(run), []);
+});
+
 test("vector maintenance validates supplied chunk text and embedding vector sidecar payloads", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const retrievalRun = executeDeterministicRetrieval({

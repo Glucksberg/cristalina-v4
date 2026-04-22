@@ -63,6 +63,67 @@ test("external candidate normalization preserves mapped refs without granting pr
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
 
+test("external candidate normalization applies read policy to mapped local refs", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const privateCanon = {
+    ...fixture.canonical_record,
+    visibility_state: {
+      privacy_scope: "owner_private" as const,
+    },
+    provenance: {
+      ...fixture.canonical_record.provenance,
+      actor_ref: "owner:retrieval-private",
+    },
+  };
+  const [candidate] = normalizeExternalCandidates({
+    recipe: {
+      ...fixture.recipe,
+      external_candidate_policy: "allow_normalized",
+      require_canon_for_truth_claims: false,
+    },
+    records: [privateCanon],
+    read_context: {
+      adapter: "openclaw",
+      audience: "runtime",
+      owner_identity_ref: "owner:other",
+    },
+    candidates: [
+      {
+        provider_id: "benchmark_provider",
+        external_candidate_id: "external-private-canon-001",
+        mapped_ref: {
+          id: privateCanon.id,
+          kind: privateCanon.kind,
+          layer: privateCanon.layer,
+        },
+        source_layer: "canon",
+        authority: "canon",
+        score: 0.99,
+        retrieved_at: "2026-04-21T00:00:00.000Z",
+        text_preview: privateCanon.statement,
+      },
+    ],
+  });
+
+  assert.ok(candidate);
+  assert.equal(candidate.text_preview, undefined);
+  assert.deepEqual(candidate.suppression_reasons, ["visibility_scope_mismatch"]);
+  assert.equal(candidate.can_support_proposal, false);
+
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_external_private_001",
+    recipe: {
+      ...fixture.recipe,
+      external_candidate_policy: "allow_normalized",
+      require_canon_for_truth_claims: false,
+    },
+    candidates: [candidate],
+  });
+  assert.equal(hybrid.included_candidates.length, 0);
+  assert.equal(hybrid.suppressed_candidates[0]?.id, candidate.id);
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
+
 test("external candidate normalization suppresses unmapped or forbidden candidates", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const [unmapped, forbidden] = normalizeExternalCandidates({

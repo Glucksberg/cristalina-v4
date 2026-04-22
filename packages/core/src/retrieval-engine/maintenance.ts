@@ -126,6 +126,34 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function exactIndexChecksum(input: {
+  corpus_ref: string;
+  embeddings: EmbeddingRecord[];
+}): string {
+  return sha256(JSON.stringify({
+    corpus_ref: input.corpus_ref,
+    embedding_refs: input.embeddings.map((embedding) => embedding.id),
+    vector_checksums: input.embeddings.map((embedding) => embedding.vector_checksum),
+  }));
+}
+
+function annIndexChecksum(input: {
+  index_manifest: VectorIndexManifest;
+  embeddings: EmbeddingRecord[];
+  exact_baseline_index_manifest?: VectorIndexManifest;
+}): string {
+  return sha256(stableJson({
+    ann_parameters: input.index_manifest.ann_parameters ?? {},
+    ann_recall_floor: input.index_manifest.ann_recall_floor,
+    ann_strategy: input.index_manifest.ann_strategy,
+    corpus_ref: input.index_manifest.corpus_ref,
+    embedding_refs: input.embeddings.map((embedding) => embedding.id),
+    exact_baseline_index_ref: input.index_manifest.exact_baseline_index_ref,
+    exact_baseline_index_checksum: input.exact_baseline_index_manifest?.index_checksum,
+    vector_checksums: input.embeddings.map((embedding) => embedding.vector_checksum),
+  }));
+}
+
 export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): VectorMaintenanceRun {
   const issueCodes = new Set<string>();
   const chunksById = new Map(input.chunks.map((chunk) => [chunk.id, chunk]));
@@ -219,6 +247,15 @@ export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): Ve
     if (input.index_manifest.index_checksum !== undefined && input.index_manifest.index_checksum !== input.index_manifest.index_ref.checksum) {
       issueCodes.add("index_checksum_mismatch");
     }
+    if (input.index_manifest.index_kind === "exact") {
+      const expectedChecksum = exactIndexChecksum({
+        corpus_ref: input.index_manifest.corpus_ref,
+        embeddings: input.embeddings,
+      });
+      if (input.index_manifest.index_checksum !== expectedChecksum) {
+        issueCodes.add("index_checksum_mismatch");
+      }
+    }
     if (input.index_manifest.index_kind === "ann") {
       const baseline = input.exact_baseline_index_manifest;
       if (!baseline) {
@@ -248,6 +285,14 @@ export function validateVectorArtifacts(input: ValidateVectorArtifactsInput): Ve
         if (input.index_manifest.embedding_generation !== baseline.embedding_generation) {
           issueCodes.add("ann_baseline_embedding_generation_mismatch");
         }
+      }
+      const expectedChecksum = annIndexChecksum({
+        index_manifest: input.index_manifest,
+        embeddings: input.embeddings,
+        exact_baseline_index_manifest: baseline,
+      });
+      if (input.index_manifest.index_checksum !== expectedChecksum) {
+        issueCodes.add("index_checksum_mismatch");
       }
     }
   }
@@ -425,11 +470,10 @@ export function rebuildExactIndex(input: RebuildExactIndexInput): RebuildExactIn
   }
 
   const embeddingGeneration = embeddingGenerations[0];
-  const indexChecksum = sha256(JSON.stringify({
+  const indexChecksum = exactIndexChecksum({
     corpus_ref: input.corpus.id,
-    embedding_refs: input.embeddings.map((embedding) => embedding.id),
-    vector_checksums: input.embeddings.map((embedding) => embedding.vector_checksum),
-  }));
+    embeddings: input.embeddings,
+  });
   const index_manifest: VectorIndexManifest = {
     id: input.index_manifest_id,
     kind: "vector_index_manifest",

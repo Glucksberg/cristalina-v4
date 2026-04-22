@@ -95,3 +95,73 @@ test("deterministic retrieval orchestrator rejects query and recipe drift", () =
     /recipe mismatch/,
   );
 });
+
+test("deterministic retrieval orchestrator narrows recipe scope to requested query layers", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const run = executeDeterministicRetrieval({
+    now: "2026-04-21T00:00:00.000Z",
+    query: {
+      id: "retrieval_query_orchestrator_canon_only_001",
+      query_text: "answer style",
+      recipe_ref: fixture.recipe.id,
+      requested_layers: ["canon"],
+      read_policy_version: fixture.recipe.read_policy_version,
+    },
+    recipe: fixture.recipe,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    symbol_anchors: [fixture.symbol_anchor],
+    embedding_model: {
+      ...fixture.embedding_model,
+      dimensions: 8,
+      normalization_mode: "deterministic_fixture_sha256_unit",
+    },
+    chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+    corpus_id: "vector_corpus_orchestrator_canon_only_001",
+    corpus_generation: "corpus_gen_orchestrator_canon_only_001",
+    chunk_generation: "chunk_gen_orchestrator_canon_only_001",
+    embedding_generation: "embedding_gen_orchestrator_canon_only_001",
+    embedding_batch_id: "embedding_batch_orchestrator_canon_only_001",
+    index_manifest_id: "vector_index_orchestrator_canon_only_001",
+    index_generation: "index_gen_orchestrator_canon_only_001",
+    search_run_id: "vector_search_orchestrator_canon_only_001",
+    search_generation: "search_gen_orchestrator_canon_only_001",
+  });
+
+  assert.deepEqual(run.search_run.requested_layers, ["canon"]);
+  assert.ok(run.candidates.length > 0);
+  assert.ok(run.candidates.every((candidate) => candidate.layer === "canon"));
+  assert.ok(run.result.included_candidates.every((candidate) => candidate.layer === "canon"));
+
+  assert.throws(
+    () =>
+      executeDeterministicRetrieval({
+        now: "2026-04-21T00:00:00.000Z",
+        query: {
+          id: "retrieval_query_orchestrator_bad_layer_001",
+          query_text: "answer style",
+          recipe_ref: fixture.recipe.id,
+          requested_layers: ["governance"],
+          read_policy_version: fixture.recipe.read_policy_version,
+        },
+        recipe: fixture.recipe,
+        records: [fixture.canonical_record],
+        embedding_model: fixture.embedding_model,
+        chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+        corpus_id: "vector_corpus_orchestrator_bad_layer_001",
+        corpus_generation: "corpus_gen_orchestrator_bad_layer_001",
+        chunk_generation: "chunk_gen_orchestrator_bad_layer_001",
+        embedding_generation: "embedding_gen_orchestrator_bad_layer_001",
+        embedding_batch_id: "embedding_batch_orchestrator_bad_layer_001",
+        index_manifest_id: "vector_index_orchestrator_bad_layer_001",
+        index_generation: "index_gen_orchestrator_bad_layer_001",
+        search_run_id: "vector_search_orchestrator_bad_layer_001",
+        search_generation: "search_gen_orchestrator_bad_layer_001",
+      }),
+    /outside recipe scope/,
+  );
+});

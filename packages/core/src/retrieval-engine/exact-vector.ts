@@ -399,6 +399,9 @@ export function executeHybridRetrieval(input: HybridRetrievalInput): RetrievalRe
 
   const policySuppressed = scored.map((candidate) => {
     const suppressionReasons = new Set(candidate.suppression_reasons ?? []);
+    if (candidate.authority === "editorial" && !input.recipe.allow_editorial_wiki) {
+      suppressionReasons.add("authority_mismatch");
+    }
     if (candidate.authority === "editorial" && input.recipe.require_canon_for_truth_claims) {
       suppressionReasons.add("unsupported_wiki_claim");
     }

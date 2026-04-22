@@ -1,4 +1,6 @@
+import { evaluateProjectionReadDecision, type ProjectionReadContext } from "../adapter-sdk/projection.js";
 import type {
+  CoreRecord,
   ExternalCandidateBatch,
   ExternalRetrievalCandidate,
   Layer,
@@ -12,11 +14,15 @@ import type {
 export interface NormalizeExternalCandidatesInput {
   recipe: RetrievalRecipe;
   candidates: ExternalRetrievalCandidate[];
+  records?: CoreRecord[];
+  read_context?: ProjectionReadContext;
 }
 
 export interface NormalizeExternalCandidateBatchInput {
   recipe: RetrievalRecipe;
   batch: ExternalCandidateBatch;
+  records?: CoreRecord[];
+  read_context?: ProjectionReadContext;
 }
 
 export interface ExternalCandidateProviderRequest {
@@ -77,6 +83,8 @@ function isMappedCandidate(
 function suppressionReasons(input: {
   recipe: RetrievalRecipe;
   candidate: ExternalRetrievalCandidate;
+  mapped_record?: CoreRecord;
+  read_context?: ProjectionReadContext;
 }): RetrievalSuppressionReason[] {
   const reasons = new Set<RetrievalSuppressionReason>();
   if (input.recipe.external_candidate_policy !== "allow_normalized") {
@@ -90,27 +98,39 @@ function suppressionReasons(input: {
   if ((input.candidate.unsupported_mapping_reasons ?? []).length > 0) {
     reasons.add("invalid_external_candidate");
   }
+  if (input.read_context && isMappedCandidate(input.candidate)) {
+    if (!input.mapped_record) {
+      reasons.add("invalid_external_candidate");
+    } else if (!evaluateProjectionReadDecision(input.mapped_record, input.read_context).include) {
+      reasons.add("visibility_scope_mismatch");
+    }
+  }
   return [...reasons];
 }
 
 export function normalizeExternalCandidates(input: NormalizeExternalCandidatesInput): RetrievalCandidate[] {
+  const recordsById = new Map((input.records ?? []).map((record) => [record.id, record]));
   return input.candidates.map((candidate) => {
+    const mapped = isMappedCandidate(candidate);
+    const mappedRecord = mapped ? recordsById.get(candidate.mapped_ref.id) : undefined;
     const reasons = suppressionReasons({
       recipe: input.recipe,
       candidate,
+      mapped_record: mappedRecord,
+      read_context: input.read_context,
     });
-    const mapped = isMappedCandidate(candidate);
     const ref = mapped ? candidate.mapped_ref : fallbackRef(candidate);
     const layer = mapped ? candidate.source_layer : "derived";
     const authority = mapped ? candidate.authority : "derived";
     const suppression_reasons = reasons.length > 0 ? reasons : undefined;
+    const readPolicySuppressed = reasons.includes("visibility_scope_mismatch");
 
     return {
       id: `candidate_external_${safeId(candidate.provider_id)}_${safeId(candidate.external_candidate_id)}`,
       ref,
       layer,
       authority,
-      text_preview: candidate.text_preview,
+      text_preview: readPolicySuppressed ? undefined : candidate.text_preview,
       symbol_refs: unique(candidate.symbol_refs ?? []),
       semantic_slot: candidate.semantic_slot,
       vector_score: candidate.score,
@@ -141,6 +161,8 @@ export function normalizeExternalCandidateBatch(input: NormalizeExternalCandidat
 
   return normalizeExternalCandidates({
     recipe: input.recipe,
+    records: input.records,
+    read_context: input.read_context,
     candidates: input.batch.candidates.map((candidate) => ({
       ...candidate,
       score_normalization: candidate.score_normalization ?? input.batch.score_normalization ?? undefined,

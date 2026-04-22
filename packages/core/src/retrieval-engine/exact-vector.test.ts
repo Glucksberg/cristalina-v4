@@ -266,6 +266,32 @@ test("hybrid retrieval suppresses stale and contradicted candidates before propo
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
 
+test("hybrid retrieval honors recipes that forbid editorial wiki context", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const wikiCandidate = fixture.retrieval_result.suppressed_candidates.find((candidate) => candidate.layer === "wiki");
+  assert.ok(wikiCandidate);
+
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_no_editorial_wiki_001",
+    recipe: {
+      ...fixture.recipe,
+      allow_editorial_wiki: false,
+      require_canon_for_truth_claims: false,
+    },
+    candidates: [
+      {
+        ...wikiCandidate,
+        suppression_reasons: undefined,
+      },
+    ],
+  });
+
+  assert.equal(hybrid.included_candidates.length, 0);
+  assert.deepEqual(hybrid.suppressed_candidates[0]?.suppression_reasons, ["authority_mismatch"]);
+  assert.equal(hybrid.suppressed_candidates[0]?.can_support_proposal, false);
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
+
 test("hybrid retrieval records projection budget suppression after legal filters", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const raw = fixture.retrieval_result.included_candidates.find((candidate) => candidate.layer === "raw");

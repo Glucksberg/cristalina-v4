@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   CanonicalMemoryObject,
   EmbeddingModelManifest,
@@ -47,6 +49,10 @@ function provenance(source_ref: string, evidence_refs: string[] = []) {
     evidence_refs,
     actor_ref: "system:test",
   };
+}
+
+function sha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function textRef(id: string, generation: string) {
@@ -262,9 +268,14 @@ export function buildSymbolicRetrievalFixture(): SymbolicRetrievalFixture {
     };
   });
 
+  const indexChecksum = sha256(JSON.stringify({
+    corpus_ref: corpus.id,
+    embedding_refs: embeddings.map((embedding) => embedding.id),
+    vector_checksums: embeddings.map((embedding) => embedding.vector_checksum),
+  }));
   const index_ref = {
     path: "derived/vector/indexes/symbolic-fixture/exact-index.json",
-    checksum: "sha256:index-symbolic-fixture",
+    checksum: indexChecksum,
     encoding: "json_float32" as const,
     dimensions: 3,
     generation_id: "index_gen_symbolic_retrieval_001",
@@ -290,7 +301,7 @@ export function buildSymbolicRetrievalFixture(): SymbolicRetrievalFixture {
     embedding_generation: embeddingGeneration,
     index_generation: "index_gen_symbolic_retrieval_001",
     vector_encoding: "json_float32",
-    index_checksum: index_ref.checksum,
+    index_checksum: indexChecksum,
   };
 
   const recipe: RetrievalRecipe = {

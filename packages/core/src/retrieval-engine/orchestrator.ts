@@ -168,6 +168,15 @@ export function executeDeterministicRetrieval(input: ExecuteDeterministicRetriev
   if (input.query.read_policy_version !== input.recipe.read_policy_version) {
     throw new Error(`Retrieval query read policy mismatch: ${input.query.read_policy_version} !== ${input.recipe.read_policy_version}`);
   }
+  for (const layer of input.query.requested_layers) {
+    if (!input.recipe.layer_scope.includes(layer)) {
+      throw new Error(`Retrieval query requested layer is outside recipe scope: ${layer}`);
+    }
+  }
+  const effectiveRecipe: RetrievalRecipe = {
+    ...input.recipe,
+    layer_scope: input.query.requested_layers,
+  };
 
   const provider = input.provider ?? createDeterministicFixtureEmbeddingProvider(input.embedding_model.provider_id);
   const symbol_refs_by_record_ref = Object.fromEntries(
@@ -218,7 +227,7 @@ export function executeDeterministicRetrieval(input: ExecuteDeterministicRetriev
     now: input.now,
     query_ref: input.query.id,
     query_vector,
-    recipe: input.recipe,
+    recipe: effectiveRecipe,
     chunks,
     embeddings: embeddingResult.embeddings,
     embedding_vectors: embeddingResult.embedding_vectors,
@@ -229,7 +238,7 @@ export function executeDeterministicRetrieval(input: ExecuteDeterministicRetriev
   });
   const result = executeHybridRetrieval({
     query_ref: input.query.id,
-    recipe: input.recipe,
+    recipe: effectiveRecipe,
     candidates: exact.candidates,
     trace_ref: input.trace_ref,
   });
