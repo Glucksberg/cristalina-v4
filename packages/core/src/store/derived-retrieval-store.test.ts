@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
+import { executeDeterministicRetrieval } from "../retrieval-engine/orchestrator.js";
 import { runRetrievalEval } from "../retrieval-engine/evals.js";
 import { executeExactVectorSearch } from "../retrieval-engine/exact-vector.js";
 import { validateVectorArtifacts } from "../retrieval-engine/maintenance.js";
@@ -12,11 +13,15 @@ import {
   initializeStore,
   loadSymbolAnchors,
   loadVectorArtifacts,
+  readEmbeddingVector,
   readSymbolAnchor,
+  readVectorChunkText,
   readVectorArtifact,
   symbolAnchorPath,
   vectorArtifactPath,
+  writeEmbeddingVector,
   writeSymbolAnchor,
+  writeVectorChunkText,
   writeVectorArtifact,
 } from "./io.js";
 
@@ -93,4 +98,94 @@ test("derived retrieval store writes and reloads symbol anchors and vector artif
   assert.ok(artifacts.some((artifact) => artifact.kind === "vector_search_run"));
   assert.ok(artifacts.some((artifact) => artifact.kind === "retrieval_eval_run"));
   assert.ok(artifacts.some((artifact) => artifact.kind === "vector_maintenance_run"));
+});
+
+test("derived retrieval store writes chunk and embedding sidecars without replacing metadata", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-derived-retrieval-sidecars-"));
+  const fixture = buildSymbolicRetrievalFixture();
+  const run = executeDeterministicRetrieval({
+    now: "2026-04-21T00:00:00.000Z",
+    query: {
+      id: "retrieval_query_sidecar_001",
+      query_text: "answer style",
+      recipe_ref: fixture.recipe.id,
+      requested_layers: fixture.recipe.layer_scope,
+      read_policy_version: fixture.recipe.read_policy_version,
+    },
+    recipe: fixture.recipe,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    symbol_anchors: [fixture.symbol_anchor],
+    embedding_model: {
+      ...fixture.embedding_model,
+      dimensions: 8,
+      normalization_mode: "deterministic_fixture_sha256_unit",
+    },
+    chunk_policy_version: "symbolic_retrieval_chunk_policy.v1",
+    corpus_id: "vector_corpus_sidecar_001",
+    corpus_generation: "corpus_gen_sidecar_001",
+    chunk_generation: "chunk_gen_sidecar_001",
+    embedding_generation: "embedding_gen_sidecar_001",
+    embedding_batch_id: "embedding_batch_sidecar_001",
+    index_manifest_id: "vector_index_sidecar_001",
+    index_generation: "index_gen_sidecar_001",
+    search_run_id: "vector_search_sidecar_001",
+    search_generation: "search_gen_sidecar_001",
+  });
+
+  await initializeStore(rootDir, "2026-04-21T00:00:00.000Z");
+  const metadataPath = await writeVectorArtifact(rootDir, run.embeddings[0]);
+  const chunkTextPath = await writeVectorChunkText(rootDir, run.chunks[0], run.chunk_texts[run.chunks[0].id]);
+  const vectorPath = await writeEmbeddingVector(
+    rootDir,
+    run.embeddings[0],
+    run.embedding_vectors[run.embeddings[0].id],
+  );
+
+  assert.ok(metadataPath.endsWith(`derived/vector/embeddings/${run.embeddings[0].id}.json`));
+  assert.ok(chunkTextPath.endsWith(`derived/vector/chunks/${run.chunks[0].id}.txt`));
+  assert.ok(vectorPath.endsWith(`derived/vector/embeddings/${run.embeddings[0].id}.vector.json`));
+  assert.notEqual(metadataPath, vectorPath);
+  assert.deepEqual(JSON.parse(await readFile(metadataPath, "utf8")), run.embeddings[0]);
+  assert.equal(await readVectorChunkText(rootDir, run.chunks[0]), run.chunk_texts[run.chunks[0].id]);
+  assert.deepEqual(await readEmbeddingVector(rootDir, run.embeddings[0]), run.embedding_vectors[run.embeddings[0].id]);
+
+  await assert.rejects(
+    () => writeVectorChunkText(rootDir, run.chunks[0], "drifted text"),
+    /checksum mismatch/,
+  );
+  await assert.rejects(
+    () =>
+      writeVectorChunkText(
+        rootDir,
+        {
+          ...run.chunks[0],
+          chunk_text_ref: {
+            ...run.chunks[0].chunk_text_ref,
+            path: "../escaped.txt",
+          },
+        },
+        run.chunk_texts[run.chunks[0].id],
+      ),
+    /escapes store root/,
+  );
+  await assert.rejects(
+    () =>
+      writeVectorChunkText(
+        rootDir,
+        {
+          ...run.chunks[0],
+          chunk_text_ref: {
+            ...run.chunks[0].chunk_text_ref,
+            path: "raw/escaped.txt",
+          },
+        },
+        run.chunk_texts[run.chunks[0].id],
+      ),
+    /escapes derived vector storage/,
+  );
 });

@@ -1,6 +1,6 @@
 import { access, mkdir, readFile, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { CANONICAL_CLAIM_KINDS } from "../types.js";
 import type {
@@ -23,12 +23,14 @@ import type {
   ConversationThread,
   ProjectionManifest,
   ProjectionArtifact,
+  EmbeddingRecord,
   WikiClaim,
   WikiMaintenanceRun,
   WikiPage,
   WorldClaim,
   SymbolAnchor,
   VectorArtifact,
+  VectorChunk,
 } from "../types.js";
 import { STORAGE_LAYOUT } from "../storage.js";
 import { assertCoreRecord, assertStoreManifest, assertSymbolAnchor, assertVectorArtifact } from "../validation.js";
@@ -166,6 +168,10 @@ function resolveWithinRoot(rootDir: string, relativePath: string): string {
   return targetPath;
 }
 
+function sha256(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
 function recordFilePath(rootDir: string, record: CoreRecord): string {
   return resolveWithinRoot(rootDir, `${extensionlessRecordPath(record)}.json`);
 }
@@ -176,6 +182,19 @@ function symbolAnchorFilePath(rootDir: string, anchor: SymbolAnchor): string {
 
 function vectorArtifactFilePath(rootDir: string, artifact: VectorArtifact): string {
   return resolveWithinRoot(rootDir, `${extensionlessVectorArtifactPath(artifact)}.json`);
+}
+
+function vectorBlobPath(rootDir: string, relativePath: string): string {
+  const filePath = resolveWithinRoot(rootDir, relativePath);
+  const relativePathFromVectorRoot = relative(STORAGE_LAYOUT.derived.vector.root, relativePath);
+  if (
+    relativePathFromVectorRoot === "" ||
+    relativePathFromVectorRoot.startsWith("..") ||
+    isAbsolute(relativePathFromVectorRoot)
+  ) {
+    throw new Error(`Vector blob path escapes derived vector storage: ${relativePath}`);
+  }
+  return filePath;
 }
 
 async function ensureParent(filePath: string): Promise<void> {
@@ -313,6 +332,31 @@ export async function writeVectorArtifact(rootDir: string, artifact: VectorArtif
   return filePath;
 }
 
+export async function writeVectorChunkText(rootDir: string, chunk: VectorChunk, text: string): Promise<string> {
+  assertVectorArtifact(chunk);
+  if (chunk.chunk_text_ref.checksum !== sha256(text)) {
+    throw new Error(`Vector chunk text checksum mismatch for ${chunk.id}`);
+  }
+  const filePath = vectorBlobPath(rootDir, chunk.chunk_text_ref.path);
+  await ensureParent(filePath);
+  await atomicWriteText(filePath, text);
+  return filePath;
+}
+
+export async function writeEmbeddingVector(rootDir: string, embedding: EmbeddingRecord, vector: number[]): Promise<string> {
+  assertVectorArtifact(embedding);
+  if (embedding.vector_ref.dimensions !== undefined && embedding.vector_ref.dimensions !== vector.length) {
+    throw new Error(`Embedding vector dimension mismatch for ${embedding.id}`);
+  }
+  if (embedding.vector_checksum !== sha256(JSON.stringify(vector))) {
+    throw new Error(`Embedding vector checksum mismatch for ${embedding.id}`);
+  }
+  const filePath = vectorBlobPath(rootDir, embedding.vector_ref.path);
+  await ensureParent(filePath);
+  await atomicWriteText(filePath, `${JSON.stringify(vector)}\n`);
+  return filePath;
+}
+
 export async function readCoreRecord<T extends CoreRecord = CoreRecord>(filePath: string): Promise<T> {
   const source = await readFile(filePath, "utf8");
   const parsed = JSON.parse(source) as unknown;
@@ -332,6 +376,32 @@ export async function readVectorArtifact<T extends VectorArtifact = VectorArtifa
   const parsed = JSON.parse(source) as unknown;
   assertVectorArtifact(parsed);
   return parsed as T;
+}
+
+export async function readVectorChunkText(rootDir: string, chunk: VectorChunk): Promise<string> {
+  assertVectorArtifact(chunk);
+  const filePath = vectorBlobPath(rootDir, chunk.chunk_text_ref.path);
+  const text = await readFile(filePath, "utf8");
+  if (chunk.chunk_text_ref.checksum !== sha256(text)) {
+    throw new Error(`Vector chunk text checksum mismatch for ${chunk.id}`);
+  }
+  return text;
+}
+
+export async function readEmbeddingVector(rootDir: string, embedding: EmbeddingRecord): Promise<number[]> {
+  assertVectorArtifact(embedding);
+  const filePath = vectorBlobPath(rootDir, embedding.vector_ref.path);
+  const parsed = JSON.parse(await readFile(filePath, "utf8")) as unknown;
+  if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "number")) {
+    throw new Error(`Invalid embedding vector blob for ${embedding.id}`);
+  }
+  if (embedding.vector_ref.dimensions !== undefined && embedding.vector_ref.dimensions !== parsed.length) {
+    throw new Error(`Embedding vector dimension mismatch for ${embedding.id}`);
+  }
+  if (embedding.vector_checksum !== sha256(JSON.stringify(parsed))) {
+    throw new Error(`Embedding vector checksum mismatch for ${embedding.id}`);
+  }
+  return parsed;
 }
 
 export function coreRecordPath(rootDir: string, record: CoreRecord): string {

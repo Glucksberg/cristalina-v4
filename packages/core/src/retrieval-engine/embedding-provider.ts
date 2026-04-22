@@ -108,7 +108,7 @@ export function createDeterministicFixtureEmbeddingProvider(provider_id = "deter
           dimensions: input.embedding_model.dimensions,
           metric: input.embedding_model.metric as VectorMetric,
           vector_ref: {
-            path: `derived/vector/embeddings/${id}.json`,
+            path: `derived/vector/embeddings/${id}.vector.json`,
             checksum,
             encoding: input.embedding_model.vector_encoding,
             dimensions: input.embedding_model.dimensions,
