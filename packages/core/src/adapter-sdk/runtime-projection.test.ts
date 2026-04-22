@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -21,6 +21,9 @@ import {
 import { createHermesProjectionFixture } from "../test-support/projection-fixtures.js";
 import { initializeStore, writeCoreRecord } from "../store/io.js";
 import { ValidationError } from "../validation.js";
+import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
+import { compileOpenClawBootstrapProjection } from "../projection-engine/openclaw.js";
+import type { Diagnostic } from "../types.js";
 
 test("runtime projection helper lists and loads OpenClaw projections from real flow state", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
@@ -127,6 +130,83 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
   assert.equal(view.closed_reviews.length, 1);
   assert.equal(view.closed_reviews[0]!.status, "applied");
   assert.match(view.markdown, /\(owner_ratification; applied\)/);
+});
+
+test("runtime projection helper exposes retrieval context from projection manifests", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-retrieval-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const now = "2026-04-21T00:00:00.000Z";
+  const fixture = buildSymbolicRetrievalFixture();
+  const diagnostic: Diagnostic = {
+    id: "diag_runtime_projection_retrieval_001",
+    kind: "diagnostic",
+    layer: "audits",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+    provenance: {
+      source_type: "test_fixture",
+      source_ref: "tests/core/runtime-projection-retrieval",
+      evidence_refs: ["candidate_wiki_symbolic_001"],
+    },
+    code: "retrieval_recipe_partial",
+    severity: "warning",
+    message: "Retrieval recipe suppressed an editorial wiki candidate before runtime projection.",
+    related_refs: ["candidate_wiki_symbolic_001"],
+  };
+  const projectionPath = "derived/openclaw/pmf_openclaw_runtime_projection_retrieval_001/bootstrap-memory.md";
+  const projection = compileOpenClawBootstrapProjection({
+    now,
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+    projection_path: projectionPath,
+    canonical_records: [fixture.canonical_record],
+    world_claims: [fixture.world_claim],
+    wiki_pages: [fixture.wiki_page],
+    wiki_claims: [fixture.wiki_claim],
+    diagnostics: [diagnostic],
+    retrieval_results: [fixture.retrieval_result],
+    ids: {
+      canon_artifact: "part_openclaw_runtime_projection_retrieval_canon_001",
+      world_artifact: "part_openclaw_runtime_projection_retrieval_world_001",
+      wiki_artifact: "part_openclaw_runtime_projection_retrieval_wiki_001",
+      manifest: "pmf_openclaw_runtime_projection_retrieval_001",
+    },
+  });
+
+  await initializeStore(rootDir, now);
+  await mkdir(join(rootDir, "derived/openclaw/pmf_openclaw_runtime_projection_retrieval_001"), { recursive: true });
+  await writeFile(join(rootDir, projectionPath), projection.markdown, "utf8");
+  await Promise.all([
+    ...projection.artifacts.map((artifact) => writeCoreRecord(rootDir, artifact)),
+    writeCoreRecord(rootDir, diagnostic),
+    writeCoreRecord(rootDir, projection.manifest),
+  ]);
+
+  const view = await loadProjectionRuntimeView({
+    rootDir,
+    manifest_id: projection.manifest.id,
+    adapter: "openclaw",
+  });
+
+  assert.equal(view.retrieval_context.available, true);
+  assert.deepEqual(view.retrieval_context.trace_refs, ["retrieval_trace_symbolic_fixture_001"]);
+  assert.deepEqual(view.retrieval_context.included_candidate_refs, [
+    "candidate_canon_symbolic_001",
+    "candidate_raw_symbolic_001",
+  ]);
+  assert.deepEqual(view.retrieval_context.suppressed_candidate_refs, ["candidate_wiki_symbolic_001"]);
+  assert.deepEqual(view.retrieval_context.suppression_reasons, ["unsupported_wiki_claim"]);
+  assert.deepEqual(view.retrieval_context.traces, projection.manifest.retrieval_traces);
+  assert.deepEqual(view.retrieval_context.diagnostics.map((record) => record.id), [diagnostic.id]);
+  assert.match(view.markdown, /## Retrieval/);
 });
 
 test("runtime projection helper resolves Hermes projection markdown from manifest artifacts", async (t) => {

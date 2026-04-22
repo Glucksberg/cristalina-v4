@@ -689,6 +689,12 @@ Projection artifacts should include:
 
 Projection must not hide retrieval decisions.
 
+Adapter SDK reads should expose retrieval context directly from projection
+manifests. The SDK may normalize trace refs, included candidate refs,
+suppressed candidate refs, suppression reasons, and linked diagnostics for
+runtime consumption, but it must not recompute retrieval ranking, reinterpret
+authority, or turn projection metadata into a write path.
+
 ---
 
 ## 14. Compatibility Layer

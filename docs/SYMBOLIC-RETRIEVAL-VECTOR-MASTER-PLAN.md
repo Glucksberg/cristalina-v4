@@ -841,6 +841,8 @@ Expose retrieval to OpenClaw, Hermes, and future runtimes through core contracts
 - Keep writeback authenticated and governed.
 - Ensure adapter UX does not define retrieval semantics.
 - Emit runtime diagnostics when retrieval cannot satisfy a recipe.
+- Surface projection manifest retrieval context as read-only SDK data for
+  adapters before any adapter-specific UX expands.
 
 ### Acceptance Criteria
 

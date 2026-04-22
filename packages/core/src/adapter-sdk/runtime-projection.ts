@@ -6,6 +6,8 @@ import type {
   Diagnostic,
   ProjectionArtifact,
   ProjectionManifest,
+  ProjectionRetrievalTrace,
+  RetrievalSuppressionReason,
   RuntimeKind,
 } from "../types.js";
 import {
@@ -43,9 +45,20 @@ export interface ProjectionRuntimeView {
   manifest: ProjectionManifest;
   markdown: string;
   diagnostics: Diagnostic[];
+  retrieval_context: ProjectionRuntimeRetrievalContext;
   reviews: CurationPacket[];
   pending_reviews: CurationPacket[];
   closed_reviews: CurationPacket[];
+}
+
+export interface ProjectionRuntimeRetrievalContext {
+  available: boolean;
+  trace_refs: string[];
+  included_candidate_refs: string[];
+  suppressed_candidate_refs: string[];
+  suppression_reasons: RetrievalSuppressionReason[];
+  traces: ProjectionRetrievalTrace[];
+  diagnostics: Diagnostic[];
 }
 
 function compareProjectionTimestamps(left: ProjectionManifest, right: ProjectionManifest): number {
@@ -115,6 +128,53 @@ function projectionSelectionIsAmbiguous(
     selectionDimensionIsAmbiguous(summaries, filter, "runtime_session_ref") ||
     selectionDimensionIsAmbiguous(summaries, filter, "conversation_thread_ref")
   );
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))];
+}
+
+export function summarizeProjectionRuntimeRetrievalContext(input: {
+  manifest: ProjectionManifest;
+  diagnostics: Diagnostic[];
+}): ProjectionRuntimeRetrievalContext {
+  const traces = input.manifest.retrieval_traces ?? [];
+  const traceRefs = uniqueStrings([
+    ...(input.manifest.retrieval_trace_refs ?? []),
+    ...traces.map((trace) => trace.trace_ref),
+  ]);
+  const includedCandidateRefs = uniqueStrings([
+    ...(input.manifest.included_retrieval_candidate_refs ?? []),
+    ...traces.flatMap((trace) => trace.included_candidate_refs),
+  ]);
+  const suppressedCandidateRefs = uniqueStrings([
+    ...(input.manifest.suppressed_retrieval_candidate_refs ?? []),
+    ...traces.flatMap((trace) => trace.suppressed_candidate_refs),
+  ]);
+  const suppressionReasons = uniqueStrings(
+    traces.flatMap((trace) => trace.suppression_reasons),
+  ) as RetrievalSuppressionReason[];
+  const retrievalDiagnosticRefs = new Set([
+    ...traceRefs,
+    ...includedCandidateRefs,
+    ...suppressedCandidateRefs,
+    ...traces.map((trace) => trace.query_ref),
+    ...traces.map((trace) => trace.recipe_ref),
+  ]);
+  const retrievalDiagnostics = input.diagnostics.filter((diagnostic) =>
+    diagnostic.code.startsWith("retrieval_") ||
+    diagnostic.related_refs.some((ref) => retrievalDiagnosticRefs.has(ref)),
+  );
+
+  return {
+    available: traceRefs.length > 0 || includedCandidateRefs.length > 0 || suppressedCandidateRefs.length > 0,
+    trace_refs: traceRefs,
+    included_candidate_refs: includedCandidateRefs,
+    suppressed_candidate_refs: suppressedCandidateRefs,
+    suppression_reasons: suppressionReasons,
+    traces,
+    diagnostics: retrievalDiagnostics,
+  };
 }
 
 export function resolveProjectionMarkdownPath(input: {
@@ -198,11 +258,16 @@ export async function loadProjectionRuntimeView(input: {
   const reviewIds = new Set(manifest.review_refs ?? []);
   const manifestDiagnostics = diagnostics.filter((record) => diagnosticIds.has(record.id));
   const manifestReviews = reviews.filter((record) => reviewIds.has(record.id));
+  const retrieval_context = summarizeProjectionRuntimeRetrievalContext({
+    manifest,
+    diagnostics: manifestDiagnostics,
+  });
 
   return {
     manifest,
     markdown,
     diagnostics: manifestDiagnostics,
+    retrieval_context,
     reviews: manifestReviews,
     pending_reviews: manifestReviews.filter((record) => record.status === "pending"),
     closed_reviews: manifestReviews.filter((record) => record.status !== "pending"),
