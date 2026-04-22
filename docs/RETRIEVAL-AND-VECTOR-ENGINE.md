@@ -740,6 +740,7 @@ Even with a native vector engine, Cristalina should remain compatible with exter
 Compatibility surfaces:
 
 - `ExternalCandidateProvider`
+- `ExternalCandidateBatch`
 - `Mem0ImportAdapter`
 - `GraphitiImportAdapter`
 - `VectorExportJSONL`
@@ -758,6 +759,12 @@ layer and authority labels allowed by the recipe. Unmapped or forbidden
 external candidates must be suppressed with `invalid_external_candidate` and
 must never support proposal generation.
 - serve as benchmarks
+
+`ExternalCandidateBatch` is the core exchange envelope for external retrieval
+providers. It records provider identity, optional external run identity, query
+and recipe refs when known, retrieval timestamp, normalization metadata, and the
+raw external candidates. Batches are import/export substrate only; they do not
+define authority, promote memory, or bypass normalization.
 
 External tools may not:
 

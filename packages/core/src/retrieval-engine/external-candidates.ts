@@ -1,4 +1,5 @@
 import type {
+  ExternalCandidateBatch,
   ExternalRetrievalCandidate,
   Layer,
   Reference,
@@ -11,6 +12,11 @@ import type {
 export interface NormalizeExternalCandidatesInput {
   recipe: RetrievalRecipe;
   candidates: ExternalRetrievalCandidate[];
+}
+
+export interface NormalizeExternalCandidateBatchInput {
+  recipe: RetrievalRecipe;
+  batch: ExternalCandidateBatch;
 }
 
 function safeId(value: string): string {
@@ -91,5 +97,27 @@ export function normalizeExternalCandidates(input: NormalizeExternalCandidatesIn
       suppression_reasons,
       can_support_proposal: false,
     };
+  });
+}
+
+export function normalizeExternalCandidateBatch(input: NormalizeExternalCandidateBatchInput): RetrievalCandidate[] {
+  if (input.batch.recipe_ref !== undefined && input.batch.recipe_ref !== null && input.batch.recipe_ref !== input.recipe.id) {
+    throw new Error(`External candidate batch recipe_ref does not match recipe: ${input.batch.recipe_ref}`);
+  }
+
+  for (const candidate of input.batch.candidates) {
+    if (candidate.provider_id !== input.batch.provider_id) {
+      throw new Error(`External candidate provider_id does not match batch provider_id: ${candidate.external_candidate_id}`);
+    }
+  }
+
+  return normalizeExternalCandidates({
+    recipe: input.recipe,
+    candidates: input.batch.candidates.map((candidate) => ({
+      ...candidate,
+      score_normalization: candidate.score_normalization ?? input.batch.score_normalization ?? undefined,
+      model_ref: candidate.model_ref ?? input.batch.model_ref ?? undefined,
+      index_ref: candidate.index_ref ?? input.batch.index_ref ?? undefined,
+    })),
   });
 }

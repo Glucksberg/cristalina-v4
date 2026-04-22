@@ -216,6 +216,42 @@ test("retrieval contract validation requires upstream refs for proposal support"
   assert.deepEqual(valid, []);
 });
 
+test("retrieval contract validation checks external candidate batch identity", () => {
+  const valid = validateRetrievalContract({
+    id: "external_candidate_batch_contract_001",
+    provider_id: "mem0",
+    external_run_id: "mem0_run_contract_001",
+    query_ref: "retrieval_query_contract_001",
+    recipe_ref: "retrieval_recipe_contract_001",
+    retrieved_at: "2026-04-21T00:00:00.000Z",
+    score_normalization: "provider_raw_cosine",
+    candidates: [
+      {
+        provider_id: "mem0",
+        external_candidate_id: "mem0_candidate_contract_001",
+        retrieved_at: "2026-04-21T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.deepEqual(valid, []);
+
+  const invalid = validateRetrievalContract({
+    id: "external_candidate_batch_contract_bad_001",
+    provider_id: "mem0",
+    retrieved_at: "2026-04-21T00:00:00.000Z",
+    candidates: [
+      {
+        provider_id: "graphiti",
+        external_candidate_id: "graphiti_candidate_contract_001",
+        retrieved_at: "2026-04-21T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.ok(invalid.some((issue) => issue.path === "candidates[0].provider_id"));
+});
+
 test("vector artifact validation keeps vector metadata derived and source-bound", () => {
   const validChunk = validateVectorArtifact({
     id: "vchunk_001",

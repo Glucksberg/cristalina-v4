@@ -5,6 +5,7 @@ import type {
   ConversationThread,
   CoreRecord,
   DispositionRecord,
+  ExternalCandidateBatch,
   ExternalRetrievalCandidate,
   Observation,
   Proposal,
@@ -1243,13 +1244,23 @@ export function validateRetrievalContract(value: unknown): ValidationIssue[] {
       });
     }
   }
+  if (Array.isArray(value.candidates) && typeof value.provider_id === "string") {
+    value.candidates.forEach((candidate, index) => {
+      if (isRecord(candidate) && candidate.provider_id !== value.provider_id) {
+        issues.push({
+          path: `candidates[${index}].provider_id`,
+          message: "external candidate batch candidates must share provider_id",
+        });
+      }
+    });
+  }
 
   return issues;
 }
 
 export function assertRetrievalContract(
   value: unknown,
-): asserts value is ExternalRetrievalCandidate | RetrievalCandidate | RetrievalQuery | RetrievalRecipe | RetrievalResult | RetrievalTrace {
+): asserts value is ExternalCandidateBatch | ExternalRetrievalCandidate | RetrievalCandidate | RetrievalQuery | RetrievalRecipe | RetrievalResult | RetrievalTrace {
   const issues = validateRetrievalContract(value);
   if (issues.length > 0) {
     throw new ValidationError("Invalid retrieval contract", issues);

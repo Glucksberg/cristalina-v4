@@ -16,6 +16,9 @@
       "$ref": "#/$defs/ExternalRetrievalCandidate"
     },
     {
+      "$ref": "#/$defs/ExternalCandidateBatch"
+    },
+    {
       "$ref": "#/$defs/RetrievalResult"
     },
     {
@@ -339,6 +342,79 @@
           "type": "string"
         },
         "unsupported_mapping_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExternalCandidateBatch": {
+      "type": "object",
+      "required": [
+        "id",
+        "provider_id",
+        "retrieved_at",
+        "candidates"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "external_run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recipe_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retrieved_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "score_normalization": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExternalRetrievalCandidate"
+          }
+        },
+        "diagnostic_refs": {
           "type": "array",
           "items": {
             "type": "string"

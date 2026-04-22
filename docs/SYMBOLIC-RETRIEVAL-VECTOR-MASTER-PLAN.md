@@ -663,6 +663,7 @@ Keep Cristalina interoperable even though it owns its native vector engine.
 ### Surfaces
 
 - `ExternalCandidateProvider`
+- `ExternalCandidateBatch`
 - `Mem0ImportAdapter`
 - `GraphitiImportAdapter`
 - `VectorExportJSONL`
@@ -688,6 +689,7 @@ Keep Cristalina interoperable even though it owns its native vector engine.
 External candidate import must preserve:
 
 - external provider id
+- external provider run or batch id when supplied
 - external candidate id
 - mapped Cristalina ref
 - source layer

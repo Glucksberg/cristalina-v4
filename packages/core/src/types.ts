@@ -455,6 +455,20 @@ export interface ExternalRetrievalCandidate {
   unsupported_mapping_reasons?: string[];
 }
 
+export interface ExternalCandidateBatch {
+  id: string;
+  provider_id: string;
+  external_run_id?: string | null;
+  query_ref?: string | null;
+  recipe_ref?: string | null;
+  retrieved_at: string;
+  score_normalization?: string | null;
+  model_ref?: string | null;
+  index_ref?: string | null;
+  candidates: ExternalRetrievalCandidate[];
+  diagnostic_refs?: string[];
+}
+
 export interface RetrievalResult {
   query_ref: string;
   recipe_ref: string;
