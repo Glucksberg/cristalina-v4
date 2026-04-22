@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { validateValueAgainstJsonSchema, type JsonSchema } from "./schema-runtime.js";
-import { validateRetrievalContract, validateSymbolAnchor, validateVectorArtifact } from "./validation.js";
+import { validateCoreRecord, validateRetrievalContract, validateSymbolAnchor, validateVectorArtifact } from "./validation.js";
 
 test("schema runtime supports broader object, array, and local-ref features", () => {
   const schema: JsonSchema = {
@@ -250,6 +250,63 @@ test("retrieval contract validation checks external candidate batch identity", (
   });
 
   assert.ok(invalid.some((issue) => issue.path === "candidates[0].provider_id"));
+});
+
+test("working memory checkpoint validation preserves runtime authority boundaries", () => {
+  const valid = validateCoreRecord({
+    id: "working_memory_checkpoint_contract_001",
+    kind: "working_memory_checkpoint",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: "2026-04-22T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "runtime_private",
+    },
+    provenance: {
+      source_type: "runtime_checkpoint",
+      source_ref: "session_contract_001",
+      evidence_refs: ["session_contract_001", "thread_contract_001"],
+    },
+    runtime_instance_ref: "runtime_instance_contract_001",
+    runtime_session_ref: "session_contract_001",
+    conversation_thread_ref: "thread_contract_001",
+    continuity_epoch: "epoch_contract_001",
+    generation: 1,
+    read_policy_version: "runtime_read_policy.v1",
+    upstream_refs: ["session_contract_001", "thread_contract_001"],
+    status: "active",
+  });
+
+  assert.deepEqual(valid, []);
+
+  const invalid = validateCoreRecord({
+    id: "working_memory_checkpoint_contract_bad_001",
+    kind: "working_memory_checkpoint",
+    layer: "derived",
+    authoritative_home: "canon",
+    created_at: "2026-04-22T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "runtime_private",
+    },
+    provenance: {
+      source_type: "runtime_checkpoint",
+      source_ref: "session_contract_001",
+    },
+    runtime_instance_ref: "runtime_instance_contract_001",
+    runtime_session_ref: "session_contract_001",
+    conversation_thread_ref: "thread_contract_001",
+    continuity_epoch: "epoch_contract_001",
+    generation: 0,
+    read_policy_version: "runtime_read_policy.v1",
+    upstream_refs: [],
+    status: "superseded",
+  });
+
+  assert.ok(invalid.some((issue) => issue.path === "layer"));
+  assert.ok(invalid.some((issue) => issue.path === "authoritative_home"));
+  assert.ok(invalid.some((issue) => issue.path === "generation"));
+  assert.ok(invalid.some((issue) => issue.path === "upstream_refs"));
+  assert.ok(invalid.some((issue) => issue.path === "superseded_by_ref"));
 });
 
 test("vector artifact validation keeps vector metadata derived and source-bound", () => {

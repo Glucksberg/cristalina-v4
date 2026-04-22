@@ -120,9 +120,11 @@ test("runtime identity schema stays aligned with runtime and actor enums", async
   const variants = schema.allOf?.[1] as { oneOf?: Array<{ properties?: Record<string, unknown> }> } | undefined;
   const actorVariant = variants?.oneOf?.[0];
   const runtimeInstanceVariant = variants?.oneOf?.[1];
+  const checkpointVariant = variants?.oneOf?.[3];
 
   assert.deepEqual(expectEnum(actorVariant?.properties?.actor_kind), [...ACTOR_KINDS]);
   assert.deepEqual(expectEnum(runtimeInstanceVariant?.properties?.runtime), [...RUNTIMES]);
+  assert.deepEqual(expectEnum(checkpointVariant?.properties?.status), ["active", "superseded", "invalidated"]);
 });
 
 test("temporal world schema stays aligned with executable world-model enums", async () => {

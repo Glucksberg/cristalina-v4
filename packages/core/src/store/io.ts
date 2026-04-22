@@ -19,6 +19,7 @@ import type {
   Relation,
   RuntimeInstance,
   RuntimeSession,
+  WorkingMemoryCheckpoint,
   SourceRecord,
   ConversationThread,
   ProjectionManifest,
@@ -77,6 +78,8 @@ function extensionlessRecordPath(record: CoreRecord): string {
       return join(STORAGE_LAYOUT.runtime.sessions, record.id);
     case "runtime_memory_block":
       return join(STORAGE_LAYOUT.runtime.blocks, record.id);
+    case "working_memory_checkpoint":
+      return join(STORAGE_LAYOUT.runtime.workingMemory, "checkpoints", record.runtime_session_ref, record.id);
     case "conversation_thread":
       return join(STORAGE_LAYOUT.runtime.threads, record.id);
     case "episode":
@@ -590,6 +593,11 @@ export async function loadRuntimeInstances(rootDir: string): Promise<RuntimeInst
 export async function loadRuntimeSessions(rootDir: string): Promise<RuntimeSession[]> {
   const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.runtime.sessions);
   return records.filter((record): record is RuntimeSession => record.kind === "runtime_session");
+}
+
+export async function loadWorkingMemoryCheckpoints(rootDir: string): Promise<WorkingMemoryCheckpoint[]> {
+  const records = await loadLayerRecords(rootDir, join(STORAGE_LAYOUT.runtime.workingMemory, "checkpoints"));
+  return records.filter((record): record is WorkingMemoryCheckpoint => record.kind === "working_memory_checkpoint");
 }
 
 export async function loadConversationThreads(rootDir: string): Promise<ConversationThread[]> {

@@ -17,6 +17,7 @@ import type {
   RetrievalTrace,
   RuntimeInstance,
   RuntimeSession,
+  WorkingMemoryCheckpoint,
   SymbolAnchor,
   VectorArtifact,
   WorldClaim,
@@ -1151,6 +1152,33 @@ function validateGenericRecord(value: unknown): ValidationIssue[] {
   return issues;
 }
 
+function validateWorkingMemoryCheckpoint(value: unknown): ValidationIssue[] {
+  const issues = validateEnvelope(value);
+  if (!isRecord(value)) return issues;
+  if (value.kind !== "working_memory_checkpoint") issues.push({ path: "kind", message: 'expected "working_memory_checkpoint"' });
+  if (value.layer !== "runtime") issues.push({ path: "layer", message: 'expected "runtime"' });
+  if (value.authoritative_home !== "runtime") issues.push({ path: "authoritative_home", message: 'expected "runtime"' });
+  pushRequiredString(issues, value, "runtime_instance_ref");
+  pushRequiredString(issues, value, "runtime_session_ref");
+  pushRequiredString(issues, value, "conversation_thread_ref");
+  pushRequiredString(issues, value, "continuity_epoch");
+  pushRequiredString(issues, value, "read_policy_version");
+  pushPositiveInteger(issues, value.generation, "generation");
+  if (!isStringArray(value.upstream_refs) || value.upstream_refs.length === 0 || !hasUniqueEntries(value.upstream_refs)) {
+    issues.push({ path: "upstream_refs", message: "working memory checkpoints require unique upstream refs" });
+  }
+  if (!isEnumValue(value.status, ["active", "superseded", "invalidated"] as const)) {
+    issues.push({ path: "status", message: "expected legal working memory checkpoint status" });
+  }
+  if (value.status === "active" && value.superseded_by_ref !== undefined && value.superseded_by_ref !== null) {
+    issues.push({ path: "superseded_by_ref", message: "active checkpoints cannot point at a superseding checkpoint" });
+  }
+  if (value.status === "superseded" && (typeof value.superseded_by_ref !== "string" || value.superseded_by_ref.length === 0)) {
+    issues.push({ path: "superseded_by_ref", message: "superseded checkpoints require superseded_by_ref" });
+  }
+  return issues;
+}
+
 export function validateStoreManifest(value: unknown): ValidationIssue[] {
   return validateAgainstSchema(value, STORE_MANIFEST_SCHEMA_ID);
 }
@@ -1170,7 +1198,7 @@ export function validateRuntimeIdentityRecord(
 
 export function assertRuntimeIdentityRecord(
   value: unknown,
-): asserts value is ActorIdentity | RuntimeInstance | RuntimeSession | ConversationThread {
+): asserts value is ActorIdentity | RuntimeInstance | RuntimeSession | WorkingMemoryCheckpoint | ConversationThread {
   const issues = validateRuntimeIdentityRecord(value);
   if (issues.length > 0) {
     throw new ValidationError("Invalid runtime identity record", issues);
@@ -1492,6 +1520,8 @@ export function validateCoreRecord(value: unknown): ValidationIssue[] {
       return validateObservation(value);
     case "runtime_memory_block":
       return validateRuntimeMemoryBlock(value);
+    case "working_memory_checkpoint":
+      return validateWorkingMemoryCheckpoint(value);
     case "episode":
       return validateEpisode(value);
     case "entity":

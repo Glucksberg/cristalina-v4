@@ -798,6 +798,24 @@ export interface RuntimeMemoryBlock extends RecordEnvelope {
   runtime_instance_ref?: string | null;
 }
 
+export interface WorkingMemoryCheckpoint extends RecordEnvelope {
+  kind: "working_memory_checkpoint";
+  layer: "runtime";
+  authoritative_home: "runtime";
+  runtime_instance_ref: string;
+  runtime_session_ref: string;
+  conversation_thread_ref: string;
+  continuity_epoch: string;
+  generation: number;
+  read_policy_version: string;
+  upstream_refs: string[];
+  summary?: string | null;
+  status: "active" | "superseded" | "invalidated";
+  supersedes_ref?: string | null;
+  superseded_by_ref?: string | null;
+  policy_snapshot_ref?: string | null;
+}
+
 export interface ConversationThread extends RecordEnvelope {
   kind: "conversation_thread";
   layer: "runtime";
@@ -1084,6 +1102,7 @@ export type CoreRecord =
   | RuntimeInstance
   | RuntimeSession
   | RuntimeMemoryBlock
+  | WorkingMemoryCheckpoint
   | ConversationThread
   | Episode
   | Entity

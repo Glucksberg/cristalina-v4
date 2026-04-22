@@ -143,6 +143,96 @@
           "type": "object",
           "required": [
             "kind",
+            "runtime_instance_ref",
+            "runtime_session_ref",
+            "conversation_thread_ref",
+            "continuity_epoch",
+            "generation",
+            "read_policy_version",
+            "upstream_refs",
+            "status"
+          ],
+          "properties": {
+            "kind": {
+              "const": "working_memory_checkpoint"
+            },
+            "layer": {
+              "const": "runtime"
+            },
+            "authoritative_home": {
+              "const": "runtime"
+            },
+            "runtime_instance_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "runtime_session_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "conversation_thread_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "continuity_epoch": {
+              "type": "string",
+              "minLength": 1
+            },
+            "generation": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "read_policy_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "upstream_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "summary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "superseded",
+                "invalidated"
+              ]
+            },
+            "supersedes_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "superseded_by_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "policy_snapshot_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
             "runtime",
             "runtime_instance_ref",
             "runtime_session_ref",

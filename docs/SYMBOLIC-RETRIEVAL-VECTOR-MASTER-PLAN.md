@@ -739,6 +739,14 @@ Ensure retrieval and vector search can support future session continuity without
 - Preserve continuity epoch, generation, and upstream refs when those contracts exist.
 - Keep resume/handoff packages downstream of source runtime/world/wiki/canon/governance records.
 
+First executable slice:
+
+- add immutable `working_memory_checkpoint` as a runtime record
+- store checkpoints below `runtime/working-memory/checkpoints/<runtime-session-ref>/`
+- require runtime instance, runtime session, conversation thread, continuity epoch, generation, read policy, status, and upstream refs
+- validate checkpoint supersession by explicit refs without mutating older checkpoints
+- keep session-pack compilation and resume receipts as later derived/audit work
+
 ### Acceptance Criteria
 
 - Vector search can later retrieve session continuity artifacts.
