@@ -794,6 +794,13 @@ Real approximate strategies such as HNSW or IVF remain future work. They still
 require corpus-size or latency evidence, their own eval runs, and explicit drift
 evidence before adoption.
 
+This is not an unfinished requirement of the executable deterministic slice.
+It is a future performance implementation track. Cristalina should add a real
+ANN backend only when measured corpus size, exact-search latency, or operational
+cost shows that exact search is no longer sufficient. Until then, exact search
+remains the audit baseline and `deterministic_fixture_lsh` remains the executable
+ANN contract proof.
+
 ### Work
 
 - Add ANN index strategy. Done for `deterministic_fixture_lsh`; HNSW/IVF remain gated.
@@ -801,6 +808,17 @@ evidence before adoption.
 - Persist ANN manifests. Done.
 - Add rebuild and validation jobs. Done.
 - Compare ANN results against exact results in evals. Done.
+
+### Future Production ANN Work
+
+Future HNSW, IVF, or equivalent ANN implementations must:
+
+- document the measured scale or latency reason for adoption
+- declare strategy-specific parameters in the manifest
+- retain exact-search fallback for tests, audits, and repair
+- compare recall against the exact baseline before projection use
+- add strategy-specific evals and drift validation
+- preserve retrieval law: provenance, authority, layer filtering, symbolic anchors, and suppression decisions must remain outside ANN scoring
 
 ### Adoption Gates
 

@@ -547,6 +547,13 @@ run tied to an ANN manifest, but it must reject non-ANN manifests and ANN
 strategies other than `deterministic_fixture_lsh`. This keeps the search path
 auditable until a real ANN implementation earns adoption through evals.
 
+Real ANN backends such as HNSW or IVF are future implementation work, not an
+open requirement of the deterministic slice. They should be added only after
+measured corpus size, exact-search latency, or operational cost justifies an
+approximate index. Their adoption must retain exact search as the audit baseline
+and must not move authority, provenance, layer filtering, symbolic anchors, or
+projection suppression into the ANN layer.
+
 V2 must keep:
 
 - exact-index fallback for tests
@@ -567,6 +574,10 @@ It requires:
 - recall comparison against exact search
 - drift validation and repair paths
 - manifest fields for ANN strategy, parameters, and index checksum
+
+Future production ANN work must also add strategy-specific evals, drift
+validation, repair paths, and manifest parameters before any HNSW, IVF, or
+equivalent backend can feed projection context.
 
 ---
 
