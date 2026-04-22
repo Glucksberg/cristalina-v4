@@ -64,6 +64,7 @@ The MVP should begin with these type families:
 - `VectorSearchRun`
 - `RetrievalAudit`
 - `RetrievalEvalRun`
+- `VectorMaintenanceRun`
 
 These are not all equally mature.
 
@@ -749,6 +750,8 @@ Minimum embedding and index fields:
 Every vector artifact must be recoverable from upstream records or from schema-validated metadata plus referenced sidecar blobs. Vector score may influence retrieval rank, but it must not decide authority, truth, visibility, or proposal legality.
 
 Retrieval eval runs are derived audit artifacts. They compare expected relevance and legal labels against an observed retrieval result, and they must report authority correctness and provenance completeness separately from relevance metrics.
+
+Vector maintenance runs are derived audit artifacts. They may detect drift, missing metadata, generation mismatches, and invalid refs, but repair or rebuild work must remain explicit and replayable rather than hidden inside retrieval.
 
 ---
 

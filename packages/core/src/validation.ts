@@ -1346,6 +1346,31 @@ export function validateVectorArtifact(value: unknown): ValidationIssue[] {
         issues.push({ path: "failure_reasons", message: "failed retrieval eval runs require failure reasons" });
       }
       break;
+    case "vector_maintenance_run":
+      if (value.job !== "validate_vector_artifacts") {
+        issues.push({ path: "job", message: 'expected "validate_vector_artifacts"' });
+      }
+      if (!isEnumValue(value.status, ["passed", "completed_with_issues", "rejected"] as const)) {
+        issues.push({ path: "status", message: "expected legal vector maintenance status" });
+      }
+      for (const key of ["checked_artifact_refs", "issue_codes"] as const) {
+        if (!isStringArray(value[key]) || !hasUniqueEntries(value[key])) {
+          issues.push({ path: key, message: "expected unique string array" });
+        }
+      }
+      if (value.status === "passed" && Array.isArray(value.issue_codes) && value.issue_codes.length > 0) {
+        issues.push({ path: "issue_codes", message: "passed vector maintenance runs must not list issue codes" });
+      }
+      if (value.status === "completed_with_issues" && Array.isArray(value.issue_codes) && value.issue_codes.length === 0) {
+        issues.push({ path: "issue_codes", message: "completed_with_issues maintenance runs require issue codes" });
+      }
+      if (value.diagnostic_refs !== undefined && (!isStringArray(value.diagnostic_refs) || !hasUniqueEntries(value.diagnostic_refs))) {
+        issues.push({ path: "diagnostic_refs", message: "expected unique string array" });
+      }
+      if (value.repair_candidate_refs !== undefined && (!isStringArray(value.repair_candidate_refs) || !hasUniqueEntries(value.repair_candidate_refs))) {
+        issues.push({ path: "repair_candidate_refs", message: "expected unique string array" });
+      }
+      break;
     case "vector_corpus":
       if (isStringArray(value.source_refs) && value.source_refs.length === 0) {
         issues.push({ path: "source_refs", message: "vector corpora require at least one source ref" });

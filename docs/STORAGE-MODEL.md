@@ -205,7 +205,7 @@ Expected contents:
 - bootstrap surfaces
 - projection manifests
 - symbol anchors
-- vector corpora, chunks, embeddings, index manifests, search runs, retrieval audits, and retrieval eval runs
+- vector corpora, chunks, embeddings, index manifests, search runs, retrieval audits, retrieval eval runs, and vector maintenance runs
 - diagnostics bundles
 
 This layer must always be reproducible from upstream data.
@@ -291,6 +291,7 @@ Expected contents:
       evals/
         retrieval-audits/
         retrieval-runs/
+        maintenance-runs/
   audits/
     changes.log
     validation.log

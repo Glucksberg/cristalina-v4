@@ -804,6 +804,25 @@ runRetrievalEval()
 repairVectorManifest()
 ```
 
+Initial executable maintenance shape:
+
+```ts
+interface VectorMaintenanceRun {
+  kind: "vector_maintenance_run";
+  layer: "derived";
+  job: "validate_vector_artifacts";
+  status: "passed" | "completed_with_issues" | "rejected";
+  corpus_ref?: string | null;
+  index_manifest_ref?: string | null;
+  checked_artifact_refs: string[];
+  issue_codes: string[];
+  diagnostic_refs?: string[];
+  repair_candidate_refs?: string[];
+}
+```
+
+The first maintenance job should validate and report. Rebuild, repair, invalidation, and ANN refresh must be later explicit jobs with their own durable run records.
+
 Maintenance must check generation consistency:
 
 - source record hash vs chunk source hash

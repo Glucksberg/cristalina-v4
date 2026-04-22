@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { runRetrievalEval } from "../retrieval-engine/evals.js";
 import { executeExactVectorSearch } from "../retrieval-engine/exact-vector.js";
+import { validateVectorArtifacts } from "../retrieval-engine/maintenance.js";
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import {
   initializeStore,
@@ -53,12 +54,21 @@ test("derived retrieval store writes and reloads symbol anchors and vector artif
     result: fixture.retrieval_result,
     k: 2,
   });
+  const maintenanceRun = validateVectorArtifacts({
+    id: "vector_maintenance_run_symbolic_store_001",
+    now: "2026-04-21T00:00:00.000Z",
+    corpus: fixture.corpus,
+    chunks: fixture.chunks,
+    embedding_model: fixture.embedding_model,
+    embeddings: fixture.embeddings,
+    index_manifest: fixture.index_manifest,
+  });
 
   await initializeStore(rootDir, "2026-04-21T00:00:00.000Z");
 
   const symbolPath = await writeSymbolAnchor(rootDir, fixture.symbol_anchor);
   const artifactPaths = await Promise.all(
-    [...fixture.vector_artifacts, exact.search_run, evalRun].map((artifact) => writeVectorArtifact(rootDir, artifact)),
+    [...fixture.vector_artifacts, exact.search_run, evalRun, maintenanceRun].map((artifact) => writeVectorArtifact(rootDir, artifact)),
   );
 
   assert.equal(symbolPath, symbolAnchorPath(rootDir, fixture.symbol_anchor));
@@ -66,6 +76,7 @@ test("derived retrieval store writes and reloads symbol anchors and vector artif
   assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/chunks/vchunk_raw_symbolic_001.json")));
   assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/search-runs/vector_search_run_symbolic_001.json")));
   assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/evals/retrieval-runs/retrieval_eval_run_symbolic_store_001.json")));
+  assert.ok(artifactPaths.some((path) => path.endsWith("derived/vector/evals/maintenance-runs/vector_maintenance_run_symbolic_store_001.json")));
 
   const loadedSymbol = await readSymbolAnchor(symbolPath);
   assert.deepEqual(loadedSymbol, fixture.symbol_anchor);
@@ -77,8 +88,9 @@ test("derived retrieval store writes and reloads symbol anchors and vector artif
   const artifacts = await loadVectorArtifacts(rootDir);
 
   assert.deepEqual(symbols.map((symbol) => symbol.id), [fixture.symbol_anchor.id]);
-  assert.equal(artifacts.length, fixture.vector_artifacts.length + 2);
+  assert.equal(artifacts.length, fixture.vector_artifacts.length + 3);
   assert.ok(artifacts.some((artifact) => artifact.kind === "vector_index_manifest"));
   assert.ok(artifacts.some((artifact) => artifact.kind === "vector_search_run"));
   assert.ok(artifacts.some((artifact) => artifact.kind === "retrieval_eval_run"));
+  assert.ok(artifacts.some((artifact) => artifact.kind === "vector_maintenance_run"));
 });

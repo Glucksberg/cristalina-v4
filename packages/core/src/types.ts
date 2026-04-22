@@ -617,6 +617,19 @@ export interface RetrievalEvalRun extends RecordEnvelope {
   failure_reasons: string[];
 }
 
+export interface VectorMaintenanceRun extends RecordEnvelope {
+  kind: "vector_maintenance_run";
+  layer: "derived";
+  job: "validate_vector_artifacts";
+  status: "passed" | "completed_with_issues" | "rejected";
+  corpus_ref?: string | null;
+  index_manifest_ref?: string | null;
+  checked_artifact_refs: string[];
+  issue_codes: string[];
+  diagnostic_refs?: string[];
+  repair_candidate_refs?: string[];
+}
+
 export type VectorArtifact =
   | VectorCorpus
   | VectorChunk
@@ -626,7 +639,8 @@ export type VectorArtifact =
   | VectorIndexManifest
   | VectorSearchRun
   | RetrievalAudit
-  | RetrievalEvalRun;
+  | RetrievalEvalRun
+  | VectorMaintenanceRun;
 
 export interface SourceRecord extends RecordEnvelope {
   kind: "source_record";

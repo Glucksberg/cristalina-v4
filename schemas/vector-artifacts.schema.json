@@ -29,6 +29,9 @@
     },
     {
       "$ref": "#/$defs/RetrievalEvalRun"
+    },
+    {
+      "$ref": "#/$defs/VectorMaintenanceRun"
     }
   ],
   "$defs": {
@@ -842,6 +845,84 @@
               "type": "boolean"
             },
             "failure_reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "VectorMaintenanceRun": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "job",
+            "status",
+            "checked_artifact_refs",
+            "issue_codes"
+          ],
+          "properties": {
+            "kind": {
+              "const": "vector_maintenance_run"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "job": {
+              "const": "validate_vector_artifacts"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "passed",
+                "completed_with_issues",
+                "rejected"
+              ]
+            },
+            "corpus_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "index_manifest_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "checked_artifact_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "issue_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "diagnostic_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "repair_candidate_refs": {
               "type": "array",
               "items": {
                 "type": "string"

@@ -145,6 +145,8 @@ function extensionlessVectorArtifactPath(artifact: VectorArtifact): string {
       return join(STORAGE_LAYOUT.derived.vector.retrievalAudits, artifact.id);
     case "retrieval_eval_run":
       return join(STORAGE_LAYOUT.derived.vector.retrievalEvalRuns, artifact.id);
+    case "vector_maintenance_run":
+      return join(STORAGE_LAYOUT.derived.vector.maintenanceRuns, artifact.id);
   }
 }
 
@@ -255,6 +257,7 @@ export async function initializeStore(rootDir: string, now = new Date().toISOStr
     STORAGE_LAYOUT.derived.vector.evals,
     STORAGE_LAYOUT.derived.vector.retrievalAudits,
     STORAGE_LAYOUT.derived.vector.retrievalEvalRuns,
+    STORAGE_LAYOUT.derived.vector.maintenanceRuns,
     STORAGE_LAYOUT.audits.root,
     STORAGE_LAYOUT.audits.snapshots,
     STORAGE_LAYOUT.audits.diagnostics,
@@ -394,6 +397,7 @@ export async function loadVectorArtifacts(rootDir: string): Promise<VectorArtifa
     STORAGE_LAYOUT.derived.vector.searchRuns,
     STORAGE_LAYOUT.derived.vector.retrievalAudits,
     STORAGE_LAYOUT.derived.vector.retrievalEvalRuns,
+    STORAGE_LAYOUT.derived.vector.maintenanceRuns,
   ];
   return (await Promise.all(directories.map((directory) => loadVectorArtifactRecords(rootDir, directory)))).flat();
 }
