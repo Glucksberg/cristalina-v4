@@ -10,6 +10,7 @@ import type {
   RetrievalResult,
   RetrievalSuppressionReason,
   VectorChunk,
+  VectorIndexManifest,
   VectorSearchRun,
   WikiClaim,
 } from "../types.js";
@@ -32,6 +33,10 @@ export interface ExactVectorSearchInput {
 export interface ExactVectorSearchResult {
   search_run: VectorSearchRun;
   candidates: RetrievalCandidate[];
+}
+
+export interface DeterministicAnnVectorSearchInput extends Omit<ExactVectorSearchInput, "index_manifest_ref"> {
+  index_manifest: VectorIndexManifest;
 }
 
 export interface LexicalCandidateSearchInput {
@@ -263,6 +268,48 @@ export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVe
     metric: "cosine",
     top_k: input.recipe.vector_top_k,
     search_generation: input.search_generation,
+  };
+
+  return {
+    search_run,
+    candidates,
+  };
+}
+
+export function executeDeterministicAnnVectorSearch(input: DeterministicAnnVectorSearchInput): ExactVectorSearchResult {
+  if (input.index_manifest.index_kind !== "ann") {
+    throw new Error(`ANN vector search requires an ann index manifest: ${input.index_manifest.id}`);
+  }
+  if (input.index_manifest.ann_strategy !== "deterministic_fixture_lsh") {
+    throw new Error(`ANN strategy is not executable in fixture search: ${input.index_manifest.ann_strategy ?? "none"}`);
+  }
+
+  const exact = executeExactVectorSearch({
+    ...input,
+    index_manifest_ref: input.index_manifest.id,
+  });
+  const candidates = exact.candidates.map((candidate) => ({
+    ...candidate,
+    why_retrieved: [
+      ...new Set([
+        "matched deterministic ANN search",
+        ...candidate.why_retrieved.filter((reason) => reason !== "matched exact vector search"),
+      ]),
+    ],
+  }));
+  const search_run: VectorSearchRun = {
+    ...exact.search_run,
+    provenance: {
+      source_type: "ann_vector_search",
+      source_ref: input.query_ref,
+      evidence_refs: [
+        input.index_manifest.id,
+        ...(input.index_manifest.exact_baseline_index_ref ? [input.index_manifest.exact_baseline_index_ref] : []),
+        ...candidates.map((candidate) => candidate.ref.id),
+      ],
+    },
+    candidate_refs: candidates.filter((candidate) => !candidate.suppression_reasons?.length).map((candidate) => candidate.id),
+    suppressed_candidate_refs: candidates.filter((candidate) => candidate.suppression_reasons?.length).map((candidate) => candidate.id),
   };
 
   return {

@@ -530,6 +530,12 @@ until they have their own eval and drift evidence. A rebuild must reject ANN
 manifests without an exact baseline manifest that matches corpus, model,
 dimensions, metric, source refs, and embedding generation.
 
+The first executable ANN search should also be fixture-only. It may use the
+exact scorer as a deterministic oracle while emitting an `ann_vector_search`
+run tied to an ANN manifest, but it must reject non-ANN manifests and ANN
+strategies other than `deterministic_fixture_lsh`. This keeps the search path
+auditable until a real ANN implementation earns adoption through evals.
+
 V2 must keep:
 
 - exact-index fallback for tests

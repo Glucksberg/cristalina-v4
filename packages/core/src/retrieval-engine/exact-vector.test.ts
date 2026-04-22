@@ -3,7 +3,8 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateRetrievalContract, validateVectorArtifact } from "../validation.js";
-import { cosineSimilarity, executeExactVectorSearch, executeHybridRetrieval, executeLexicalCandidateSearch } from "./exact-vector.js";
+import { runVectorSearchComparisonEval } from "./evals.js";
+import { cosineSimilarity, executeDeterministicAnnVectorSearch, executeExactVectorSearch, executeHybridRetrieval, executeLexicalCandidateSearch } from "./exact-vector.js";
 
 test("cosineSimilarity is deterministic and rejects dimension drift", () => {
   assert.equal(cosineSimilarity([1, 0, 0], [1, 0, 0]), 1);
@@ -52,6 +53,106 @@ test("exact vector search and hybrid retrieval preserve authority and suppress e
   assert.equal(suppressedWiki?.authority, "editorial");
   assert.equal(suppressedWiki?.can_support_proposal, false);
   assert.deepEqual(suppressedWiki?.suppression_reasons, ["unsupported_wiki_claim"]);
+});
+
+test("deterministic ANN vector search emits an auditable ANN search run", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const annManifest = {
+    ...fixture.index_manifest,
+    id: "vector_index_ann_search_fixture_001",
+    index_ref: {
+      ...fixture.index_manifest.index_ref,
+      path: "derived/vector/indexes/vector_index_ann_search_fixture_001.ann.json",
+      producing_ref: "vector_index_ann_search_fixture_001",
+    },
+    index_kind: "ann" as const,
+    ann_strategy: "deterministic_fixture_lsh" as const,
+    ann_parameters: {
+      bucket_count: 8,
+      seed: "fixture",
+    },
+    exact_baseline_index_ref: fixture.index_manifest.id,
+    ann_recall_floor: 1,
+    ann_baseline_eval_ref: "retrieval_eval_run_ann_search_fixture_001",
+  };
+  const exact = executeExactVectorSearch({
+    id: "vector_search_run_exact_ann_search_fixture_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_ann_search_fixture_001",
+    query_vector: [1, 0, 0],
+    recipe: fixture.recipe,
+    chunks: fixture.chunks,
+    embeddings: fixture.embeddings,
+    embedding_vectors: fixture.embedding_vectors,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    index_manifest_ref: fixture.index_manifest.id,
+    search_generation: "search_gen_exact_ann_search_fixture_001",
+  });
+  const ann = executeDeterministicAnnVectorSearch({
+    id: "vector_search_run_ann_search_fixture_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_ann_search_fixture_001",
+    query_vector: [1, 0, 0],
+    recipe: fixture.recipe,
+    chunks: fixture.chunks,
+    embeddings: fixture.embeddings,
+    embedding_vectors: fixture.embedding_vectors,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    index_manifest: annManifest,
+    search_generation: "search_gen_ann_search_fixture_001",
+  });
+
+  assert.deepEqual(validateVectorArtifact(annManifest), []);
+  assert.deepEqual(validateVectorArtifact(ann.search_run), []);
+  assert.equal(ann.search_run.index_manifest_ref, annManifest.id);
+  assert.equal(ann.search_run.provenance.source_type, "ann_vector_search");
+  assert.ok(ann.search_run.provenance.evidence_refs?.includes(fixture.index_manifest.id));
+  assert.ok(ann.candidates.every((candidate) => candidate.why_retrieved.includes("matched deterministic ANN search")));
+
+  const comparison = runVectorSearchComparisonEval({
+    id: "retrieval_eval_run_ann_search_fixture_001",
+    now: "2026-04-21T00:00:00.000Z",
+    exact_search_run: exact.search_run,
+    candidate_search_run: ann.search_run,
+    k: fixture.recipe.vector_top_k,
+    recall_floor: 1,
+  });
+
+  assert.equal(comparison.passed, true);
+  assert.deepEqual(validateVectorArtifact(comparison), []);
+
+  assert.throws(
+    () =>
+      executeDeterministicAnnVectorSearch({
+        id: "vector_search_run_ann_search_bad_001",
+        now: "2026-04-21T00:00:00.000Z",
+        query_ref: "retrieval_query_ann_search_fixture_001",
+        query_vector: [1, 0, 0],
+        recipe: fixture.recipe,
+        chunks: fixture.chunks,
+        embeddings: fixture.embeddings,
+        embedding_vectors: fixture.embedding_vectors,
+        records: [
+          fixture.source_record,
+          fixture.world_claim,
+          fixture.wiki_claim,
+          fixture.canonical_record,
+        ],
+        index_manifest: fixture.index_manifest,
+        search_generation: "search_gen_ann_search_bad_001",
+      }),
+    /requires an ann index manifest/,
+  );
 });
 
 test("lexical candidates merge with vector candidates without duplicating retrieval refs", () => {
