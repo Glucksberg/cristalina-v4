@@ -53,6 +53,7 @@ test("Mem0 import adapter emits normalized external candidate batches without gr
       ...fixture.recipe,
       external_candidate_policy: "allow_normalized",
     },
+    records: [fixture.canonical_record],
     batch,
   });
 
@@ -151,6 +152,7 @@ test("Graphiti import adapter preserves invalidation as unsupported mapping diag
       ...fixture.recipe,
       external_candidate_policy: "allow_normalized",
     },
+    records: [fixture.world_claim],
     batch,
   });
 

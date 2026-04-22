@@ -80,6 +80,34 @@ function isMappedCandidate(
     candidate.authority !== null;
 }
 
+function authorityForLayer(layer: Layer): RetrievalAuthority {
+  switch (layer) {
+    case "raw":
+      return "evidence";
+    case "runtime":
+      return "runtime";
+    case "world":
+      return "world";
+    case "wiki":
+      return "editorial";
+    case "canon":
+      return "canon";
+    case "governance":
+      return "governance";
+    case "derived":
+    case "audits":
+      return "derived";
+  }
+}
+
+function localRefForRecord(record: CoreRecord): Reference {
+  return {
+    id: record.id,
+    kind: record.kind,
+    layer: record.layer,
+  };
+}
+
 function suppressionReasons(input: {
   recipe: RetrievalRecipe;
   candidate: ExternalRetrievalCandidate;
@@ -92,16 +120,29 @@ function suppressionReasons(input: {
   }
   if (!isMappedCandidate(input.candidate)) {
     reasons.add("invalid_external_candidate");
-  } else if (!input.recipe.layer_scope.includes(input.candidate.source_layer)) {
-    reasons.add("authority_mismatch");
+  } else {
+    if (!input.mapped_record) {
+      reasons.add("invalid_external_candidate");
+    } else {
+      if (
+        input.candidate.mapped_ref.id !== input.mapped_record.id ||
+        (input.candidate.mapped_ref.kind !== undefined && input.candidate.mapped_ref.kind !== input.mapped_record.kind) ||
+        (input.candidate.mapped_ref.layer !== undefined && input.candidate.mapped_ref.layer !== input.mapped_record.layer) ||
+        input.candidate.source_layer !== input.mapped_record.layer ||
+        input.candidate.authority !== authorityForLayer(input.mapped_record.layer)
+      ) {
+        reasons.add("invalid_external_candidate");
+      }
+      if (!input.recipe.layer_scope.includes(input.mapped_record.layer)) {
+        reasons.add("authority_mismatch");
+      }
+    }
   }
   if ((input.candidate.unsupported_mapping_reasons ?? []).length > 0) {
     reasons.add("invalid_external_candidate");
   }
   if (input.read_context && isMappedCandidate(input.candidate)) {
-    if (!input.mapped_record) {
-      reasons.add("invalid_external_candidate");
-    } else if (!evaluateProjectionReadDecision(input.mapped_record, input.read_context).include) {
+    if (input.mapped_record && !evaluateProjectionReadDecision(input.mapped_record, input.read_context).include) {
       reasons.add("visibility_scope_mismatch");
     }
   }
@@ -119,9 +160,9 @@ export function normalizeExternalCandidates(input: NormalizeExternalCandidatesIn
       mapped_record: mappedRecord,
       read_context: input.read_context,
     });
-    const ref = mapped ? candidate.mapped_ref : fallbackRef(candidate);
-    const layer = mapped ? candidate.source_layer : "derived";
-    const authority = mapped ? candidate.authority : "derived";
+    const ref = mappedRecord ? localRefForRecord(mappedRecord) : mapped ? candidate.mapped_ref : fallbackRef(candidate);
+    const layer = mappedRecord ? mappedRecord.layer : "derived";
+    const authority = mappedRecord ? authorityForLayer(mappedRecord.layer) : "derived";
     const suppression_reasons = reasons.length > 0 ? reasons : undefined;
     const readPolicySuppressed = reasons.includes("visibility_scope_mismatch");
 
@@ -209,6 +250,9 @@ export async function runExternalCandidateProvider(input: RunExternalCandidatePr
   }
   if (batch.recipe_ref !== undefined && batch.recipe_ref !== null && batch.recipe_ref !== input.recipe.id) {
     throw new Error(`External provider batch recipe_ref drift: ${batch.recipe_ref}`);
+  }
+  if (batch.query_ref !== undefined && batch.query_ref !== null && batch.query_ref !== input.query_ref) {
+    throw new Error(`External provider batch query_ref drift: ${batch.query_ref}`);
   }
   for (const candidate of batch.candidates) {
     if (candidate.provider_id !== batch.provider_id) {

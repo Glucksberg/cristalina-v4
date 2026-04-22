@@ -18,6 +18,7 @@ test("external candidate normalization preserves mapped refs without granting pr
       ...fixture.recipe,
       external_candidate_policy: "allow_normalized",
     },
+    records: [fixture.canonical_record],
     candidates: [
       {
         provider_id: "benchmark_provider",
@@ -61,6 +62,76 @@ test("external candidate normalization preserves mapped refs without granting pr
   assert.equal(hybrid.included_candidates[0]?.id, candidate.id);
   assert.equal(hybrid.included_candidates[0]?.can_support_proposal, false);
   assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
+
+test("external candidate normalization suppresses mapped refs without a local record", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const [candidate] = normalizeExternalCandidates({
+    recipe: {
+      ...fixture.recipe,
+      external_candidate_policy: "allow_normalized",
+    },
+    candidates: [
+      {
+        provider_id: "benchmark_provider",
+        external_candidate_id: "external-canon-without-local-record-001",
+        mapped_ref: {
+          id: fixture.canonical_record.id,
+          kind: fixture.canonical_record.kind,
+          layer: fixture.canonical_record.layer,
+        },
+        source_layer: "canon",
+        authority: "canon",
+        score: 0.99,
+        retrieved_at: "2026-04-21T00:00:00.000Z",
+        text_preview: fixture.canonical_record.statement,
+      },
+    ],
+  });
+
+  assert.ok(candidate);
+  assert.equal(candidate.ref.id, fixture.canonical_record.id);
+  assert.equal(candidate.layer, "derived");
+  assert.equal(candidate.authority, "derived");
+  assert.deepEqual(candidate.suppression_reasons, ["invalid_external_candidate"]);
+  assert.equal(candidate.can_support_proposal, false);
+  assert.deepEqual(validateRetrievalContract(candidate), []);
+});
+
+test("external candidate normalization suppresses authority labels that drift from the local record", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const [candidate] = normalizeExternalCandidates({
+    recipe: {
+      ...fixture.recipe,
+      external_candidate_policy: "allow_normalized",
+      require_canon_for_truth_claims: false,
+    },
+    records: [fixture.wiki_claim],
+    candidates: [
+      {
+        provider_id: "benchmark_provider",
+        external_candidate_id: "external-wiki-claims-canon-001",
+        mapped_ref: {
+          id: fixture.wiki_claim.id,
+          kind: fixture.wiki_claim.kind,
+          layer: "canon",
+        },
+        source_layer: "canon",
+        authority: "canon",
+        score: 0.97,
+        retrieved_at: "2026-04-21T00:00:00.000Z",
+        text_preview: fixture.wiki_claim.statement,
+      },
+    ],
+  });
+
+  assert.ok(candidate);
+  assert.equal(candidate.ref.id, fixture.wiki_claim.id);
+  assert.equal(candidate.layer, "wiki");
+  assert.equal(candidate.authority, "editorial");
+  assert.deepEqual(candidate.suppression_reasons, ["invalid_external_candidate"]);
+  assert.equal(candidate.can_support_proposal, false);
+  assert.deepEqual(validateRetrievalContract(candidate), []);
 });
 
 test("external candidate normalization applies read policy to mapped local refs", () => {
@@ -223,6 +294,7 @@ test("external candidate batches preserve provider identity before normalization
       ...fixture.recipe,
       external_candidate_policy: "allow_normalized",
     },
+    records: [fixture.canonical_record],
     batch,
   });
 
@@ -327,6 +399,7 @@ test("fixture external candidate provider emits checked batches before normaliza
       ...fixture.recipe,
       external_candidate_policy: "allow_normalized",
     },
+    records: [fixture.canonical_record],
     batch,
   });
 
@@ -380,5 +453,27 @@ test("external candidate provider runner fails closed on provider and recipe dri
       now: "2026-04-22T00:00:00.000Z",
     }),
     /recipe_ref drift/,
+  );
+
+  await assert.rejects(
+    () => runExternalCandidateProvider({
+      provider: {
+        provider_id: "mem0",
+        retrieve() {
+          return {
+            id: "external_candidate_batch_query_drift_001",
+            provider_id: "mem0",
+            query_ref: "other_query",
+            recipe_ref: fixture.recipe.id,
+            retrieved_at: "2026-04-22T00:00:00.000Z",
+            candidates: [],
+          };
+        },
+      },
+      query_ref: "retrieval_query_external_query_drift_001",
+      recipe: fixture.recipe,
+      now: "2026-04-22T00:00:00.000Z",
+    }),
+    /query_ref drift/,
   );
 });
