@@ -747,6 +747,12 @@ Compatibility surfaces:
 - `VectorExportJSONL`
 - OpenAI-compatible embedding provider
 
+Current executable status: done. Mem0 and Graphiti import adapters convert
+provider-shaped results into `ExternalCandidateBatch`, vector exports preserve
+chunk and embedding metadata as JSONL, OpenAI-compatible embeddings run behind
+an injected fetch boundary, and native-vs-external provider comparisons reuse
+`RetrievalEvalRun` so authority and provenance failures remain first-class.
+
 External tools may:
 
 - provide candidate refs
@@ -824,6 +830,7 @@ Eval families:
 
 - lexical baseline vs vector
 - vector vs symbol + vector
+- native vs external provider. Done.
 - canon-priority eval
 - wiki-editorial-label eval
 - contradiction retrieval eval
@@ -1015,7 +1022,7 @@ The browser remains read-only and downstream of core records, manifests, diagnos
 19. Add vector maintenance jobs. Done.
 20. Add adapter SDK retrieval-context consumption. Done; OpenClaw and Hermes consume shared projection retrieval context without redefining ranking, authority, or suppression law.
 21. Add ANN index only after exact index and evals are stable. Done for deterministic fixture ANN; production ANN strategies remain gated on corpus-size or latency evidence plus strategy-specific evals and drift evidence.
-22. Add external compatibility adapters. Partial; candidate normalization exists, provider/import/export adapters remain pending.
+22. Add external compatibility adapters. Done; candidate normalization, Mem0 and Graphiti import adapters, vector JSONL export, and OpenAI-compatible embedding provider boundaries are executable.
 
 ### Required First Slice
 

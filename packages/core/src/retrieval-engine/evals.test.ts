@@ -3,8 +3,14 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateVectorArtifact } from "../validation.js";
-import { executeExactVectorSearch } from "./exact-vector.js";
-import { compareRetrievalBaselines, runRetrievalEval, runVectorSearchComparisonEval, type RetrievalEvalCase } from "./evals.js";
+import { executeExactVectorSearch, executeHybridRetrieval } from "./exact-vector.js";
+import {
+  compareRetrievalBaselines,
+  runNativeExternalProviderComparisonEval,
+  runRetrievalEval,
+  runVectorSearchComparisonEval,
+  type RetrievalEvalCase,
+} from "./evals.js";
 
 test("retrieval eval passes only when relevance, authority, and provenance all match", () => {
   const fixture = buildSymbolicRetrievalFixture();
@@ -238,6 +244,55 @@ test("retrieval eval compares lexical, vector, and hybrid baselines with the sam
   for (const run of runs) {
     assert.deepEqual(validateVectorArtifact(run), []);
   }
+});
+
+test("retrieval eval compares native and external-provider baselines without relaxing authority checks", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const canonCandidate = fixture.retrieval_result.included_candidates[0];
+  const wikiCandidate = fixture.retrieval_result.suppressed_candidates[0];
+  assert.ok(canonCandidate);
+  assert.ok(wikiCandidate);
+  const nativeResult = executeHybridRetrieval({
+    query_ref: "retrieval_query_native_external_eval_001",
+    recipe: fixture.recipe,
+    candidates: [canonCandidate, wikiCandidate],
+  });
+  const externalResult = executeHybridRetrieval({
+    query_ref: "retrieval_query_native_external_eval_001",
+    recipe: fixture.recipe,
+    candidates: [
+      {
+        ...canonCandidate,
+        authority: "editorial",
+        why_retrieved: ["normalized external candidate with illegal authority collapse"],
+      },
+    ],
+  });
+  const evalCase: RetrievalEvalCase = {
+    id: "retrieval_eval_case_native_external_001",
+    query_ref: "retrieval_query_native_external_eval_001",
+    recipe_ref: fixture.recipe.id,
+    expected_included_candidate_refs: [canonCandidate.id],
+    expected_suppressed_candidate_refs: [wikiCandidate.id],
+    expected_authority_by_candidate_ref: {
+      [canonCandidate.id]: "canon",
+    },
+  };
+
+  const [native, external] = runNativeExternalProviderComparisonEval({
+    id_prefix: "retrieval_eval_native_external",
+    now: "2026-04-22T00:00:00.000Z",
+    eval_case: evalCase,
+    native_result: nativeResult,
+    external_provider_result: externalResult,
+    k: 1,
+  });
+
+  assert.ok(native);
+  assert.ok(external);
+  assert.equal(native.passed, true);
+  assert.equal(external.passed, false);
+  assert.ok(external.failure_reasons.includes(`authority_mismatch:${canonCandidate.id}`));
 });
 
 test("retrieval eval compares ANN search run against exact vector baseline", () => {

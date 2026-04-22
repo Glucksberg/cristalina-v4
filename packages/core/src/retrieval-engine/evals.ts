@@ -44,6 +44,18 @@ export interface CompareRetrievalBaselinesInput {
   visibility_state?: VisibilityState;
 }
 
+export interface RunNativeExternalProviderComparisonEvalInput {
+  id_prefix: string;
+  now: string;
+  eval_case: RetrievalEvalCase;
+  native_result: RetrievalResult;
+  external_provider_result: RetrievalResult;
+  k: number;
+  native_result_ref?: string | null;
+  external_provider_result_ref?: string | null;
+  visibility_state?: VisibilityState;
+}
+
 export interface RunVectorSearchComparisonEvalInput {
   id: string;
   now: string;
@@ -178,6 +190,30 @@ export function compareRetrievalBaselines(input: CompareRetrievalBaselinesInput)
       visibility_state: input.visibility_state,
     }),
   );
+}
+
+export function runNativeExternalProviderComparisonEval(
+  input: RunNativeExternalProviderComparisonEvalInput,
+): RetrievalEvalRun[] {
+  return compareRetrievalBaselines({
+    id_prefix: input.id_prefix,
+    now: input.now,
+    eval_case: input.eval_case,
+    k: input.k,
+    visibility_state: input.visibility_state,
+    baselines: [
+      {
+        name: "native",
+        result: input.native_result,
+        result_ref: input.native_result_ref ?? "native",
+      },
+      {
+        name: "external_provider",
+        result: input.external_provider_result,
+        result_ref: input.external_provider_result_ref ?? "external_provider",
+      },
+    ],
+  });
 }
 
 export function runVectorSearchComparisonEval(input: RunVectorSearchComparisonEvalInput): RetrievalEvalRun {

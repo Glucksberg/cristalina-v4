@@ -718,6 +718,14 @@ Vector export must preserve:
 - model, metric, dimension, and encoding metadata
 - derived-layer export provenance without granting external authority
 
+### Current Status
+
+Done. Mem0 and Graphiti import adapters now emit `ExternalCandidateBatch`,
+vector metadata exports as JSONL, native-vs-external evals reuse
+`RetrievalEvalRun`, and OpenAI-compatible embeddings are isolated behind an
+injected provider boundary. External outputs still cannot define authority,
+support proposals directly, or bypass projection suppression.
+
 ### Acceptance Criteria
 
 - External systems can interoperate without becoming the architecture.
@@ -811,7 +819,7 @@ Evaluate relevance and legality together.
 - lexical baseline vs vector
 - vector vs symbol + vector
 - exact vs ANN
-- native vs external provider
+- native vs external provider. Done.
 - canon-priority eval
 - wiki-editorial-label eval
 - contradiction retrieval eval
@@ -913,7 +921,7 @@ Expose retrieval to OpenClaw, Hermes, and future runtimes through core contracts
 17. Add retrieval evals. Done.
 18. Add vector maintenance jobs. Done.
 19. Add ANN index. Done for deterministic fixture ANN; real approximate indexes remain gated on corpus-size or latency evidence plus strategy-specific evals and drift evidence.
-20. Add external compatibility adapters. Partial; external candidate normalization is executable, but import/export adapters remain pending.
+20. Add external compatibility adapters. Done; Mem0 and Graphiti import adapters emit `ExternalCandidateBatch`, vector metadata exports as JSONL, and OpenAI-compatible embeddings are isolated behind an injected provider boundary.
 21. Add adapter SDK consumption. Done; OpenClaw and Hermes consume projection manifest retrieval context through the shared core SDK without redefining retrieval law.
 
 ---
