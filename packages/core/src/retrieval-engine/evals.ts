@@ -28,6 +28,21 @@ export interface RunRetrievalEvalInput {
   visibility_state?: VisibilityState;
 }
 
+export interface RetrievalEvalBaseline {
+  name: string;
+  result: RetrievalResult;
+  result_ref?: string | null;
+}
+
+export interface CompareRetrievalBaselinesInput {
+  id_prefix: string;
+  now: string;
+  eval_case: RetrievalEvalCase;
+  baselines: RetrievalEvalBaseline[];
+  k: number;
+  visibility_state?: VisibilityState;
+}
+
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -41,6 +56,10 @@ function candidateMap(result: RetrievalResult): Map<string, RetrievalCandidate> 
   return new Map(
     [...result.included_candidates, ...result.suppressed_candidates].map((candidate) => [candidate.id, candidate]),
   );
+}
+
+function safeId(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "baseline";
 }
 
 export function runRetrievalEval(input: RunRetrievalEvalInput): RetrievalEvalRun {
@@ -133,4 +152,18 @@ export function runRetrievalEval(input: RunRetrievalEvalInput): RetrievalEvalRun
     passed,
     failure_reasons: [...failures].sort(),
   };
+}
+
+export function compareRetrievalBaselines(input: CompareRetrievalBaselinesInput): RetrievalEvalRun[] {
+  return input.baselines.map((baseline) =>
+    runRetrievalEval({
+      id: `${input.id_prefix}_${safeId(baseline.name)}`,
+      now: input.now,
+      eval_case: input.eval_case,
+      result: baseline.result,
+      k: input.k,
+      result_ref: baseline.result_ref ?? baseline.name,
+      visibility_state: input.visibility_state,
+    }),
+  );
 }

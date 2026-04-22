@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateVectorArtifact } from "../validation.js";
-import { runRetrievalEval, type RetrievalEvalCase } from "./evals.js";
+import { compareRetrievalBaselines, runRetrievalEval, type RetrievalEvalCase } from "./evals.js";
 
 test("retrieval eval passes only when relevance, authority, and provenance all match", () => {
   const fixture = buildSymbolicRetrievalFixture();
@@ -159,4 +159,82 @@ test("retrieval eval covers stale suppression and projection budget cases", () =
   assert.equal(badRun.passed, false);
   assert.ok(badRun.failure_reasons.includes(`missing_suppressed_candidate:${staleCandidate.id}`));
   assert.ok(badRun.failure_reasons.includes(`missing_suppression_reason:${staleCandidate.id}:stale_record`));
+});
+
+test("retrieval eval compares lexical, vector, and hybrid baselines with the same legality checks", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const rawCandidate = fixture.retrieval_result.included_candidates.find((candidate) => candidate.layer === "raw");
+  const canonCandidate = fixture.retrieval_result.included_candidates.find((candidate) => candidate.layer === "canon");
+  const wikiCandidate = fixture.retrieval_result.suppressed_candidates.find((candidate) => candidate.layer === "wiki");
+  assert.ok(rawCandidate);
+  assert.ok(canonCandidate);
+  assert.ok(wikiCandidate);
+
+  const evalCase: RetrievalEvalCase = {
+    id: "retrieval_eval_case_baseline_compare_001",
+    query_ref: "retrieval_query_baseline_compare_001",
+    recipe_ref: fixture.recipe.id,
+    expected_included_candidate_refs: [canonCandidate.id, rawCandidate.id],
+    expected_suppressed_candidate_refs: [wikiCandidate.id],
+    expected_authority_by_candidate_ref: {
+      [canonCandidate.id]: "canon",
+      [rawCandidate.id]: "evidence",
+      [wikiCandidate.id]: "editorial",
+    },
+    required_suppression_reasons_by_candidate_ref: {
+      [wikiCandidate.id]: ["unsupported_wiki_claim"],
+    },
+    proposal_support_candidate_refs: [canonCandidate.id, rawCandidate.id],
+  };
+  const lexicalResult = {
+    query_ref: evalCase.query_ref,
+    recipe_ref: fixture.recipe.id,
+    included_candidates: [{ ...rawCandidate, lexical_score: 1 }],
+    suppressed_candidates: [wikiCandidate],
+  };
+  const vectorResult = {
+    query_ref: evalCase.query_ref,
+    recipe_ref: fixture.recipe.id,
+    included_candidates: [{ ...canonCandidate, vector_score: 1 }],
+    suppressed_candidates: [],
+  };
+  const hybridResult = {
+    query_ref: evalCase.query_ref,
+    recipe_ref: fixture.recipe.id,
+    included_candidates: [canonCandidate, rawCandidate],
+    suppressed_candidates: [wikiCandidate],
+  };
+
+  const runs = compareRetrievalBaselines({
+    id_prefix: "retrieval_eval_run_baseline_compare",
+    now: "2026-04-21T00:00:00.000Z",
+    eval_case: evalCase,
+    baselines: [
+      { name: "lexical", result: lexicalResult },
+      { name: "vector", result: vectorResult },
+      { name: "hybrid", result: hybridResult },
+    ],
+    k: 2,
+  });
+
+  assert.deepEqual(runs.map((run) => run.id), [
+    "retrieval_eval_run_baseline_compare_lexical",
+    "retrieval_eval_run_baseline_compare_vector",
+    "retrieval_eval_run_baseline_compare_hybrid",
+  ]);
+  const lexical = runs.find((run) => run.result_ref === "lexical");
+  const vector = runs.find((run) => run.result_ref === "vector");
+  const hybrid = runs.find((run) => run.result_ref === "hybrid");
+  assert.ok(lexical);
+  assert.ok(vector);
+  assert.ok(hybrid);
+  assert.equal(lexical.recall_at_k, 0.5);
+  assert.equal(vector.recall_at_k, 0.5);
+  assert.equal(hybrid.recall_at_k, 1);
+  assert.equal(hybrid.passed, true);
+  assert.equal(vector.passed, false);
+  assert.ok(vector.failure_reasons.includes(`missing_suppressed_candidate:${wikiCandidate.id}`));
+  for (const run of runs) {
+    assert.deepEqual(validateVectorArtifact(run), []);
+  }
 });

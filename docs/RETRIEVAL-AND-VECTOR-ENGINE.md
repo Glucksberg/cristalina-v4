@@ -806,6 +806,12 @@ interface RetrievalEvalRun {
 
 Eval success must not be relevance-only. A run can have good recall and still fail if a wiki/editorial candidate is treated as canon, if suppression reasons disappear, or if proposal-supporting candidates lack eligible upstream refs.
 
+Baseline comparisons should reuse `RetrievalEvalRun` before adding a separate
+aggregate artifact. The comparison harness may run the same eval case against
+named result variants such as lexical, vector, and hybrid, producing one eval
+run per baseline so recall, precision, authority correctness, and provenance
+completeness stay directly comparable.
+
 ---
 
 ## 16. Maintenance Jobs
