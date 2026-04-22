@@ -745,7 +745,8 @@ First executable slice:
 - store checkpoints below `runtime/working-memory/checkpoints/<runtime-session-ref>/`
 - require runtime instance, runtime session, conversation thread, continuity epoch, generation, read policy, status, and upstream refs
 - validate checkpoint supersession by explicit refs without mutating older checkpoints
-- keep session-pack compilation and resume receipts as later derived/audit work
+- compile the first `session_resume_v2` session pack as a derived `ProjectionManifest` plus adapter-specific `ProjectionArtifact`
+- keep resume receipts as later audit work
 
 ### Acceptance Criteria
 
