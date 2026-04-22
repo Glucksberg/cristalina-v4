@@ -597,6 +597,26 @@ export interface RetrievalAudit extends RecordEnvelope {
   suppression_reasons: RetrievalSuppressionReason[];
 }
 
+export interface RetrievalEvalRun extends RecordEnvelope {
+  kind: "retrieval_eval_run";
+  layer: "derived";
+  eval_case_ref: string;
+  query_ref: string;
+  recipe_ref: string;
+  result_ref?: string | null;
+  trace_ref?: string | null;
+  expected_included_candidate_refs: string[];
+  expected_suppressed_candidate_refs: string[];
+  observed_included_candidate_refs: string[];
+  observed_suppressed_candidate_refs: string[];
+  recall_at_k: number;
+  precision_at_k: number;
+  authority_correct: boolean;
+  provenance_complete: boolean;
+  passed: boolean;
+  failure_reasons: string[];
+}
+
 export type VectorArtifact =
   | VectorCorpus
   | VectorChunk
@@ -605,7 +625,8 @@ export type VectorArtifact =
   | EmbeddingBatchRun
   | VectorIndexManifest
   | VectorSearchRun
-  | RetrievalAudit;
+  | RetrievalAudit
+  | RetrievalEvalRun;
 
 export interface SourceRecord extends RecordEnvelope {
   kind: "source_record";

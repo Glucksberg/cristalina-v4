@@ -73,6 +73,7 @@ export const STORAGE_LAYOUT = {
       models: "derived/vector/models",
       searchRuns: "derived/vector/search-runs",
       retrievalAudits: "derived/vector/evals/retrieval-audits",
+      retrievalEvalRuns: "derived/vector/evals/retrieval-runs",
       evals: "derived/vector/evals",
     },
   },

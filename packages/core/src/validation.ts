@@ -144,6 +144,12 @@ function pushStringArray(issues: ValidationIssue[], record: Record<string, unkno
   }
 }
 
+function pushRatio(issues: ValidationIssue[], value: unknown, path: string): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    issues.push({ path, message: "expected number between 0 and 1" });
+  }
+}
+
 function pushReference(issues: ValidationIssue[], value: unknown, path: string): void {
   if (!isRecord(value)) {
     issues.push({ path, message: "expected reference object" });
@@ -1313,6 +1319,32 @@ export function validateVectorArtifact(value: unknown): ValidationIssue[] {
       break;
     case "retrieval_audit":
       pushRetrievalSuppressionReasons(issues, value.suppression_reasons, "suppression_reasons");
+      break;
+    case "retrieval_eval_run":
+      pushRatio(issues, value.recall_at_k, "recall_at_k");
+      pushRatio(issues, value.precision_at_k, "precision_at_k");
+      for (const key of [
+        "expected_included_candidate_refs",
+        "expected_suppressed_candidate_refs",
+        "observed_included_candidate_refs",
+        "observed_suppressed_candidate_refs",
+        "failure_reasons",
+      ] as const) {
+        if (!isStringArray(value[key]) || !hasUniqueEntries(value[key])) {
+          issues.push({ path: key, message: "expected unique string array" });
+        }
+      }
+      for (const key of ["authority_correct", "provenance_complete", "passed"] as const) {
+        if (typeof value[key] !== "boolean") {
+          issues.push({ path: key, message: "expected boolean" });
+        }
+      }
+      if (value.passed === true && Array.isArray(value.failure_reasons) && value.failure_reasons.length > 0) {
+        issues.push({ path: "failure_reasons", message: "passed retrieval eval runs must not list failure reasons" });
+      }
+      if (value.passed === false && Array.isArray(value.failure_reasons) && value.failure_reasons.length === 0) {
+        issues.push({ path: "failure_reasons", message: "failed retrieval eval runs require failure reasons" });
+      }
       break;
     case "vector_corpus":
       if (isStringArray(value.source_refs) && value.source_refs.length === 0) {

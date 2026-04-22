@@ -748,6 +748,32 @@ Example questions:
 
 Success requires retrieving useful content with the correct authority labels.
 
+Initial executable eval shape:
+
+```ts
+interface RetrievalEvalRun {
+  kind: "retrieval_eval_run";
+  layer: "derived";
+  eval_case_ref: string;
+  query_ref: string;
+  recipe_ref: string;
+  result_ref?: string | null;
+  trace_ref?: string | null;
+  expected_included_candidate_refs: string[];
+  expected_suppressed_candidate_refs: string[];
+  observed_included_candidate_refs: string[];
+  observed_suppressed_candidate_refs: string[];
+  recall_at_k: number;
+  precision_at_k: number;
+  authority_correct: boolean;
+  provenance_complete: boolean;
+  passed: boolean;
+  failure_reasons: string[];
+}
+```
+
+Eval success must not be relevance-only. A run can have good recall and still fail if a wiki/editorial candidate is treated as canon, if suppression reasons disappear, or if proposal-supporting candidates lack eligible upstream refs.
+
 ---
 
 ## 16. Maintenance Jobs

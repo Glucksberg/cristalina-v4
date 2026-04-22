@@ -15,6 +15,7 @@ export * from "./adapter-sdk/runtime-projection.js";
 export * from "./projection-engine/openclaw.js";
 export * from "./projection-engine/memory-browser.js";
 export * from "./retrieval-engine/chunking.js";
+export * from "./retrieval-engine/evals.js";
 export * from "./retrieval-engine/exact-vector.js";
 export * from "./workflow-engine/source-intake.js";
 export * from "./workflow-engine/pipeline.js";

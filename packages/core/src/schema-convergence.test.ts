@@ -236,6 +236,7 @@ test("vector artifact schema stays aligned with vector object enums", async () =
     "VectorIndexManifest",
     "VectorSearchRun",
     "RetrievalAudit",
+    "RetrievalEvalRun",
   ]);
   assert.deepEqual(expectEnum(defs.Layer), [...LAYERS]);
   assert.deepEqual(expectEnum(defs.VectorMetric), [...VECTOR_METRICS]);

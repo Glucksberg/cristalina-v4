@@ -26,6 +26,9 @@
     },
     {
       "$ref": "#/$defs/RetrievalAudit"
+    },
+    {
+      "$ref": "#/$defs/RetrievalEvalRun"
     }
   ],
   "$defs": {
@@ -728,6 +731,120 @@
               "type": "array",
               "items": {
                 "$ref": "#/$defs/RetrievalSuppressionReason"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "RetrievalEvalRun": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "eval_case_ref",
+            "query_ref",
+            "recipe_ref",
+            "expected_included_candidate_refs",
+            "expected_suppressed_candidate_refs",
+            "observed_included_candidate_refs",
+            "observed_suppressed_candidate_refs",
+            "recall_at_k",
+            "precision_at_k",
+            "authority_correct",
+            "provenance_complete",
+            "passed",
+            "failure_reasons"
+          ],
+          "properties": {
+            "kind": {
+              "const": "retrieval_eval_run"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "eval_case_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "query_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "recipe_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "result_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trace_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "expected_included_candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "expected_suppressed_candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "observed_included_candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "observed_suppressed_candidate_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "recall_at_k": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "precision_at_k": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "authority_correct": {
+              "type": "boolean"
+            },
+            "provenance_complete": {
+              "type": "boolean"
+            },
+            "passed": {
+              "type": "boolean"
+            },
+            "failure_reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
               },
               "uniqueItems": true
             }
