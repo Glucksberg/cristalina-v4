@@ -22,6 +22,7 @@ export * from "./retrieval-engine/exact-vector.js";
 export * from "./retrieval-engine/external-candidates.js";
 export * from "./retrieval-engine/maintenance.js";
 export * from "./retrieval-engine/orchestrator.js";
+export * from "./retrieval-engine/vector-export.js";
 export * from "./workflow-engine/source-intake.js";
 export * from "./workflow-engine/pipeline.js";
 export * from "./workflow-engine/conversation-preference-store.js";

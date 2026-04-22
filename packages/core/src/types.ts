@@ -223,6 +223,11 @@ export const VECTOR_MAINTENANCE_JOBS = [
   "audit_vector_drift",
 ] as const;
 
+export const VECTOR_EXPORT_JSONL_ROW_KINDS = [
+  "chunk_metadata",
+  "embedding_metadata",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -286,6 +291,7 @@ export type VectorIndexKind = typeof VECTOR_INDEX_KINDS[number];
 export type VectorAnnStrategy = typeof VECTOR_ANN_STRATEGIES[number];
 export type VectorBlobEncoding = typeof VECTOR_BLOB_ENCODINGS[number];
 export type VectorMaintenanceJob = typeof VECTOR_MAINTENANCE_JOBS[number];
+export type VectorExportJsonlRowKind = typeof VECTOR_EXPORT_JSONL_ROW_KINDS[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
@@ -689,6 +695,34 @@ export interface VectorMaintenanceRun extends RecordEnvelope {
   repair_candidate_refs?: string[];
 }
 
+export interface VectorExportJsonlRow extends RecordEnvelope {
+  kind: "vector_export_jsonl_row";
+  layer: "derived";
+  export_run_ref: string;
+  schema_version: string;
+  row_kind: VectorExportJsonlRowKind;
+  source_artifact_ref: string;
+  corpus_ref?: string | null;
+  chunk_ref?: string | null;
+  source_ref?: string | null;
+  source_layer?: Layer | null;
+  chunk_text_ref?: VectorBlobRef | null;
+  chunk_hash?: string | null;
+  chunk_text_preview?: string | null;
+  symbol_refs?: string[];
+  semantic_slot?: string | null;
+  embedding_ref?: string | null;
+  embedding_model_ref?: string | null;
+  dimensions?: number | null;
+  metric?: VectorMetric | null;
+  vector_ref?: VectorBlobRef | null;
+  vector_encoding?: VectorEncoding | null;
+  vector_checksum?: string | null;
+  corpus_generation?: string | null;
+  chunk_generation?: string | null;
+  embedding_generation?: string | null;
+}
+
 export type VectorArtifact =
   | VectorCorpus
   | VectorChunk
@@ -699,7 +733,8 @@ export type VectorArtifact =
   | VectorSearchRun
   | RetrievalAudit
   | RetrievalEvalRun
-  | VectorMaintenanceRun;
+  | VectorMaintenanceRun
+  | VectorExportJsonlRow;
 
 export interface SourceRecord extends RecordEnvelope {
   kind: "source_record";

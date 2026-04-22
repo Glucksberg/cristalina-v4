@@ -149,6 +149,8 @@ function extensionlessVectorArtifactPath(artifact: VectorArtifact): string {
       return join(STORAGE_LAYOUT.derived.vector.retrievalEvalRuns, artifact.id);
     case "vector_maintenance_run":
       return join(STORAGE_LAYOUT.derived.vector.maintenanceRuns, artifact.id);
+    case "vector_export_jsonl_row":
+      return join(STORAGE_LAYOUT.derived.vector.exports, artifact.id);
   }
 }
 
@@ -468,6 +470,7 @@ export async function loadVectorArtifacts(rootDir: string): Promise<VectorArtifa
     STORAGE_LAYOUT.derived.vector.retrievalAudits,
     STORAGE_LAYOUT.derived.vector.retrievalEvalRuns,
     STORAGE_LAYOUT.derived.vector.maintenanceRuns,
+    STORAGE_LAYOUT.derived.vector.exports,
   ];
   return (await Promise.all(directories.map((directory) => loadVectorArtifactRecords(rootDir, directory)))).flat();
 }

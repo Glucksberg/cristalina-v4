@@ -32,6 +32,9 @@
     },
     {
       "$ref": "#/$defs/VectorMaintenanceRun"
+    },
+    {
+      "$ref": "#/$defs/VectorExportJsonlRow"
     }
   ],
   "$defs": {
@@ -100,6 +103,13 @@
         "repair_vector_manifest",
         "run_retrieval_eval",
         "audit_vector_drift"
+      ]
+    },
+    "VectorExportJsonlRowKind": {
+      "type": "string",
+      "enum": [
+        "chunk_metadata",
+        "embedding_metadata"
       ]
     },
     "RetrievalSuppressionReason": {
@@ -1008,6 +1018,184 @@
                 "type": "string"
               },
               "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "VectorExportJsonlRow": {
+      "allOf": [
+        {
+          "$ref": "https://cristalina-v4.local/schemas/object-envelope.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "layer",
+            "export_run_ref",
+            "schema_version",
+            "row_kind",
+            "source_artifact_ref"
+          ],
+          "properties": {
+            "kind": {
+              "const": "vector_export_jsonl_row"
+            },
+            "layer": {
+              "const": "derived"
+            },
+            "export_run_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "schema_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "row_kind": {
+              "$ref": "#/$defs/VectorExportJsonlRowKind"
+            },
+            "source_artifact_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "corpus_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "chunk_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source_layer": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Layer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "chunk_text_ref": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VectorBlobRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "chunk_hash": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "chunk_text_preview": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "symbol_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "semantic_slot": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "embedding_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "embedding_model_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "dimensions": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "metric": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VectorMetric"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "vector_ref": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VectorBlobRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "vector_encoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VectorEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "vector_checksum": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "corpus_generation": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "chunk_generation": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "embedding_generation": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": true

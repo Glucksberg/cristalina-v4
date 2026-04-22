@@ -45,6 +45,7 @@ import {
   VECTOR_ANN_STRATEGIES,
   VECTOR_BLOB_ENCODINGS,
   VECTOR_ENCODINGS,
+  VECTOR_EXPORT_JSONL_ROW_KINDS,
   VECTOR_INDEX_KINDS,
   VECTOR_MAINTENANCE_JOBS,
   VECTOR_METRICS,
@@ -1420,6 +1421,36 @@ export function validateVectorArtifact(value: unknown): ValidationIssue[] {
       }
       if (value.repair_candidate_refs !== undefined && (!isStringArray(value.repair_candidate_refs) || !hasUniqueEntries(value.repair_candidate_refs))) {
         issues.push({ path: "repair_candidate_refs", message: "expected unique string array" });
+      }
+      break;
+    case "vector_export_jsonl_row":
+      pushEnum(issues, value, "row_kind", VECTOR_EXPORT_JSONL_ROW_KINDS);
+      if (value.row_kind === "chunk_metadata") {
+        pushRequiredString(issues, value, "chunk_ref");
+        pushRequiredString(issues, value, "source_ref");
+        pushEnum(issues, value, "source_layer", LAYERS);
+        pushVectorBlobRef(issues, value.chunk_text_ref, "chunk_text_ref", "utf8_text");
+      }
+      if (value.row_kind === "embedding_metadata") {
+        pushRequiredString(issues, value, "embedding_ref");
+        pushRequiredString(issues, value, "chunk_ref");
+        pushRequiredString(issues, value, "embedding_model_ref");
+        pushPositiveInteger(issues, value.dimensions, "dimensions");
+        pushEnum(issues, value, "metric", VECTOR_METRICS);
+        pushEnum(issues, value, "vector_encoding", VECTOR_ENCODINGS);
+        pushVectorBlobRef(
+          issues,
+          value.vector_ref,
+          "vector_ref",
+          isEnumValue(value.vector_encoding, VECTOR_ENCODINGS) ? value.vector_encoding : undefined,
+          typeof value.dimensions === "number" ? value.dimensions : undefined,
+        );
+        if (isRecord(value.vector_ref) && value.vector_checksum !== value.vector_ref.checksum) {
+          issues.push({ path: "vector_checksum", message: "vector_checksum must match vector_ref.checksum" });
+        }
+      }
+      if (value.symbol_refs !== undefined && (!isStringArray(value.symbol_refs) || !hasUniqueEntries(value.symbol_refs))) {
+        issues.push({ path: "symbol_refs", message: "expected unique string array" });
       }
       break;
     case "vector_corpus":

@@ -75,6 +75,7 @@ export const STORAGE_LAYOUT = {
       retrievalAudits: "derived/vector/evals/retrieval-audits",
       retrievalEvalRuns: "derived/vector/evals/retrieval-runs",
       maintenanceRuns: "derived/vector/evals/maintenance-runs",
+      exports: "derived/vector/exports",
       evals: "derived/vector/evals",
     },
   },

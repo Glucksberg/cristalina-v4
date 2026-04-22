@@ -357,6 +357,7 @@ derived/vector/
   indexes/
   manifests/
   search-runs/
+  exports/
   evals/
 ```
 
@@ -765,6 +766,14 @@ providers. It records provider identity, optional external run identity, query
 and recipe refs when known, retrieval timestamp, normalization metadata, and the
 raw external candidates. Batches are import/export substrate only; they do not
 define authority, promote memory, or bypass normalization.
+
+`VectorExportJSONL` is the core export envelope for chunk and embedding
+metadata. It may expose chunk refs, source refs, source layers, symbol refs,
+semantic slots, text blob refs, vector blob refs, checksums, generations, model
+refs, dimensions, metrics, and encodings. It must not export vectors as hidden
+authority, must keep rows in `derived`, and must preserve upstream source-layer
+labels so external systems cannot collapse raw, wiki, world, and canon into one
+truth bucket.
 
 External tools may not:
 

@@ -27,6 +27,7 @@ import {
   VECTOR_BLOB_ENCODINGS,
   VECTOR_ANN_STRATEGIES,
   VECTOR_ENCODINGS,
+  VECTOR_EXPORT_JSONL_ROW_KINDS,
   VECTOR_INDEX_KINDS,
   VECTOR_MAINTENANCE_JOBS,
   VECTOR_METRICS,
@@ -242,6 +243,7 @@ test("vector artifact schema stays aligned with vector object enums", async () =
     "RetrievalAudit",
     "RetrievalEvalRun",
     "VectorMaintenanceRun",
+    "VectorExportJsonlRow",
   ]);
   assert.deepEqual(expectEnum(defs.Layer), [...LAYERS]);
   assert.deepEqual(expectEnum(defs.VectorMetric), [...VECTOR_METRICS]);
@@ -250,6 +252,7 @@ test("vector artifact schema stays aligned with vector object enums", async () =
   assert.deepEqual(expectEnum(defs.VectorIndexKind), [...VECTOR_INDEX_KINDS]);
   assert.deepEqual(expectEnum(defs.VectorAnnStrategy), [...VECTOR_ANN_STRATEGIES]);
   assert.deepEqual(expectEnum(defs.VectorMaintenanceJob), [...VECTOR_MAINTENANCE_JOBS]);
+  assert.deepEqual(expectEnum(defs.VectorExportJsonlRowKind), [...VECTOR_EXPORT_JSONL_ROW_KINDS]);
   assert.deepEqual(expectEnum(defs.RetrievalSuppressionReason), [...RETRIEVAL_SUPPRESSION_REASONS]);
 });
 

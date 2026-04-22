@@ -700,6 +700,16 @@ External candidate import must preserve:
 - symbol refs and semantic slot when supplied
 - unsupported mapping reasons when the candidate cannot be made legal
 
+Vector export must preserve:
+
+- exported chunk and embedding artifact refs
+- upstream source refs and source layers
+- symbol refs and semantic slots when present
+- chunk, corpus, and embedding generations
+- text/vector blob refs and checksums
+- model, metric, dimension, and encoding metadata
+- derived-layer export provenance without granting external authority
+
 ### Acceptance Criteria
 
 - External systems can interoperate without becoming the architecture.
