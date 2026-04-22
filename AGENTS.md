@@ -87,6 +87,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-22: Retrieval hardening only closes when recipe scope, editorial authority, external mappings, read policy, and index checksums are enforced at the candidate boundary instead of trusted from upstream metadata.
 - 2026-04-21: Native vector retrieval only strengthens Cristalina when non-canonical roads, wiki maintenance, symbolic anchors, retrieval law, and projection traces all preserve the authority of the upstream records they make easier to find.
 - 2026-04-21: Wiki memory only stays coherent when maintenance events, lifecycle metadata, lint diagnostics, and browser projections remain downstream of upstream evidence and governance-owned promotion.
 - 2026-04-21: Non-canonical intake only becomes a real road when raw evidence, runtime context, diagnostics, and projection visibility prove their routing without silently creating canon or wiki truth.
