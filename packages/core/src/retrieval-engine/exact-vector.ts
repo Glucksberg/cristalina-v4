@@ -7,6 +7,7 @@ import type {
   RetrievalCandidate,
   RetrievalRecipe,
   RetrievalResult,
+  RetrievalSuppressionReason,
   VectorChunk,
   VectorSearchRun,
   WikiClaim,
@@ -99,6 +100,20 @@ function upstreamRefs(record: CoreRecord): string[] {
   return [...refs];
 }
 
+function recordSuppressionReasons(record: CoreRecord): RetrievalSuppressionReason[] {
+  const reasons = new Set<RetrievalSuppressionReason>();
+  if ("temporal_state" in record && record.temporal_state?.temporal_status === "historical") {
+    reasons.add("stale_record");
+  }
+  if ("staleness_state" in record && record.staleness_state === "stale") {
+    reasons.add("stale_record");
+  }
+  if ("epistemic_state" in record && record.epistemic_state === "disputed") {
+    reasons.add("contradicted_record");
+  }
+  return [...reasons];
+}
+
 function canSupportProposal(record: CoreRecord, recipe: RetrievalRecipe): boolean {
   const allowedLayers = recipe.can_support_proposal_from_layers ?? ["raw", "world", "canon"];
   if (!allowedLayers.includes(record.layer)) return false;
@@ -116,7 +131,8 @@ function candidateFor(input: {
   recipe: RetrievalRecipe;
 }): RetrievalCandidate {
   const authority = retrievalAuthority(input.record.layer);
-  const proposalSupport = canSupportProposal(input.record, input.recipe);
+  const suppressionReasons = recordSuppressionReasons(input.record);
+  const proposalSupport = suppressionReasons.length === 0 && canSupportProposal(input.record, input.recipe);
   const reasons = [
     "matched exact vector search",
     input.chunk.symbol_refs.length > 0 ? "matched symbol-linked chunk" : "matched chunk",
@@ -143,6 +159,7 @@ function candidateFor(input: {
     provenance_score: upstreamRefs(input.record).length > 1 ? 1 : 0.5,
     final_score: input.vector_score,
     why_retrieved: reasons,
+    suppression_reasons: suppressionReasons.length > 0 ? suppressionReasons : undefined,
     can_support_proposal: proposalSupport,
     eligible_upstream_refs: proposalSupport ? upstreamRefs(input.record) : "support_refs" in input.record ? (input.record as WikiClaim).support_refs : undefined,
   };
@@ -221,17 +238,43 @@ export function executeHybridRetrieval(input: HybridRetrievalInput): RetrievalRe
     })
     .sort((left, right) => (right.final_score ?? 0) - (left.final_score ?? 0));
 
-  const suppressed_candidates = scored
-    .filter((candidate) => candidate.authority === "editorial" && input.recipe.require_canon_for_truth_claims)
-    .map((candidate) => ({
+  const policySuppressed = scored.map((candidate) => {
+    const suppressionReasons = new Set(candidate.suppression_reasons ?? []);
+    if (candidate.authority === "editorial" && input.recipe.require_canon_for_truth_claims) {
+      suppressionReasons.add("unsupported_wiki_claim");
+    }
+    const suppression_reasons = [...suppressionReasons];
+    const legallySuppressed = suppression_reasons.some((reason) => reason !== "projection_budget_exceeded");
+    return {
       ...candidate,
-      suppression_reasons: ["unsupported_wiki_claim" as const],
-      can_support_proposal: false,
-    }));
-  const suppressedIds = new Set(suppressed_candidates.map((candidate) => candidate.id));
-  const included_candidates = scored
-    .filter((candidate) => !suppressedIds.has(candidate.id))
-    .slice(0, input.recipe.final_top_k);
+      suppression_reasons: suppression_reasons.length > 0 ? suppression_reasons : undefined,
+      can_support_proposal: legallySuppressed ? false : candidate.can_support_proposal,
+    };
+  });
+
+  const included_candidates: RetrievalCandidate[] = [];
+  const budgetSuppressed: RetrievalCandidate[] = [];
+  const layerCounts = new Map<string, number>();
+  for (const candidate of policySuppressed) {
+    if (candidate.suppression_reasons?.length) {
+      continue;
+    }
+    const layerCount = layerCounts.get(candidate.layer) ?? 0;
+    const layerBudget = input.recipe.max_candidates_per_layer?.[candidate.layer];
+    if ((layerBudget !== undefined && layerCount >= layerBudget) || included_candidates.length >= input.recipe.final_top_k) {
+      budgetSuppressed.push({
+        ...candidate,
+        suppression_reasons: ["projection_budget_exceeded"],
+      });
+      continue;
+    }
+    included_candidates.push(candidate);
+    layerCounts.set(candidate.layer, layerCount + 1);
+  }
+  const suppressed_candidates = [
+    ...policySuppressed.filter((candidate) => candidate.suppression_reasons?.length),
+    ...budgetSuppressed,
+  ];
 
   return {
     query_ref: input.query_ref,

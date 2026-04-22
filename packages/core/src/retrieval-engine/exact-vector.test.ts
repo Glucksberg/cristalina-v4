@@ -53,3 +53,83 @@ test("exact vector search and hybrid retrieval preserve authority and suppress e
   assert.equal(suppressedWiki?.can_support_proposal, false);
   assert.deepEqual(suppressedWiki?.suppression_reasons, ["unsupported_wiki_claim"]);
 });
+
+test("hybrid retrieval suppresses stale and contradicted candidates before proposal support", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const staleCanon = {
+    ...fixture.canonical_record,
+    temporal_state: {
+      temporal_status: "historical" as const,
+      valid_from: "2026-04-20T00:00:00.000Z",
+      valid_to: "2026-04-21T00:00:00.000Z",
+    },
+  };
+  const disputedWorld = {
+    ...fixture.world_claim,
+    epistemic_state: "disputed" as const,
+  };
+  const exact = executeExactVectorSearch({
+    id: "vector_search_run_stale_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_stale_001",
+    query_vector: [1, 0, 0],
+    recipe: fixture.recipe,
+    chunks: fixture.chunks,
+    embeddings: fixture.embeddings,
+    embedding_vectors: fixture.embedding_vectors,
+    records: [
+      fixture.source_record,
+      disputedWorld,
+      fixture.wiki_claim,
+      staleCanon,
+    ],
+    index_manifest_ref: fixture.index_manifest.id,
+    search_generation: "search_gen_stale_001",
+  });
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_stale_001",
+    recipe: fixture.recipe,
+    candidates: exact.candidates,
+  });
+
+  const stale = hybrid.suppressed_candidates.find((candidate) => candidate.ref.id === fixture.canonical_record.id);
+  const contradicted = hybrid.suppressed_candidates.find((candidate) => candidate.ref.id === fixture.world_claim.id);
+  assert.deepEqual(stale?.suppression_reasons, ["stale_record"]);
+  assert.equal(stale?.can_support_proposal, false);
+  assert.deepEqual(contradicted?.suppression_reasons, ["contradicted_record"]);
+  assert.equal(contradicted?.can_support_proposal, false);
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
+
+test("hybrid retrieval records projection budget suppression after legal filters", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const raw = fixture.retrieval_result.included_candidates.find((candidate) => candidate.layer === "raw");
+  const canon = fixture.retrieval_result.included_candidates.find((candidate) => candidate.layer === "canon");
+  assert.ok(raw);
+  assert.ok(canon);
+
+  const extraRaw = {
+    ...raw,
+    id: "candidate_raw_symbolic_002",
+    vector_score: 0.8,
+    final_score: 0.8,
+  };
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_budget_001",
+    recipe: {
+      ...fixture.recipe,
+      final_top_k: 3,
+      require_canon_for_truth_claims: false,
+      max_candidates_per_layer: {
+        raw: 1,
+      },
+    },
+    candidates: [canon, raw, extraRaw],
+  });
+
+  assert.equal(hybrid.included_candidates.filter((candidate) => candidate.layer === "raw").length, 1);
+  const budgetSuppressed = hybrid.suppressed_candidates.find((candidate) => candidate.id === "candidate_raw_symbolic_002");
+  assert.deepEqual(budgetSuppressed?.suppression_reasons, ["projection_budget_exceeded"]);
+  assert.equal(budgetSuppressed?.can_support_proposal, true);
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
