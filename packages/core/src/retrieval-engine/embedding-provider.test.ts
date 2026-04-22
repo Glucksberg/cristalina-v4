@@ -33,6 +33,16 @@ test("deterministic fixture embedding provider emits stable embeddings and batch
   assert.deepEqual(first.batch_run.chunk_refs, fixture.chunks.map((chunk) => chunk.id));
   assert.deepEqual(first.batch_run.embedding_refs, first.embeddings.map((embedding) => embedding.id));
   assert.ok(Object.values(first.embedding_vectors).every((vector) => vector.length === fixture.embedding_model.dimensions));
+  assert.deepEqual(
+    provider.embedQuery({
+      query_text: "answer style",
+      embedding_model: fixture.embedding_model,
+    }),
+    provider.embedQuery({
+      query_text: "answer style",
+      embedding_model: fixture.embedding_model,
+    }),
+  );
   assert.deepEqual(validateVectorArtifact(first.batch_run), []);
   for (const embedding of first.embeddings) {
     assert.deepEqual(validateVectorArtifact(embedding), []);

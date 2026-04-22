@@ -19,6 +19,11 @@ export interface EmbeddingProviderInput {
   visibility_state?: VisibilityState;
 }
 
+export interface EmbeddingQueryInput {
+  query_text: string;
+  embedding_model: EmbeddingModelManifest;
+}
+
 export interface EmbeddingProviderResult {
   batch_run: EmbeddingBatchRun;
   embeddings: EmbeddingRecord[];
@@ -28,6 +33,7 @@ export interface EmbeddingProviderResult {
 export interface EmbeddingProvider {
   readonly provider_id: string;
   readonly deterministic_fixture_mode: boolean;
+  embedQuery(input: EmbeddingQueryInput): number[];
   embed(input: EmbeddingProviderInput): EmbeddingProviderResult;
 }
 
@@ -43,6 +49,15 @@ function vectorFromText(text: string, dimensions: number): number[] {
   return values.map((value) => Number((value / magnitude).toFixed(8)));
 }
 
+function assertDeterministicModel(input: { embedding_model: EmbeddingModelManifest; provider_id: string }): void {
+  if (input.embedding_model.provider_id !== input.provider_id) {
+    throw new Error(`Embedding model provider mismatch: ${input.embedding_model.provider_id} !== ${input.provider_id}`);
+  }
+  if (!input.embedding_model.deterministic_fixture_mode) {
+    throw new Error("Deterministic fixture provider requires deterministic_fixture_mode");
+  }
+}
+
 function embeddingId(chunk: VectorChunk, generation: string): string {
   return `embed_${chunk.id}_${generation}`.replace(/[^A-Za-z0-9._-]+/g, "_");
 }
@@ -51,13 +66,18 @@ export function createDeterministicFixtureEmbeddingProvider(provider_id = "deter
   return {
     provider_id,
     deterministic_fixture_mode: true,
+    embedQuery(input) {
+      assertDeterministicModel({
+        embedding_model: input.embedding_model,
+        provider_id,
+      });
+      return vectorFromText(`query\n${input.embedding_model.id}\n${input.query_text}`, input.embedding_model.dimensions);
+    },
     embed(input) {
-      if (input.embedding_model.provider_id !== provider_id) {
-        throw new Error(`Embedding model provider mismatch: ${input.embedding_model.provider_id} !== ${provider_id}`);
-      }
-      if (!input.embedding_model.deterministic_fixture_mode) {
-        throw new Error("Deterministic fixture provider requires deterministic_fixture_mode");
-      }
+      assertDeterministicModel({
+        embedding_model: input.embedding_model,
+        provider_id,
+      });
 
       const embedding_vectors: Record<string, number[]> = {};
       const embeddings: EmbeddingRecord[] = input.chunks.map((chunk) => {

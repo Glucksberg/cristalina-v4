@@ -599,6 +599,15 @@ The retrieval flow should combine symbols and vectors:
 8. suppress illegal or stale candidates
 9. produce included candidates and trace
 
+The first executable bridge should be a kernel runner, not an adapter feature.
+
+The runner should assemble deterministic chunks, deterministic fixture
+embeddings, an exact index manifest, an exact vector search run, and a hybrid
+retrieval result from explicit inputs. It may return derived artifacts and
+sidecar payloads to callers, but it must not persist them implicitly and must
+not hide maintenance, eval, projection, or authority decisions behind provider
+state.
+
 Result explanations should mention the contributing signals:
 
 - vector similarity
