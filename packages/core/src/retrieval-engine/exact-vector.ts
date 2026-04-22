@@ -34,6 +34,15 @@ export interface ExactVectorSearchResult {
   candidates: RetrievalCandidate[];
 }
 
+export interface LexicalCandidateSearchInput {
+  query_text: string;
+  recipe: RetrievalRecipe;
+  chunks: VectorChunk[];
+  chunk_texts: Record<string, string>;
+  records: CoreRecord[];
+  read_context?: ProjectionReadContext;
+}
+
 export interface HybridRetrievalInput {
   query_ref: string;
   recipe: RetrievalRecipe;
@@ -129,13 +138,15 @@ function canSupportProposal(record: CoreRecord, recipe: RetrievalRecipe): boolea
 function candidateFor(input: {
   record: CoreRecord;
   chunk: VectorChunk;
-  vector_score: number;
+  vector_score?: number;
+  lexical_score?: number;
   recipe: RetrievalRecipe;
+  why_retrieved?: string[];
 }): RetrievalCandidate {
   const authority = retrievalAuthority(input.record.layer);
   const suppressionReasons = recordSuppressionReasons(input.record);
   const proposalSupport = suppressionReasons.length === 0 && canSupportProposal(input.record, input.recipe);
-  const reasons = [
+  const reasons = input.why_retrieved ?? [
     "matched exact vector search",
     input.chunk.symbol_refs.length > 0 ? "matched symbol-linked chunk" : "matched chunk",
   ];
@@ -156,14 +167,48 @@ function candidateFor(input: {
     symbol_refs: input.chunk.symbol_refs,
     semantic_slot: semanticSlot(input.record) ?? input.chunk.semantic_slot,
     vector_score: input.vector_score,
+    lexical_score: input.lexical_score,
     symbolic_score: input.chunk.symbol_refs.length > 0 ? 1 : 0,
     authority_score: authority === "canon" ? 1 : authority === "world" ? 0.7 : authority === "evidence" ? 0.5 : 0.1,
     provenance_score: upstreamRefs(input.record).length > 1 ? 1 : 0.5,
-    final_score: input.vector_score,
+    final_score: (input.vector_score ?? 0) + (input.lexical_score ?? 0),
     why_retrieved: reasons,
     suppression_reasons: suppressionReasons.length > 0 ? suppressionReasons : undefined,
     can_support_proposal: proposalSupport,
     eligible_upstream_refs: proposalSupport ? upstreamRefs(input.record) : "support_refs" in input.record ? (input.record as WikiClaim).support_refs : undefined,
+  };
+}
+
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9_:-]+/)
+    .filter((token) => token.length > 1);
+}
+
+function lexicalOverlapScore(queryText: string, documentText: string): number {
+  const queryTokens = new Set(tokenize(queryText));
+  if (queryTokens.size === 0) return 0;
+  const documentTokens = new Set(tokenize(documentText));
+  let matches = 0;
+  for (const token of queryTokens) {
+    if (documentTokens.has(token)) matches += 1;
+  }
+  return matches / queryTokens.size;
+}
+
+function applyReadPolicySuppression(candidate: RetrievalCandidate, record: CoreRecord, readContext?: ProjectionReadContext): RetrievalCandidate {
+  if (!readContext) return candidate;
+  const decision = evaluateProjectionReadDecision(record, readContext);
+  if (decision.include) return candidate;
+
+  return {
+    ...candidate,
+    why_retrieved: [...candidate.why_retrieved, `read policy suppressed: ${decision.reason_code}`],
+    suppression_reasons: [...new Set([...(candidate.suppression_reasons ?? []), "visibility_scope_mismatch" as const])],
+    can_support_proposal: false,
   };
 }
 
@@ -189,17 +234,7 @@ export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVe
         vector_score: cosineSimilarity(input.query_vector, vector),
         recipe: input.recipe,
       });
-      if (!input.read_context) return candidate;
-
-      const decision = evaluateProjectionReadDecision(record, input.read_context);
-      if (decision.include) return candidate;
-
-      return {
-        ...candidate,
-        why_retrieved: [...candidate.why_retrieved, `read policy suppressed: ${decision.reason_code}`],
-        suppression_reasons: [...new Set([...(candidate.suppression_reasons ?? []), "visibility_scope_mismatch" as const])],
-        can_support_proposal: false,
-      };
+      return applyReadPolicySuppression(candidate, record, input.read_context);
     })
     .filter((candidate): candidate is RetrievalCandidate => candidate !== undefined)
     .sort((left, right) => (right.vector_score ?? 0) - (left.vector_score ?? 0))
@@ -236,11 +271,75 @@ export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVe
   };
 }
 
+export function executeLexicalCandidateSearch(input: LexicalCandidateSearchInput): RetrievalCandidate[] {
+  const recordsById = new Map(input.records.map((record) => [record.id, record]));
+
+  return input.chunks
+    .map((chunk) => {
+      if (!input.recipe.layer_scope.includes(chunk.source_layer)) return undefined;
+      const record = recordsById.get(chunk.source_ref);
+      if (!record) return undefined;
+      const chunkText = input.chunk_texts[chunk.id];
+      if (!chunkText) return undefined;
+
+      const lexical_score = lexicalOverlapScore(input.query_text, chunkText);
+      if (lexical_score <= 0) return undefined;
+
+      const candidate = candidateFor({
+        record,
+        chunk,
+        lexical_score,
+        recipe: input.recipe,
+        why_retrieved: [
+          "matched deterministic lexical search",
+          chunk.symbol_refs.length > 0 ? "matched symbol-linked chunk" : "matched chunk",
+        ],
+      });
+      return applyReadPolicySuppression(candidate, record, input.read_context);
+    })
+    .filter((candidate): candidate is RetrievalCandidate => candidate !== undefined)
+    .sort((left, right) => (right.lexical_score ?? 0) - (left.lexical_score ?? 0))
+    .slice(0, input.recipe.vector_top_k);
+}
+
+function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandidate[] {
+  const byId = new Map<string, RetrievalCandidate>();
+  for (const candidate of candidates) {
+    const existing = byId.get(candidate.id);
+    if (!existing) {
+      byId.set(candidate.id, candidate);
+      continue;
+    }
+    byId.set(candidate.id, {
+      ...existing,
+      vector_score: Math.max(existing.vector_score ?? 0, candidate.vector_score ?? 0) || undefined,
+      lexical_score: Math.max(existing.lexical_score ?? 0, candidate.lexical_score ?? 0) || undefined,
+      symbolic_score: Math.max(existing.symbolic_score ?? 0, candidate.symbolic_score ?? 0) || undefined,
+      semantic_slot_score: Math.max(existing.semantic_slot_score ?? 0, candidate.semantic_slot_score ?? 0) || undefined,
+      authority_score: Math.max(existing.authority_score ?? 0, candidate.authority_score ?? 0) || undefined,
+      temporal_score: Math.max(existing.temporal_score ?? 0, candidate.temporal_score ?? 0) || undefined,
+      provenance_score: Math.max(existing.provenance_score ?? 0, candidate.provenance_score ?? 0) || undefined,
+      why_retrieved: [...new Set([...existing.why_retrieved, ...candidate.why_retrieved])],
+      suppression_reasons: [...new Set([...(existing.suppression_reasons ?? []), ...(candidate.suppression_reasons ?? [])])],
+      symbol_refs: [...new Set([...existing.symbol_refs, ...candidate.symbol_refs])],
+      can_support_proposal: existing.can_support_proposal || candidate.can_support_proposal,
+      eligible_upstream_refs: [...new Set([...(existing.eligible_upstream_refs ?? []), ...(candidate.eligible_upstream_refs ?? [])])],
+    });
+  }
+
+  return [...byId.values()].map((candidate) => ({
+    ...candidate,
+    suppression_reasons: candidate.suppression_reasons?.length ? candidate.suppression_reasons : undefined,
+    eligible_upstream_refs: candidate.eligible_upstream_refs?.length ? candidate.eligible_upstream_refs : undefined,
+  }));
+}
+
 export function executeHybridRetrieval(input: HybridRetrievalInput): RetrievalResult {
-  const scored = input.candidates
+  const scored = mergeCandidateSignals(input.candidates)
     .map((candidate) => {
       const final_score =
         (candidate.vector_score ?? 0) +
+        (candidate.lexical_score ?? 0) +
         (candidate.symbolic_score ?? 0) +
         (candidate.authority_score ?? 0) +
         (candidate.provenance_score ?? 0);

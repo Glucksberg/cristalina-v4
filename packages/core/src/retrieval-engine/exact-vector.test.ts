@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateRetrievalContract, validateVectorArtifact } from "../validation.js";
-import { cosineSimilarity, executeExactVectorSearch, executeHybridRetrieval } from "./exact-vector.js";
+import { cosineSimilarity, executeExactVectorSearch, executeHybridRetrieval, executeLexicalCandidateSearch } from "./exact-vector.js";
 
 test("cosineSimilarity is deterministic and rejects dimension drift", () => {
   assert.equal(cosineSimilarity([1, 0, 0], [1, 0, 0]), 1);
@@ -52,6 +52,70 @@ test("exact vector search and hybrid retrieval preserve authority and suppress e
   assert.equal(suppressedWiki?.authority, "editorial");
   assert.equal(suppressedWiki?.can_support_proposal, false);
   assert.deepEqual(suppressedWiki?.suppression_reasons, ["unsupported_wiki_claim"]);
+});
+
+test("lexical candidates merge with vector candidates without duplicating retrieval refs", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const exact = executeExactVectorSearch({
+    id: "vector_search_run_lexical_merge_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_lexical_merge_001",
+    query_vector: [1, 0, 0],
+    recipe: fixture.recipe,
+    chunks: fixture.chunks,
+    embeddings: fixture.embeddings,
+    embedding_vectors: fixture.embedding_vectors,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+    index_manifest_ref: fixture.index_manifest.id,
+    search_generation: "search_gen_lexical_merge_001",
+  });
+  const chunk_texts = Object.fromEntries(
+    fixture.chunks.map((chunk) => [
+      chunk.id,
+      chunk.source_ref === fixture.canonical_record.id
+        ? "answer style concise canonical preference"
+        : `${chunk.source_layer} answer style evidence`,
+    ]),
+  );
+  const lexical = executeLexicalCandidateSearch({
+    query_text: "answer style",
+    recipe: fixture.recipe,
+    chunks: fixture.chunks,
+    chunk_texts,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      fixture.canonical_record,
+    ],
+  });
+
+  assert.ok(lexical.length > 0);
+  assert.ok(lexical.every((candidate) => candidate.lexical_score !== undefined));
+
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_lexical_merge_001",
+    recipe: fixture.recipe,
+    candidates: [...exact.candidates, ...lexical],
+  });
+  const includedIds = hybrid.included_candidates.map((candidate) => candidate.id);
+  const suppressedIds = hybrid.suppressed_candidates.map((candidate) => candidate.id);
+
+  assert.equal(new Set([...includedIds, ...suppressedIds]).size, includedIds.length + suppressedIds.length);
+  const mergedCanon = [...hybrid.included_candidates, ...hybrid.suppressed_candidates].find(
+    (candidate) => candidate.ref.id === fixture.canonical_record.id,
+  );
+  assert.ok(mergedCanon);
+  assert.ok(mergedCanon.vector_score !== undefined);
+  assert.ok(mergedCanon.lexical_score !== undefined);
+  assert.ok(mergedCanon.why_retrieved.includes("matched exact vector search"));
+  assert.ok(mergedCanon.why_retrieved.includes("matched deterministic lexical search"));
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
 
 test("hybrid retrieval suppresses stale and contradicted candidates before proposal support", () => {

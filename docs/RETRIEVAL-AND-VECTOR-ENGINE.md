@@ -610,6 +610,11 @@ The retrieval flow should combine symbols and vectors:
 8. suppress illegal or stale candidates
 9. produce included candidates and trace
 
+The initial lexical provider may be deterministic token overlap, not BM25.
+Its job is to create an auditable baseline and to prove candidate signal
+merging. Lexical candidates must preserve the same layer, authority,
+provenance, visibility, and proposal-support labels as vector candidates.
+
 The first executable bridge should be a kernel runner, not an adapter feature.
 
 The runner should assemble deterministic chunks, deterministic fixture
