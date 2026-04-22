@@ -87,25 +87,17 @@ function mappingFor(
   externalId: string,
   metadata: Record<string, unknown> | undefined,
 ): ExternalCandidateRefMapping {
-  const metadataRef = stringFromMetadata(metadata, "cristalina_ref");
-  const metadataLayer = stringFromMetadata(metadata, "source_layer") as Layer | undefined;
-  const metadataAuthority = stringFromMetadata(metadata, "authority") as RetrievalAuthority | undefined;
   const explicit = mappings?.[externalId];
   if (explicit) return explicit;
-  if (metadataRef && metadataLayer && metadataAuthority) {
-    return {
-      mapped_ref: {
-        id: metadataRef,
-        kind: stringFromMetadata(metadata, "cristalina_kind"),
-        layer: metadataLayer,
-      },
-      source_layer: metadataLayer,
-      authority: metadataAuthority,
-      semantic_slot: stringFromMetadata(metadata, "semantic_slot"),
-    };
-  }
+  const metadataMappingHints = [
+    stringFromMetadata(metadata, "cristalina_ref"),
+    stringFromMetadata(metadata, "source_layer"),
+    stringFromMetadata(metadata, "authority"),
+  ].filter((value): value is string => value !== undefined);
   return {
-    unsupported_mapping_reasons: ["missing_cristalina_ref"],
+    unsupported_mapping_reasons: metadataMappingHints.length > 0
+      ? ["missing_local_mapping", "external_metadata_mapping_untrusted"]
+      : ["missing_cristalina_ref"],
   };
 }
 
