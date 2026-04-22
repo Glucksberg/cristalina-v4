@@ -1,3 +1,4 @@
+import { evaluateProjectionReadDecision, type ProjectionReadContext } from "../adapter-sdk/projection.js";
 import type {
   CanonicalMemoryObject,
   CoreRecord,
@@ -25,6 +26,7 @@ export interface ExactVectorSearchInput {
   records: CoreRecord[];
   index_manifest_ref: string;
   search_generation: string;
+  read_context?: ProjectionReadContext;
 }
 
 export interface ExactVectorSearchResult {
@@ -181,12 +183,23 @@ export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVe
       const record = recordsById.get(chunk.source_ref);
       if (!record) return undefined;
 
-      return candidateFor({
+      const candidate = candidateFor({
         record,
         chunk,
         vector_score: cosineSimilarity(input.query_vector, vector),
         recipe: input.recipe,
       });
+      if (!input.read_context) return candidate;
+
+      const decision = evaluateProjectionReadDecision(record, input.read_context);
+      if (decision.include) return candidate;
+
+      return {
+        ...candidate,
+        why_retrieved: [...candidate.why_retrieved, `read policy suppressed: ${decision.reason_code}`],
+        suppression_reasons: [...new Set([...(candidate.suppression_reasons ?? []), "visibility_scope_mismatch" as const])],
+        can_support_proposal: false,
+      };
     })
     .filter((candidate): candidate is RetrievalCandidate => candidate !== undefined)
     .sort((left, right) => (right.vector_score ?? 0) - (left.vector_score ?? 0))
@@ -203,15 +216,15 @@ export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVe
     },
     provenance: {
       source_type: "exact_vector_search",
-      source_ref: input.query_ref,
+    source_ref: input.query_ref,
       evidence_refs: candidates.map((candidate) => candidate.ref.id),
     },
     query_ref: input.query_ref,
     index_manifest_ref: input.index_manifest_ref,
     recipe_ref: input.recipe.id,
     requested_layers: input.recipe.layer_scope,
-    candidate_refs: candidates.map((candidate) => candidate.id),
-    suppressed_candidate_refs: [],
+    candidate_refs: candidates.filter((candidate) => !candidate.suppression_reasons?.length).map((candidate) => candidate.id),
+    suppressed_candidate_refs: candidates.filter((candidate) => candidate.suppression_reasons?.length).map((candidate) => candidate.id),
     metric: "cosine",
     top_k: input.recipe.vector_top_k,
     search_generation: input.search_generation,

@@ -133,3 +133,60 @@ test("hybrid retrieval records projection budget suppression after legal filters
   assert.equal(budgetSuppressed?.can_support_proposal, true);
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
+
+test("exact search preserves read-policy suppression as retrieval metadata", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const privateCanon = {
+    ...fixture.canonical_record,
+    visibility_state: {
+      privacy_scope: "owner_private" as const,
+    },
+    provenance: {
+      ...fixture.canonical_record.provenance,
+      actor_ref: "owner:retrieval-private",
+    },
+  };
+  const exact = executeExactVectorSearch({
+    id: "vector_search_run_visibility_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_visibility_001",
+    query_vector: [1, 0, 0],
+    recipe: {
+      ...fixture.recipe,
+      require_canon_for_truth_claims: false,
+    },
+    chunks: fixture.chunks,
+    embeddings: fixture.embeddings,
+    embedding_vectors: fixture.embedding_vectors,
+    records: [
+      fixture.source_record,
+      fixture.world_claim,
+      fixture.wiki_claim,
+      privateCanon,
+    ],
+    index_manifest_ref: fixture.index_manifest.id,
+    search_generation: "search_gen_visibility_001",
+    read_context: {
+      adapter: "openclaw",
+      audience: "runtime",
+      owner_identity_ref: "owner:other",
+    },
+  });
+
+  const privateCandidate = exact.candidates.find((candidate) => candidate.ref.id === privateCanon.id);
+  assert.deepEqual(privateCandidate?.suppression_reasons, ["visibility_scope_mismatch"]);
+  assert.equal(privateCandidate?.can_support_proposal, false);
+  assert.ok(exact.search_run.suppressed_candidate_refs.includes(privateCandidate?.id ?? ""));
+
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_visibility_001",
+    recipe: {
+      ...fixture.recipe,
+      require_canon_for_truth_claims: false,
+    },
+    candidates: exact.candidates,
+  });
+  assert.ok(!hybrid.included_candidates.some((candidate) => candidate.ref.id === privateCanon.id));
+  assert.ok(hybrid.suppressed_candidates.some((candidate) => candidate.ref.id === privateCanon.id));
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
