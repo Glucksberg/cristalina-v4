@@ -285,3 +285,75 @@ test("vector artifact validation keeps vector metadata derived and source-bound"
   assert.ok(invalidEmbedding.some((issue) => issue.path === "vector_ref.dimensions"));
   assert.ok(invalidEmbedding.some((issue) => issue.path === "vector_checksum"));
 });
+
+test("vector index validation requires explicit ANN strategy and exact baseline", () => {
+  const baseIndex = {
+    id: "vector_index_ann_contract_001",
+    kind: "vector_index_manifest" as const,
+    layer: "derived" as const,
+    authoritative_home: "governance" as const,
+    created_at: "2026-04-21T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private" as const,
+    },
+    provenance: {
+      source_type: "vector_maintenance",
+      source_ref: "vector_corpus_ann_contract_001",
+    },
+    index_ref: {
+      path: "derived/vector/indexes/vector_index_ann_contract_001.json",
+      checksum: "sha256:index",
+      encoding: "json_float32" as const,
+      dimensions: 3,
+      generation_id: "index_gen_ann_contract_001",
+      producing_ref: "vector_index_ann_contract_001",
+    },
+    corpus_ref: "vector_corpus_ann_contract_001",
+    embedding_model_ref: "embedding_model_ann_contract_001",
+    dimensions: 3,
+    metric: "cosine" as const,
+    index_kind: "ann" as const,
+    chunk_policy_version: "chunk_policy.v1",
+    source_refs: ["source_ann_contract_001"],
+    corpus_generation: "corpus_gen_ann_contract_001",
+    embedding_generation: "embedding_gen_ann_contract_001",
+    index_generation: "index_gen_ann_contract_001",
+    vector_encoding: "json_float32" as const,
+    index_checksum: "sha256:index",
+  };
+
+  const validAnn = validateVectorArtifact({
+    ...baseIndex,
+    ann_strategy: "deterministic_fixture_lsh",
+    ann_parameters: {
+      bucket_count: 8,
+      deterministic_fixture: true,
+    },
+    exact_baseline_index_ref: "vector_index_exact_contract_001",
+    ann_recall_floor: 0.95,
+    ann_baseline_eval_ref: "retrieval_eval_run_exact_vs_ann_contract_001",
+  });
+
+  assert.deepEqual(validAnn, []);
+
+  const invalidAnn = validateVectorArtifact(baseIndex);
+
+  assert.ok(invalidAnn.some((issue) => issue.path === "ann_strategy"));
+  assert.ok(invalidAnn.some((issue) => issue.path === "ann_parameters"));
+  assert.ok(invalidAnn.some((issue) => issue.path === "exact_baseline_index_ref"));
+  assert.ok(invalidAnn.some((issue) => issue.path === "ann_recall_floor"));
+
+  const invalidExact = validateVectorArtifact({
+    ...baseIndex,
+    index_kind: "exact",
+    ann_strategy: "deterministic_fixture_lsh",
+    ann_parameters: {
+      bucket_count: 8,
+    },
+    exact_baseline_index_ref: "vector_index_exact_contract_001",
+    ann_recall_floor: 0.95,
+  });
+
+  assert.ok(invalidExact.some((issue) => issue.path === "ann_strategy"));
+  assert.ok(invalidExact.some((issue) => issue.message === "exact vector indexes cannot carry ANN metadata"));
+});

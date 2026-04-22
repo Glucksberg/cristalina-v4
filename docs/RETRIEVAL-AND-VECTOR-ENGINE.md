@@ -304,6 +304,11 @@ interface VectorIndexManifest {
   index_generation: string;
   vector_encoding: "json_float32" | "binary_float32" | "binary_float16";
   index_checksum?: string;
+  ann_strategy?: "deterministic_fixture_lsh" | "hnsw" | "ivf_flat" | null;
+  ann_parameters?: Record<string, string | number | boolean>;
+  exact_baseline_index_ref?: string | null;
+  ann_recall_floor?: number;
+  ann_baseline_eval_ref?: string | null;
 }
 ```
 
@@ -509,6 +514,15 @@ Possible shape:
 - HNSW-like index
 - IVF-like index
 - pluggable ANN strategy
+
+Initial ANN manifests must declare:
+
+- `ann_strategy`
+- deterministic `ann_parameters`
+- `exact_baseline_index_ref`
+- `ann_recall_floor`
+- `index_checksum`
+- optional `ann_baseline_eval_ref`
 
 V2 must keep:
 

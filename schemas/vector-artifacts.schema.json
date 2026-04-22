@@ -80,6 +80,14 @@
         "ann"
       ]
     },
+    "VectorAnnStrategy": {
+      "type": "string",
+      "enum": [
+        "deterministic_fixture_lsh",
+        "hnsw",
+        "ivf_flat"
+      ]
+    },
     "VectorMaintenanceJob": {
       "type": "string",
       "enum": [
@@ -595,6 +603,43 @@
             },
             "index_checksum": {
               "type": "string"
+            },
+            "ann_strategy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VectorAnnStrategy"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ann_parameters": {
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            },
+            "exact_baseline_index_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ann_recall_floor": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "ann_baseline_eval_ref": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": true

@@ -25,6 +25,7 @@ import {
   SYMBOL_ANCHOR_LIFECYCLE_STATES,
   TEMPORAL_STATUSES,
   VECTOR_BLOB_ENCODINGS,
+  VECTOR_ANN_STRATEGIES,
   VECTOR_ENCODINGS,
   VECTOR_INDEX_KINDS,
   VECTOR_MAINTENANCE_JOBS,
@@ -246,6 +247,7 @@ test("vector artifact schema stays aligned with vector object enums", async () =
   assert.deepEqual(expectEnum(defs.VectorEncoding), [...VECTOR_ENCODINGS]);
   assert.deepEqual(expectEnum(defs.VectorBlobEncoding), [...VECTOR_BLOB_ENCODINGS]);
   assert.deepEqual(expectEnum(defs.VectorIndexKind), [...VECTOR_INDEX_KINDS]);
+  assert.deepEqual(expectEnum(defs.VectorAnnStrategy), [...VECTOR_ANN_STRATEGIES]);
   assert.deepEqual(expectEnum(defs.VectorMaintenanceJob), [...VECTOR_MAINTENANCE_JOBS]);
   assert.deepEqual(expectEnum(defs.RetrievalSuppressionReason), [...RETRIEVAL_SUPPRESSION_REASONS]);
 });

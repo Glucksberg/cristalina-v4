@@ -41,6 +41,7 @@ import {
   SUBJECT_AUTHORITY_ROLES,
   SYMBOL_ANCHOR_LIFECYCLE_STATES,
   TEMPORAL_STATUSES,
+  VECTOR_ANN_STRATEGIES,
   VECTOR_BLOB_ENCODINGS,
   VECTOR_ENCODINGS,
   VECTOR_INDEX_KINDS,
@@ -1311,6 +1312,36 @@ export function validateVectorArtifact(value: unknown): ValidationIssue[] {
       );
       if (value.index_kind === "exact" && value.index_checksum === undefined) {
         issues.push({ path: "index_checksum", message: "exact vector indexes require index_checksum" });
+      }
+      if (value.index_kind === "exact") {
+        for (const key of [
+          "ann_strategy",
+          "ann_parameters",
+          "exact_baseline_index_ref",
+          "ann_recall_floor",
+          "ann_baseline_eval_ref",
+        ] as const) {
+          if (value[key] !== undefined && value[key] !== null) {
+            issues.push({ path: key, message: "exact vector indexes cannot carry ANN metadata" });
+          }
+        }
+      }
+      if (value.index_kind === "ann") {
+        pushEnum(issues, value, "ann_strategy", VECTOR_ANN_STRATEGIES);
+        pushRequiredString(issues, value, "exact_baseline_index_ref");
+        pushRatio(issues, value.ann_recall_floor, "ann_recall_floor");
+        if (value.index_checksum === undefined) {
+          issues.push({ path: "index_checksum", message: "ANN vector indexes require index_checksum" });
+        }
+        if (!isRecord(value.ann_parameters) || Object.keys(value.ann_parameters).length === 0) {
+          issues.push({ path: "ann_parameters", message: "ANN vector indexes require non-empty ann_parameters" });
+        } else {
+          for (const [key, parameter] of Object.entries(value.ann_parameters)) {
+            if (typeof parameter !== "string" && typeof parameter !== "number" && typeof parameter !== "boolean") {
+              issues.push({ path: `ann_parameters.${key}`, message: "expected string, number, or boolean" });
+            }
+          }
+        }
       }
       break;
     case "vector_search_run":

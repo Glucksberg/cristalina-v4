@@ -198,6 +198,12 @@ export const VECTOR_INDEX_KINDS = [
   "ann",
 ] as const;
 
+export const VECTOR_ANN_STRATEGIES = [
+  "deterministic_fixture_lsh",
+  "hnsw",
+  "ivf_flat",
+] as const;
+
 export const VECTOR_BLOB_ENCODINGS = [
   "utf8_text",
   "json_float32",
@@ -277,6 +283,7 @@ export type RetrievalExternalCandidatePolicy = typeof RETRIEVAL_EXTERNAL_CANDIDA
 export type VectorMetric = typeof VECTOR_METRICS[number];
 export type VectorEncoding = typeof VECTOR_ENCODINGS[number];
 export type VectorIndexKind = typeof VECTOR_INDEX_KINDS[number];
+export type VectorAnnStrategy = typeof VECTOR_ANN_STRATEGIES[number];
 export type VectorBlobEncoding = typeof VECTOR_BLOB_ENCODINGS[number];
 export type VectorMaintenanceJob = typeof VECTOR_MAINTENANCE_JOBS[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
@@ -598,6 +605,11 @@ export interface VectorIndexManifest extends RecordEnvelope {
   index_generation: string;
   vector_encoding: VectorEncoding;
   index_checksum?: string;
+  ann_strategy?: VectorAnnStrategy | null;
+  ann_parameters?: Record<string, string | number | boolean>;
+  exact_baseline_index_ref?: string | null;
+  ann_recall_floor?: number;
+  ann_baseline_eval_ref?: string | null;
 }
 
 export interface VectorSearchRun extends RecordEnvelope {
