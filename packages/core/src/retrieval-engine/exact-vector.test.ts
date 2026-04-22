@@ -366,6 +366,7 @@ test("exact search preserves read-policy suppression as retrieval metadata", () 
 
   const privateCandidate = exact.candidates.find((candidate) => candidate.ref.id === privateCanon.id);
   assert.deepEqual(privateCandidate?.suppression_reasons, ["visibility_scope_mismatch"]);
+  assert.equal(privateCandidate?.text_preview, undefined);
   assert.equal(privateCandidate?.can_support_proposal, false);
   assert.ok(exact.search_run.suppressed_candidate_refs.includes(privateCandidate?.id ?? ""));
 
@@ -378,6 +379,8 @@ test("exact search preserves read-policy suppression as retrieval metadata", () 
     candidates: exact.candidates,
   });
   assert.ok(!hybrid.included_candidates.some((candidate) => candidate.ref.id === privateCanon.id));
-  assert.ok(hybrid.suppressed_candidates.some((candidate) => candidate.ref.id === privateCanon.id));
+  const hybridPrivateCandidate = hybrid.suppressed_candidates.find((candidate) => candidate.ref.id === privateCanon.id);
+  assert.ok(hybridPrivateCandidate);
+  assert.equal(hybridPrivateCandidate.text_preview, undefined);
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });

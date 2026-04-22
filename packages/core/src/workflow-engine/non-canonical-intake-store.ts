@@ -532,14 +532,14 @@ export async function writeNonCanonicalIntakeToStore(
   ].flatMap((record) => validateCoreRecord(record));
   assertNoValidationIssues(validation_issues, "non-canonical intake");
 
-  const reused =
-    (await pathExists(paths.source_record)) &&
-    (await pathExists(paths.disposition_record)) &&
-    (!paths.runtime_instance || (await pathExists(paths.runtime_instance))) &&
-    (!paths.runtime_session || (await pathExists(paths.runtime_session))) &&
-    (!paths.conversation_thread || (await pathExists(paths.conversation_thread))) &&
-    (!paths.observation || (await pathExists(paths.observation))) &&
-    (!paths.diagnostic || (await pathExists(paths.diagnostic)));
+  const requiredPaths = definedIntakePaths(paths).map(([, filePath]) => filePath);
+  const requiredPresence = await Promise.all(requiredPaths.map((filePath) => pathExists(filePath)));
+  const hasAnyState = requiredPresence.some(Boolean);
+  const hasCompleteState = requiredPresence.every(Boolean);
+  if (hasAnyState && !hasCompleteState) {
+    throw new Error("Existing non-canonical intake is partially materialized");
+  }
+  const reused = hasCompleteState;
   const raw_payload = serializePayload(input, attachment_refs);
 
   if (reused) {

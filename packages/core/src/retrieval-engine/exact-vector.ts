@@ -212,6 +212,7 @@ function applyReadPolicySuppression(candidate: RetrievalCandidate, record: CoreR
   return {
     ...candidate,
     why_retrieved: [...candidate.why_retrieved, `read policy suppressed: ${decision.reason_code}`],
+    text_preview: undefined,
     suppression_reasons: [...new Set([...(candidate.suppression_reasons ?? []), "visibility_scope_mismatch" as const])],
     can_support_proposal: false,
   };

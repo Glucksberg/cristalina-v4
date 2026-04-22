@@ -438,6 +438,52 @@ test("wiki maintenance rejects reuse drift and authenticates actor before writin
   );
 });
 
+test("wiki maintenance serializes concurrent index and log updates", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-concurrent-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await Promise.all([
+    runWikiMaintenanceToStore({
+      ...baseInput(rootDir, "source_ingested", {
+        run: "wiki_run_concurrent_001",
+        topic_page: "wiki_page_concurrent_alpha",
+        browser_json_artifact: "artifact_concurrent_alpha_json",
+        browser_html_artifact: "artifact_concurrent_alpha_html",
+        browser_manifest: "manifest_concurrent_alpha",
+      }),
+      source_record: sourceRecord("src_concurrent_alpha"),
+      topic: {
+        title: "Concurrent Alpha",
+        summary: "Alpha update.",
+      },
+    }),
+    runWikiMaintenanceToStore({
+      ...baseInput(rootDir, "source_ingested", {
+        run: "wiki_run_concurrent_002",
+        topic_page: "wiki_page_concurrent_beta",
+        browser_json_artifact: "artifact_concurrent_beta_json",
+        browser_html_artifact: "artifact_concurrent_beta_html",
+        browser_manifest: "manifest_concurrent_beta",
+      }),
+      source_record: sourceRecord("src_concurrent_beta"),
+      topic: {
+        title: "Concurrent Beta",
+        summary: "Beta update.",
+      },
+    }),
+  ]);
+
+  const index = await readFile(join(rootDir, "wiki/index.md"), "utf8");
+  const log = await readFile(join(rootDir, "wiki/log.md"), "utf8");
+  assert.match(index, /Concurrent Alpha/);
+  assert.match(index, /Concurrent Beta/);
+  assert.match(log, /wiki_run_concurrent_001/);
+  assert.match(log, /wiki_run_concurrent_002/);
+  assert.equal((await loadWikiPages(rootDir)).length, 2);
+});
+
 test("memory browser applies projection read policy before rendering private records", () => {
   const privateCanon: CanonicalMemoryObject = {
     id: "canon_private_001",

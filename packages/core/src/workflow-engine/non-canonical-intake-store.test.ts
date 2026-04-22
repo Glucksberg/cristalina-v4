@@ -358,3 +358,19 @@ test("non-canonical intake rejects reuse when payload or authenticated authority
     /does not match input: raw_payload/,
   );
 });
+
+test("non-canonical intake rejects partial materialization when raw payload is missing", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir, "evidence_only");
+  const first = await writeNonCanonicalIntakeToStore(input);
+  await rm(first.paths.raw_payload, { force: true });
+
+  await assert.rejects(
+    () => writeNonCanonicalIntakeToStore(input),
+    /partially materialized/,
+  );
+});

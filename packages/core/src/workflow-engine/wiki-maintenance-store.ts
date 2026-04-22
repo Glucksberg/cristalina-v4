@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { appendAuditChange, appendValidationLog } from "../audit/log.js";
@@ -33,7 +33,6 @@ import {
   loadWorldEpisodes,
   loadWorldRelations,
   readCoreRecord,
-  writeCoreRecord,
 } from "../store/io.js";
 import type {
   AuthenticatedPrincipal,
@@ -136,6 +135,39 @@ interface PlannedWikiMarkdown {
   body: string;
 }
 
+interface MaterializedFile {
+  path: string;
+  content: string;
+}
+
+type WikiMaintenanceAppendEntry =
+  | {
+      kind: "validation_log";
+      entry: Parameters<typeof appendValidationLog>[1];
+    }
+  | {
+      kind: "audit_change";
+      entry: Parameters<typeof appendAuditChange>[1];
+    };
+
+interface WikiMaintenanceRecoveryJournal {
+  version: 1;
+  operation: "wiki_maintenance";
+  created_at: string;
+  files: Array<{
+    path: string;
+    content: string;
+  }>;
+  append_entries: WikiMaintenanceAppendEntry[];
+}
+
+const WIKI_MAINTENANCE_LOCK_PATH = "audits/snapshots/.wiki-maintenance.lock";
+const WIKI_MAINTENANCE_LOCK_TIMEOUT_MS = 120_000;
+const WIKI_MAINTENANCE_LOCK_STALE_MS = 120_000;
+const WIKI_MAINTENANCE_LOCK_POLL_MS = 25;
+const WIKI_MAINTENANCE_RECOVERY_PREFIX = "recovery-wiki-maintenance-";
+const WIKI_MAINTENANCE_RECOVERY_SUFFIX = ".json";
+
 function resolveStorePath(rootDir: string, relativePath: string): string {
   const rootPath = resolve(rootDir);
   const targetPath = resolve(rootPath, relativePath);
@@ -150,6 +182,166 @@ function resolveStorePath(rootDir: string, relativePath: string): string {
   }
 
   return targetPath;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+
+async function wikiMaintenanceLockIsStale(lockPath: string, nowMs: number): Promise<boolean> {
+  const lockStat = await stat(lockPath).catch((error) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
+  if (!lockStat) {
+    return false;
+  }
+  return nowMs - lockStat.mtimeMs > WIKI_MAINTENANCE_LOCK_STALE_MS;
+}
+
+async function acquireWikiMaintenanceLock(rootDir: string): Promise<() => Promise<void>> {
+  const lockPath = resolveStorePath(rootDir, WIKI_MAINTENANCE_LOCK_PATH);
+  const deadline = Date.now() + WIKI_MAINTENANCE_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      await mkdir(lockPath, { recursive: false });
+      return async () => {
+        await rm(lockPath, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw error;
+      }
+
+      const nowMs = Date.now();
+      if (await wikiMaintenanceLockIsStale(lockPath, nowMs)) {
+        await rm(lockPath, { recursive: true, force: true });
+        continue;
+      }
+
+      if (nowMs >= deadline) {
+        throw new Error("Timed out acquiring wiki maintenance write lock");
+      }
+
+      await sleep(WIKI_MAINTENANCE_LOCK_POLL_MS);
+    }
+  }
+}
+
+async function withWikiMaintenanceLock<T>(rootDir: string, fn: () => Promise<T>): Promise<T> {
+  const release = await acquireWikiMaintenanceLock(rootDir);
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
+function safeJournalSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "wiki_maintenance";
+}
+
+function wikiMaintenanceRecoveryJournalPath(rootDir: string, runId: string): string {
+  return resolveStorePath(rootDir, `audits/snapshots/${WIKI_MAINTENANCE_RECOVERY_PREFIX}${safeJournalSegment(runId)}${WIKI_MAINTENANCE_RECOVERY_SUFFIX}`);
+}
+
+function serializeCoreRecordContent(record: CoreRecord): string {
+  return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+async function materializeFiles(files: MaterializedFile[]): Promise<void> {
+  for (const file of files) {
+    await mkdir(dirname(file.path), { recursive: true });
+    await atomicWriteText(file.path, file.content);
+  }
+}
+
+async function replayWikiMaintenanceAppendEntries(rootDir: string, entries: WikiMaintenanceAppendEntry[]): Promise<void> {
+  for (const entry of entries) {
+    if (entry.kind === "validation_log") {
+      await appendValidationLog(rootDir, entry.entry);
+      continue;
+    }
+
+    await appendAuditChange(rootDir, entry.entry);
+  }
+}
+
+function relativeStorePath(rootDir: string, filePath: string): string {
+  const rootPath = resolve(rootDir);
+  const targetPath = resolveStorePath(rootDir, filePath);
+  return relative(rootPath, targetPath);
+}
+
+function buildWikiMaintenanceRecoveryJournal(input: {
+  rootDir: string;
+  created_at: string;
+  files: MaterializedFile[];
+  append_entries: WikiMaintenanceAppendEntry[];
+}): WikiMaintenanceRecoveryJournal {
+  return {
+    version: 1,
+    operation: "wiki_maintenance",
+    created_at: input.created_at,
+    files: input.files.map((file) => ({
+      path: relativeStorePath(input.rootDir, file.path),
+      content: file.content,
+    })),
+    append_entries: input.append_entries,
+  };
+}
+
+async function writeWikiMaintenanceRecoveryJournal(
+  filePath: string,
+  journal: WikiMaintenanceRecoveryJournal,
+): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  await atomicWriteText(filePath, `${JSON.stringify(journal, null, 2)}\n`);
+}
+
+async function recoverWikiMaintenanceJournal(rootDir: string, journalPath: string): Promise<void> {
+  const parsed = JSON.parse(await readFile(journalPath, "utf8")) as Partial<WikiMaintenanceRecoveryJournal>;
+  if (parsed.operation !== "wiki_maintenance" || !Array.isArray(parsed.files)) {
+    throw new Error(`Wiki maintenance recovery journal is malformed: ${relativeStorePath(rootDir, journalPath)}`);
+  }
+
+  const files = parsed.files.map((file, index) => {
+    if (
+      typeof file !== "object" ||
+      file === null ||
+      typeof file.path !== "string" ||
+      typeof file.content !== "string"
+    ) {
+      throw new Error(`Wiki maintenance recovery journal entry ${index} is malformed`);
+    }
+    return {
+      path: resolveStorePath(rootDir, file.path),
+      content: file.content,
+    };
+  });
+  await materializeFiles(files);
+  await replayWikiMaintenanceAppendEntries(rootDir, parsed.append_entries ?? []);
+  await rm(journalPath, { force: true });
+}
+
+async function recoverPendingWikiMaintenanceJournals(rootDir: string): Promise<void> {
+  const snapshotsDir = resolveStorePath(rootDir, STORAGE_LAYOUT.audits.snapshots);
+  const entries = await readdir(snapshotsDir).catch((error) => {
+    if (isMissingFileError(error)) return [];
+    throw error;
+  });
+  const journalNames = entries
+    .filter((entry) => entry.startsWith(WIKI_MAINTENANCE_RECOVERY_PREFIX) && entry.endsWith(WIKI_MAINTENANCE_RECOVERY_SUFFIX))
+    .sort();
+
+  for (const journalName of journalNames) {
+    await recoverWikiMaintenanceJournal(rootDir, resolveStorePath(rootDir, `audits/snapshots/${journalName}`));
+  }
 }
 
 function unique<T>(items: T[]): T[] {
@@ -248,12 +440,6 @@ Status: ${page.staleness_state ?? "current"}
 Quality: ${page.quality_score ?? "unknown"}
 Editorial: wiki pages are not canonical authority.
 `;
-}
-
-async function writeMarkdown(rootDir: string, page: WikiPage, body: string): Promise<void> {
-  const filePath = resolveStorePath(rootDir, page.path);
-  await mkdir(dirname(filePath), { recursive: true });
-  await atomicWriteText(filePath, renderMarkdown(page, body));
 }
 
 function findExistingPage(existingPages: WikiPage[], id: string | undefined, title: string, path?: string): WikiPage | undefined {
@@ -439,7 +625,13 @@ function buildLintDiagnostics(input: WikiMaintenanceInput, pages: WikiPage[], cl
   return diagnostics;
 }
 
-async function updateWikiIndexAndLog(rootDir: string, input: WikiMaintenanceInput, pages: WikiPage[], claims: WikiClaim[], diagnostics: Diagnostic[]): Promise<void> {
+async function buildWikiIndexAndLogFiles(
+  rootDir: string,
+  input: WikiMaintenanceInput,
+  pages: WikiPage[],
+  claims: WikiClaim[],
+  diagnostics: Diagnostic[],
+): Promise<MaterializedFile[]> {
   const allPages = await loadWikiPages(rootDir);
   const mergedPages = [...allPages.filter((page) => !pages.some((written) => written.id === page.id)), ...pages]
     .sort((a, b) => a.title.localeCompare(b.title));
@@ -460,12 +652,39 @@ async function updateWikiIndexAndLog(rootDir: string, input: WikiMaintenanceInpu
     `  - claims: ${claims.map((claim) => claim.id).join(", ") || "none"}`,
     `  - diagnostics: ${diagnostics.map((item) => item.id).join(", ") || "none"}`,
   ].join("\n");
-  await atomicWriteText(resolveStorePath(rootDir, STORAGE_LAYOUT.wiki.index), index);
-  await atomicWriteText(logPath, `${existingLog.trimEnd()}\n${logEntry}\n`);
+
+  return [
+    {
+      path: resolveStorePath(rootDir, STORAGE_LAYOUT.wiki.index),
+      content: index,
+    },
+    {
+      path: logPath,
+      content: `${existingLog.trimEnd()}\n${logEntry}\n`,
+    },
+  ];
 }
 
-async function compileAndWriteMemoryBrowser(rootDir: string, input: WikiMaintenanceInput): Promise<MemoryBrowserProjectionResult> {
-  const projection = compileMemoryBrowserProjection({
+function mergeById<T extends { id: string }>(stored: T[], pending: T[] = []): T[] {
+  const merged = new Map(stored.map((record) => [record.id, record]));
+  for (const record of pending) {
+    merged.set(record.id, record);
+  }
+  return [...merged.values()];
+}
+
+async function compileMemoryBrowserFromStoreState(
+  rootDir: string,
+  input: WikiMaintenanceInput,
+  pending?: {
+    source_records?: SourceRecord[];
+    wiki_pages?: WikiPage[];
+    wiki_claims?: WikiClaim[];
+    wiki_maintenance_runs?: WikiMaintenanceRun[];
+    diagnostics?: Diagnostic[];
+  },
+): Promise<MemoryBrowserProjectionResult> {
+  return compileMemoryBrowserProjection({
     now: input.now,
     visibility_state: defaultVisibility(input),
     read_context: input.memory_browser_read_context,
@@ -474,7 +693,7 @@ async function compileAndWriteMemoryBrowser(rootDir: string, input: WikiMaintena
       html_artifact: input.ids.browser_html_artifact,
       manifest: input.ids.browser_manifest,
     },
-    source_records: await loadSourceRecords(rootDir),
+    source_records: mergeById(await loadSourceRecords(rootDir), pending?.source_records),
     actor_identities: await loadActorIdentities(rootDir),
     runtime_instances: await loadRuntimeInstances(rootDir),
     runtime_sessions: await loadRuntimeSessions(rootDir),
@@ -486,25 +705,38 @@ async function compileAndWriteMemoryBrowser(rootDir: string, input: WikiMaintena
     relations: await loadWorldRelations(rootDir),
     contradictions: await loadWorldContradictions(rootDir),
     contradiction_resolutions: await loadContradictionResolutions(rootDir),
-    wiki_pages: await loadWikiPages(rootDir),
-    wiki_claims: await loadWikiClaims(rootDir),
-    wiki_maintenance_runs: await loadWikiMaintenanceRuns(rootDir),
+    wiki_pages: mergeById(await loadWikiPages(rootDir), pending?.wiki_pages),
+    wiki_claims: mergeById(await loadWikiClaims(rootDir), pending?.wiki_claims),
+    wiki_maintenance_runs: mergeById(await loadWikiMaintenanceRuns(rootDir), pending?.wiki_maintenance_runs),
     proposals: await loadProposals(rootDir),
     curation_packets: await loadCurationPackets(rootDir),
     ratification_records: await loadRatificationRecords(rootDir),
     disposition_records: await loadDispositionRecords(rootDir),
-    diagnostics: await loadDiagnostics(rootDir),
+    diagnostics: mergeById(await loadDiagnostics(rootDir), pending?.diagnostics),
     projection_artifacts: await loadProjectionArtifacts(rootDir),
     projection_manifests: await loadProjectionManifests(rootDir),
   });
+}
 
-  await atomicWriteText(resolveProjectionArtifactPath(rootDir, projection.artifacts[0]!.path), projection.json);
-  await atomicWriteText(resolveProjectionArtifactPath(rootDir, projection.artifacts[1]!.path), projection.html);
-  for (const artifact of projection.artifacts) {
-    await writeCoreRecord(rootDir, artifact);
-  }
-  await writeCoreRecord(rootDir, projection.manifest);
-  return projection;
+function buildMemoryBrowserFiles(rootDir: string, projection: MemoryBrowserProjectionResult): MaterializedFile[] {
+  return [
+    {
+      path: resolveProjectionArtifactPath(rootDir, projection.artifacts[0]!.path),
+      content: projection.json,
+    },
+    {
+      path: resolveProjectionArtifactPath(rootDir, projection.artifacts[1]!.path),
+      content: projection.html,
+    },
+    ...projection.artifacts.map((artifact) => ({
+      path: coreRecordPath(rootDir, artifact),
+      content: serializeCoreRecordContent(artifact),
+    })),
+    {
+      path: coreRecordPath(rootDir, projection.manifest),
+      content: serializeCoreRecordContent(projection.manifest),
+    },
+  ];
 }
 
 function assertNoValidationIssues(issues: ValidationIssue[], scope: string): void {
@@ -608,7 +840,18 @@ export function buildWikiClaimProposalCandidate(input: WikiClaimProposalCandidat
 
 export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Promise<WikiMaintenanceResult> {
   assertAuthenticatedPrincipal(input);
-  await initializeStore(input.rootDir, input.now);
+  const rootDir = resolve(input.rootDir);
+  await initializeStore(rootDir, input.now);
+  return withWikiMaintenanceLock(rootDir, async () => {
+    await recoverPendingWikiMaintenanceJournals(rootDir);
+    return runWikiMaintenanceToStoreLocked({
+      ...input,
+      rootDir,
+    });
+  });
+}
+
+async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Promise<WikiMaintenanceResult> {
   const existingPages = await loadWikiPages(input.rootDir);
   const existingClaims = await loadWikiClaims(input.rootDir);
   const pages: WikiPage[] = [];
@@ -810,36 +1053,75 @@ export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Pr
     });
   }
 
-  if (!reused) {
-    if (input.source_record) {
-      await writeCoreRecord(input.rootDir, input.source_record);
-    }
-    for (const record of records) {
-      await writeCoreRecord(input.rootDir, record);
-    }
-    for (const markdown of markdowns) {
-      await writeMarkdown(input.rootDir, markdown.page, markdown.body);
-    }
-    await updateWikiIndexAndLog(input.rootDir, input, pages, claims, diagnostics);
-    await appendValidationLog(input.rootDir, {
-      entry_id: `validation:${run.id}:wiki-maintenance`,
-      at: input.now,
-      scope: input.validation_scope ?? `workflow:wiki:${input.event}`,
-      issues: validation_issues,
-    });
-    await appendAuditChange(input.rootDir, {
-      entry_id: `audit:${run.id}:wiki_maintenance`,
-      at: input.now,
-      operation: input.event,
-      record_id: run.id,
-      record_kind: run.kind,
-      record_layer: run.layer,
-      detail: `Completed wiki maintenance event ${input.event}.`,
-      related_refs: unique([...run.page_refs, ...run.claim_refs, ...run.diagnostic_refs, ...run.input_refs]),
-    });
-  }
+  const memory_browser = await compileMemoryBrowserFromStoreState(input.rootDir, input, {
+    source_records: input.source_record ? [input.source_record] : [],
+    wiki_pages: pages,
+    wiki_claims: claims,
+    wiki_maintenance_runs: [run],
+    diagnostics,
+  });
+  const writeFiles: MaterializedFile[] = [
+    ...(!reused && input.source_record
+      ? [{
+          path: coreRecordPath(input.rootDir, input.source_record),
+          content: serializeCoreRecordContent(input.source_record),
+        }]
+      : []),
+    ...(!reused
+      ? records.map((record) => ({
+          path: coreRecordPath(input.rootDir, record),
+          content: serializeCoreRecordContent(record),
+        }))
+      : []),
+    ...(!reused
+      ? markdowns.map((markdown) => ({
+          path: resolveStorePath(input.rootDir, markdown.page.path),
+          content: renderMarkdown(markdown.page, markdown.body),
+        }))
+      : []),
+    ...(!reused ? await buildWikiIndexAndLogFiles(input.rootDir, input, pages, claims, diagnostics) : []),
+    ...buildMemoryBrowserFiles(input.rootDir, memory_browser),
+  ];
+  const append_entries: WikiMaintenanceAppendEntry[] = !reused
+    ? [
+        {
+          kind: "validation_log",
+          entry: {
+            entry_id: `validation:${run.id}:wiki-maintenance`,
+            at: input.now,
+            scope: input.validation_scope ?? `workflow:wiki:${input.event}`,
+            issues: validation_issues,
+          },
+        },
+        {
+          kind: "audit_change",
+          entry: {
+            entry_id: `audit:${run.id}:wiki_maintenance`,
+            at: input.now,
+            operation: input.event,
+            record_id: run.id,
+            record_kind: run.kind,
+            record_layer: run.layer,
+            detail: `Completed wiki maintenance event ${input.event}.`,
+            related_refs: unique([...run.page_refs, ...run.claim_refs, ...run.diagnostic_refs, ...run.input_refs]),
+          },
+        },
+      ]
+    : [];
+  const journalPath = wikiMaintenanceRecoveryJournalPath(input.rootDir, input.ids.run);
+  await writeWikiMaintenanceRecoveryJournal(
+    journalPath,
+    buildWikiMaintenanceRecoveryJournal({
+      rootDir: input.rootDir,
+      created_at: input.now,
+      files: writeFiles,
+      append_entries,
+    }),
+  );
+  await materializeFiles(writeFiles);
+  await replayWikiMaintenanceAppendEntries(input.rootDir, append_entries);
+  await rm(journalPath, { force: true });
 
-  const memory_browser = await compileAndWriteMemoryBrowser(input.rootDir, input);
   const storedRun = reused ? await readCoreRecord<WikiMaintenanceRun>(coreRecordPath(input.rootDir, run)) : run;
   return {
     reused,
