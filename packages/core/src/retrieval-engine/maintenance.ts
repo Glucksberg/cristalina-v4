@@ -35,6 +35,22 @@ export interface PlanVectorInvalidationInput {
   visibility_state?: VisibilityState;
 }
 
+export interface RebuildExactIndexInput {
+  id: string;
+  now: string;
+  corpus: VectorCorpus;
+  embedding_model: EmbeddingModelManifest;
+  embeddings: EmbeddingRecord[];
+  index_manifest_id: string;
+  index_generation: string;
+  visibility_state?: VisibilityState;
+}
+
+export interface RebuildExactIndexResult {
+  index_manifest?: VectorIndexManifest;
+  maintenance_run: VectorMaintenanceRun;
+}
+
 function sha256(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
@@ -251,5 +267,125 @@ export function planVectorInvalidation(input: PlanVectorInvalidationInput): Vect
     issue_codes,
     ...(invalidated_artifact_refs.length > 0 ? { invalidated_artifact_refs } : {}),
     ...(rebuild_candidate_refs.length > 0 ? { rebuild_candidate_refs } : {}),
+  };
+}
+
+export function rebuildExactIndex(input: RebuildExactIndexInput): RebuildExactIndexResult {
+  const issueCodes = new Set<string>();
+  const chunkRefs = new Set(input.corpus.chunk_refs);
+  const embeddingGenerations = unique(input.embeddings.map((embedding) => embedding.embedding_generation));
+
+  if (input.embeddings.length === 0) {
+    issueCodes.add("empty_embedding_set");
+  }
+  if (input.corpus.embedding_model_ref !== undefined && input.corpus.embedding_model_ref !== null && input.corpus.embedding_model_ref !== input.embedding_model.id) {
+    issueCodes.add("corpus_embedding_model_ref_mismatch");
+  }
+  if (embeddingGenerations.length > 1) {
+    issueCodes.add("embedding_generation_mismatch");
+  }
+  for (const embedding of input.embeddings) {
+    if (!chunkRefs.has(embedding.chunk_ref)) {
+      issueCodes.add("embedding_chunk_not_in_corpus");
+    }
+    if (embedding.embedding_model_ref !== input.embedding_model.id) {
+      issueCodes.add("embedding_model_ref_mismatch");
+    }
+    if (embedding.dimensions !== input.embedding_model.dimensions) {
+      issueCodes.add("embedding_model_dimension_mismatch");
+    }
+    if (embedding.metric !== input.embedding_model.metric) {
+      issueCodes.add("embedding_model_metric_mismatch");
+    }
+  }
+
+  const checked_artifact_refs = unique([
+    input.corpus.id,
+    input.embedding_model.id,
+    ...input.embeddings.map((embedding) => embedding.id),
+  ]);
+  const issue_codes = [...issueCodes].sort();
+  const baseRun = {
+    id: input.id,
+    kind: "vector_maintenance_run" as const,
+    layer: "derived" as const,
+    authoritative_home: "governance" as const,
+    created_at: input.now,
+    visibility_state: input.visibility_state ?? {
+      privacy_scope: "project_private" as const,
+    },
+    provenance: {
+      source_type: "vector_maintenance",
+      source_ref: "rebuild_exact_index",
+      evidence_refs: checked_artifact_refs,
+    },
+    job: "rebuild_exact_index" as const,
+    corpus_ref: input.corpus.id,
+    checked_artifact_refs,
+  };
+
+  if (issue_codes.length > 0) {
+    return {
+      maintenance_run: {
+        ...baseRun,
+        status: "rejected",
+        index_manifest_ref: null,
+        issue_codes,
+      },
+    };
+  }
+
+  const embeddingGeneration = embeddingGenerations[0];
+  const indexChecksum = sha256(JSON.stringify({
+    corpus_ref: input.corpus.id,
+    embedding_refs: input.embeddings.map((embedding) => embedding.id),
+    vector_checksums: input.embeddings.map((embedding) => embedding.vector_checksum),
+  }));
+  const index_manifest: VectorIndexManifest = {
+    id: input.index_manifest_id,
+    kind: "vector_index_manifest",
+    layer: "derived",
+    authoritative_home: "governance",
+    created_at: input.now,
+    visibility_state: input.visibility_state ?? {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "rebuild_exact_index",
+      source_ref: input.corpus.id,
+      evidence_refs: checked_artifact_refs,
+      actor_ref: "system:vector_maintenance",
+    },
+    index_ref: {
+      path: `derived/vector/indexes/${input.index_manifest_id}.json`,
+      checksum: indexChecksum,
+      encoding: input.embedding_model.vector_encoding,
+      dimensions: input.embedding_model.dimensions,
+      generation_id: input.index_generation,
+      producing_ref: input.index_manifest_id,
+    },
+    corpus_ref: input.corpus.id,
+    embedding_model_ref: input.embedding_model.id,
+    dimensions: input.embedding_model.dimensions,
+    metric: input.embedding_model.metric,
+    index_kind: "exact",
+    chunk_policy_version: input.corpus.chunk_policy_version,
+    source_refs: input.corpus.source_refs,
+    corpus_generation: input.corpus.corpus_generation,
+    embedding_generation: embeddingGeneration,
+    index_generation: input.index_generation,
+    vector_encoding: input.embedding_model.vector_encoding,
+    index_checksum: indexChecksum,
+  };
+
+  return {
+    index_manifest,
+    maintenance_run: {
+      ...baseRun,
+      status: "passed",
+      index_manifest_ref: index_manifest.id,
+      issue_codes: [],
+      rebuilt_artifact_refs: [index_manifest.id],
+    },
   };
 }

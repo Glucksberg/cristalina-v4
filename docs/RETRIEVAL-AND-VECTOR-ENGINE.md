@@ -841,6 +841,7 @@ interface VectorMaintenanceRun {
   issue_codes: string[];
   diagnostic_refs?: string[];
   invalidated_artifact_refs?: string[];
+  rebuilt_artifact_refs?: string[];
   rebuild_candidate_refs?: string[];
   repair_candidate_refs?: string[];
 }
@@ -850,6 +851,11 @@ The first maintenance jobs should validate and plan invalidation. Rebuild,
 repair, and ANN refresh must remain explicit durable runs; validation and
 invalidation planning may identify candidate refs but must not rewrite vector
 artifacts as a side effect.
+
+Exact index rebuild is the next safe rebuild job because it only produces a
+new exact-index manifest from already validated corpus, embedding model, and
+embedding records. It must record the rebuilt manifest ref in the maintenance
+run and must not introduce ANN behavior.
 
 Maintenance must check generation consistency:
 

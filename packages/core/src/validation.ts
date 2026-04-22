@@ -1369,6 +1369,9 @@ export function validateVectorArtifact(value: unknown): ValidationIssue[] {
       if (value.invalidated_artifact_refs !== undefined && (!isStringArray(value.invalidated_artifact_refs) || !hasUniqueEntries(value.invalidated_artifact_refs))) {
         issues.push({ path: "invalidated_artifact_refs", message: "expected unique string array" });
       }
+      if (value.rebuilt_artifact_refs !== undefined && (!isStringArray(value.rebuilt_artifact_refs) || !hasUniqueEntries(value.rebuilt_artifact_refs))) {
+        issues.push({ path: "rebuilt_artifact_refs", message: "expected unique string array" });
+      }
       if (value.rebuild_candidate_refs !== undefined && (!isStringArray(value.rebuild_candidate_refs) || !hasUniqueEntries(value.rebuild_candidate_refs))) {
         issues.push({ path: "rebuild_candidate_refs", message: "expected unique string array" });
       }

@@ -943,6 +943,13 @@
               },
               "uniqueItems": true
             },
+            "rebuilt_artifact_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
             "rebuild_candidate_refs": {
               "type": "array",
               "items": {

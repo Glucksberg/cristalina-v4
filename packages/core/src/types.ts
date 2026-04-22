@@ -641,6 +641,7 @@ export interface VectorMaintenanceRun extends RecordEnvelope {
   issue_codes: string[];
   diagnostic_refs?: string[];
   invalidated_artifact_refs?: string[];
+  rebuilt_artifact_refs?: string[];
   rebuild_candidate_refs?: string[];
   repair_candidate_refs?: string[];
 }
