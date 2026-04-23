@@ -40,7 +40,7 @@ export interface RecordSessionResumeReceiptInput {
   adapter: Exclude<RuntimeKind, "generic">;
   manifest: ProjectionManifest;
   checkpoint: WorkingMemoryCheckpoint;
-  authenticated_principal?: SessionResumeReceipt["authenticated_principal"];
+  authenticated_principal: SessionResumeReceipt["authenticated_principal"];
   diagnostic_refs?: string[];
   visibility_state?: VisibilityState;
 }
@@ -178,6 +178,9 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
   if (input.manifest.projection_profile !== "session_resume_v2") {
     throw new Error(`Session resume receipts require session_resume_v2 manifest: ${input.manifest.id}`);
   }
+  if (input.manifest.snapshot_strategy !== "checkpoint_consistent") {
+    throw new Error(`Session resume receipts require checkpoint_consistent manifest: ${input.manifest.id}`);
+  }
   if (input.manifest.adapter !== input.adapter) {
     throw new Error(`Session resume receipt adapter mismatch: ${input.manifest.adapter}`);
   }
@@ -193,6 +196,12 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
   if (input.manifest.read_policy_version !== input.checkpoint.read_policy_version) {
     throw new Error(`Session resume receipt read policy mismatch: ${input.manifest.read_policy_version}`);
   }
+  if (input.manifest.continuity_epoch && input.manifest.continuity_epoch !== input.checkpoint.continuity_epoch) {
+    throw new Error(`Session resume receipt continuity epoch mismatch: ${input.manifest.continuity_epoch}`);
+  }
+  if (input.manifest.generation !== undefined && input.manifest.generation !== null && input.manifest.generation !== input.checkpoint.generation) {
+    throw new Error(`Session resume receipt generation mismatch: ${input.manifest.generation}`);
+  }
   if (
     input.manifest.policy_snapshot_ref !== undefined &&
     input.manifest.policy_snapshot_ref !== null &&
@@ -204,6 +213,15 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
   }
   if (input.manifest.source_checkpoint_ref && input.manifest.source_checkpoint_ref !== input.checkpoint.id) {
     throw new Error(`Session resume receipt checkpoint mismatch: ${input.manifest.source_checkpoint_ref}`);
+  }
+  if (!input.manifest.compiler_version?.trim()) {
+    throw new Error(`Session resume receipt manifest missing compiler_version: ${input.manifest.id}`);
+  }
+  if (!input.authenticated_principal?.actor_ref?.trim()) {
+    throw new Error("Session resume receipts require authenticated_principal with actor_ref");
+  }
+  if (input.authenticated_principal.kind === "system" && !input.authenticated_principal.system_scope?.trim()) {
+    throw new Error("Session resume receipt system principals require system_scope");
   }
   if (!input.manifest.upstream_refs.includes(input.checkpoint.id)) {
     throw new Error(`Session resume receipt manifest missing checkpoint upstream ref: ${input.checkpoint.id}`);
@@ -228,7 +246,7 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
       source_type: "session_resume_receipt",
       source_ref: input.manifest.id,
       evidence_refs: upstream_refs,
-      actor_ref: input.authenticated_principal?.actor_ref ?? "system:session_resume",
+      actor_ref: input.authenticated_principal.actor_ref,
       runtime_ref: input.checkpoint.runtime_instance_ref,
       session_ref: input.checkpoint.runtime_session_ref,
       thread_ref: input.checkpoint.conversation_thread_ref,
@@ -248,7 +266,7 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
     policy_snapshot_ref: input.manifest.policy_snapshot_ref ?? input.checkpoint.policy_snapshot_ref ?? null,
     compiler_version: input.manifest.compiler_version ?? SESSION_RESUME_COMPILER_VERSION,
     upstream_refs,
-    authenticated_principal: input.authenticated_principal ?? null,
+    authenticated_principal: input.authenticated_principal,
     diagnostic_refs: input.diagnostic_refs,
   };
 }

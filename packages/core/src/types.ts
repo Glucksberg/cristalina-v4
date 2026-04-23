@@ -850,7 +850,7 @@ export interface SessionResumeReceipt extends RecordEnvelope {
   policy_snapshot_ref?: string | null;
   compiler_version?: string | null;
   upstream_refs: string[];
-  authenticated_principal?: AuthenticatedPrincipal | null;
+  authenticated_principal: AuthenticatedPrincipal;
   diagnostic_refs?: string[];
 }
 

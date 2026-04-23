@@ -254,6 +254,11 @@ test("session resume receipts reject manifests outside the session resume contra
           projection_profile: "openclaw_runtime_v1",
         },
         checkpoint: activeCheckpoint,
+        authenticated_principal: {
+          kind: "system",
+          actor_ref: "system:session_resume",
+          system_scope: "session_resume",
+        },
       }),
     /session_resume_v2/,
   );
@@ -270,6 +275,11 @@ test("session resume receipts reject manifests outside the session resume contra
           read_policy_version: "other_policy",
         },
         checkpoint: activeCheckpoint,
+        authenticated_principal: {
+          kind: "system",
+          actor_ref: "system:session_resume",
+          system_scope: "session_resume",
+        },
       }),
     /read policy mismatch/,
   );
@@ -288,8 +298,50 @@ test("session resume receipts reject manifests outside the session resume contra
           ...activeCheckpoint,
           policy_snapshot_ref: "policy_snapshot_session_pack_001",
         },
+        authenticated_principal: {
+          kind: "system",
+          actor_ref: "system:session_resume",
+          system_scope: "session_resume",
+        },
       }),
     /policy snapshot mismatch/,
+  );
+
+  assert.throws(
+    () =>
+      recordSessionResumeReceipt({
+        now,
+        receipt_status: "applied",
+        adapter: "hermes",
+        manifest: {
+          ...compiled.manifest,
+          snapshot_strategy: "mixed_state_tolerant",
+        },
+        checkpoint: activeCheckpoint,
+        authenticated_principal: {
+          kind: "system",
+          actor_ref: "system:session_resume",
+          system_scope: "session_resume",
+        },
+      }),
+    /checkpoint_consistent/,
+  );
+
+  assert.throws(
+    () =>
+      recordSessionResumeReceipt({
+        now,
+        receipt_status: "applied",
+        adapter: "hermes",
+        manifest: compiled.manifest,
+        checkpoint: activeCheckpoint,
+        authenticated_principal: {
+          kind: "system",
+          actor_ref: "",
+          system_scope: "session_resume",
+        },
+      }),
+    /authenticated_principal with actor_ref/,
   );
 });
 
@@ -320,6 +372,11 @@ test("session resume receipts default to a deterministic id and preserve policy 
     adapter: "openclaw",
     manifest: compiled.manifest,
     checkpoint: activeCheckpoint,
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:session_resume",
+      system_scope: "session_resume",
+    },
   });
 
   assert.equal(receipt.id, receipt.receipt_key);

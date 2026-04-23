@@ -130,11 +130,13 @@ test("runtime identity schema stays aligned with runtime and actor enums", async
 
 test("session resume receipt schema stays aligned with executable receipt statuses", async () => {
   const schema = await readSchema("../../schemas/session-resume-receipt.schema.json");
-  const variant = schema.allOf?.[1];
+  const variant = (schema.allOf?.[1] ?? {}) as { properties?: Record<string, unknown>; required?: string[] };
   const properties = variant?.properties ?? {};
+  const required = Array.isArray(variant.required) ? variant.required : [];
 
   assert.deepEqual(expectEnum(properties.receipt_status), [...SESSION_RESUME_RECEIPT_STATUSES]);
   assert.deepEqual(expectEnum(properties.adapter), ["openclaw", "hermes"]);
+  assert.ok(required.includes("authenticated_principal"));
 });
 
 test("temporal world schema stays aligned with executable world-model enums", async () => {

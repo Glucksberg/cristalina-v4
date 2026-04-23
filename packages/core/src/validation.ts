@@ -1247,8 +1247,30 @@ function validateSessionResumeReceipt(value: unknown): ValidationIssue[] {
   if (!isStringArray(value.upstream_refs) || value.upstream_refs.length === 0 || !hasUniqueEntries(value.upstream_refs)) {
     issues.push({ path: "upstream_refs", message: "session resume receipts require unique upstream refs" });
   }
-  if (value.authenticated_principal !== undefined && value.authenticated_principal !== null) {
-    pushAuthenticatedPrincipal(issues, value.authenticated_principal, "authenticated_principal");
+  if (value.authenticated_principal === undefined || value.authenticated_principal === null) {
+    issues.push({ path: "authenticated_principal", message: "session resume receipts require authenticated_principal" });
+  } else {
+    const authenticated_principal = value.authenticated_principal;
+    pushAuthenticatedPrincipal(issues, authenticated_principal, "authenticated_principal");
+    const provenanceActorRef =
+      isRecord(value.provenance) && typeof value.provenance["actor_ref"] === "string"
+        ? value.provenance["actor_ref"]
+        : undefined;
+    const authenticatedActorRef =
+      isRecord(authenticated_principal) && typeof authenticated_principal["actor_ref"] === "string"
+        ? authenticated_principal["actor_ref"]
+        : undefined;
+    if (
+      typeof provenanceActorRef === "string" &&
+      provenanceActorRef.length > 0 &&
+      typeof authenticatedActorRef === "string" &&
+      authenticatedActorRef !== provenanceActorRef
+    ) {
+      issues.push({
+        path: "provenance.actor_ref",
+        message: "session resume receipt provenance.actor_ref must match authenticated_principal.actor_ref",
+      });
+    }
   }
   if (isStringArray(value.upstream_refs)) {
     for (const requiredRef of [value.projection_manifest_ref, value.checkpoint_ref]) {

@@ -24,7 +24,8 @@
         "continuity_epoch",
         "generation",
         "read_policy_version",
-        "upstream_refs"
+        "upstream_refs",
+        "authenticated_principal"
       ],
       "properties": {
         "kind": {
@@ -114,59 +115,52 @@
           "uniqueItems": true
         },
         "authenticated_principal": {
-          "anyOf": [
-            {
-              "type": "object",
-              "required": [
-                "kind",
-                "actor_ref"
-              ],
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "enum": [
-                    "owner",
-                    "agent",
-                    "participant",
-                    "system"
-                  ]
-                },
-                "actor_ref": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "system_scope": {
-                  "type": "string"
-                }
-              },
-              "if": {
-                "required": [
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "const": "system"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "system_scope"
-                ]
-              },
-              "else": {
-                "not": {
-                  "required": [
-                    "system_scope"
-                  ]
-                }
-              },
-              "additionalProperties": false
+          "type": "object",
+          "required": [
+            "kind",
+            "actor_ref"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "agent",
+                "participant",
+                "system"
+              ]
             },
-            {
-              "type": "null"
+            "actor_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "system_scope": {
+              "type": "string"
             }
-          ]
+          },
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "system"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "system_scope"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "system_scope"
+              ]
+            }
+          },
+          "additionalProperties": false
         },
         "diagnostic_refs": {
           "type": "array",
