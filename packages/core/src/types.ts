@@ -86,6 +86,7 @@ export const RUNTIMES = [
 export const SOURCE_INTAKE_KINDS = [
   "conversation_preference",
   "projection_feedback",
+  // Deprecated compatibility profile for legacy records; new adapter feedback should use projection_feedback.
   "openclaw_projection_feedback",
   "structured_preference_signal",
 ] as const;

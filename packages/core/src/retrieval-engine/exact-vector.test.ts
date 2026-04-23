@@ -55,6 +55,66 @@ test("exact vector search and hybrid retrieval preserve authority and suppress e
   assert.deepEqual(suppressedWiki?.suppression_reasons, ["unsupported_wiki_claim"]);
 });
 
+test("public retrieval entrypoints enforce recipe authenticated authority", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const ownerRecipe = {
+    ...fixture.recipe,
+    required_authenticated_principal_kind: "owner" as const,
+  };
+
+  assert.throws(
+    () =>
+      executeExactVectorSearch({
+        id: "vector_search_run_public_authority_001",
+        now: "2026-04-21T00:00:00.000Z",
+        query_ref: "retrieval_query_public_authority_001",
+        query_vector: [1, 0, 0],
+        recipe: ownerRecipe,
+        chunks: fixture.chunks,
+        embeddings: fixture.embeddings,
+        embedding_vectors: fixture.embedding_vectors,
+        records: [fixture.canonical_record],
+        index_manifest_ref: fixture.index_manifest.id,
+        search_generation: "search_gen_public_authority_001",
+      }),
+    /requires authenticated principal kind owner; got none/,
+  );
+
+  assert.throws(
+    () =>
+      executeHybridRetrieval({
+        query_ref: "retrieval_query_public_authority_001",
+        recipe: ownerRecipe,
+        candidates: fixture.retrieval_result.included_candidates,
+        authenticated_principal: {
+          kind: "participant",
+          actor_ref: "actor_participant_public_authority_001",
+        },
+      }),
+    /requires authenticated principal kind owner; got participant/,
+  );
+
+  const exact = executeExactVectorSearch({
+    id: "vector_search_run_public_authority_owner_001",
+    now: "2026-04-21T00:00:00.000Z",
+    query_ref: "retrieval_query_public_authority_owner_001",
+    query_vector: [1, 0, 0],
+    recipe: ownerRecipe,
+    chunks: fixture.chunks,
+    embeddings: fixture.embeddings,
+    embedding_vectors: fixture.embedding_vectors,
+    records: [fixture.canonical_record],
+    index_manifest_ref: fixture.index_manifest.id,
+    search_generation: "search_gen_public_authority_owner_001",
+    authenticated_principal: {
+      kind: "owner",
+      actor_ref: "actor_owner_public_authority_001",
+    },
+  });
+
+  assert.equal(exact.search_run.query_ref, "retrieval_query_public_authority_owner_001");
+});
+
 test("deterministic ANN vector search emits an auditable ANN search run", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const annManifest = {

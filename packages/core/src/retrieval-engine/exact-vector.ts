@@ -1,5 +1,6 @@
 import { evaluateProjectionReadDecision, type ProjectionReadContext } from "../adapter-sdk/projection.js";
 import type {
+  AuthenticatedPrincipal,
   CanonicalMemoryObject,
   CoreRecord,
   EmbeddingRecord,
@@ -27,6 +28,7 @@ export interface ExactVectorSearchInput {
   records: CoreRecord[];
   index_manifest_ref: string;
   search_generation: string;
+  authenticated_principal?: AuthenticatedPrincipal | null;
   read_context?: ProjectionReadContext;
 }
 
@@ -45,6 +47,7 @@ export interface LexicalCandidateSearchInput {
   chunks: VectorChunk[];
   chunk_texts: Record<string, string>;
   records: CoreRecord[];
+  authenticated_principal?: AuthenticatedPrincipal | null;
   read_context?: ProjectionReadContext;
 }
 
@@ -53,6 +56,7 @@ export interface HybridRetrievalInput {
   recipe: RetrievalRecipe;
   candidates: RetrievalCandidate[];
   trace_ref?: string;
+  authenticated_principal?: AuthenticatedPrincipal | null;
 }
 
 function dot(left: number[], right: number[]): number {
@@ -71,6 +75,21 @@ export function cosineSimilarity(left: number[], right: number[]): number {
   const denominator = magnitude(left) * magnitude(right);
   if (denominator === 0) return 0;
   return dot(left, right) / denominator;
+}
+
+export function assertRetrievalRecipeAuthority(input: {
+  recipe: RetrievalRecipe;
+  authenticated_principal?: AuthenticatedPrincipal | null;
+}): void {
+  const requiredKind = input.recipe.required_authenticated_principal_kind;
+  if (!requiredKind) return;
+
+  const observedKind = input.authenticated_principal?.kind;
+  if (observedKind !== requiredKind) {
+    throw new Error(
+      `Retrieval recipe ${input.recipe.id} requires authenticated principal kind ${requiredKind}; got ${observedKind ?? "none"}`,
+    );
+  }
 }
 
 function retrievalAuthority(layer: Layer): RetrievalAuthority {
@@ -231,6 +250,10 @@ function selectSearchCandidates(candidates: RetrievalCandidate[], scoreKey: "vec
 }
 
 export function executeExactVectorSearch(input: ExactVectorSearchInput): ExactVectorSearchResult {
+  assertRetrievalRecipeAuthority({
+    recipe: input.recipe,
+    authenticated_principal: input.authenticated_principal,
+  });
   const recordsById = new Map(input.records.map((record) => [record.id, record]));
   const chunksById = new Map(input.chunks.map((chunk) => [chunk.id, chunk]));
 
@@ -334,6 +357,10 @@ export function executeDeterministicAnnVectorSearch(input: DeterministicAnnVecto
 }
 
 export function executeLexicalCandidateSearch(input: LexicalCandidateSearchInput): RetrievalCandidate[] {
+  assertRetrievalRecipeAuthority({
+    recipe: input.recipe,
+    authenticated_principal: input.authenticated_principal,
+  });
   const recordsById = new Map(input.records.map((record) => [record.id, record]));
 
   return selectSearchCandidates(
@@ -402,17 +429,24 @@ function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandi
 }
 
 function candidateMergeKey(candidate: RetrievalCandidate): string {
-  return `${candidate.ref.layer ?? candidate.layer}:${candidate.ref.kind ?? candidate.authority}:${candidate.ref.id}`;
+  return `${candidate.ref.layer}:${candidate.ref.kind}:${candidate.ref.id}`;
 }
 
 function preferredMergeBase(existing: RetrievalCandidate, candidate: RetrievalCandidate): RetrievalCandidate {
-  if (existing.id.startsWith("candidate_external_") && !candidate.id.startsWith("candidate_external_")) {
+  if (!existing.can_support_proposal && candidate.can_support_proposal) {
+    return candidate;
+  }
+  if ((existing.eligible_upstream_refs?.length ?? 0) === 0 && (candidate.eligible_upstream_refs?.length ?? 0) > 0) {
     return candidate;
   }
   return existing;
 }
 
 export function executeHybridRetrieval(input: HybridRetrievalInput): RetrievalResult {
+  assertRetrievalRecipeAuthority({
+    recipe: input.recipe,
+    authenticated_principal: input.authenticated_principal,
+  });
   const scored = mergeCandidateSignals(input.candidates)
     .map((candidate) => {
       const final_score =

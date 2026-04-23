@@ -74,6 +74,7 @@ const DEFAULT_PREFERENCE_SIGNAL_PROFILE: Record<SourceIntakeKind, Omit<Preferenc
     preference_topic_label: "User Interaction Preferences",
     relation_type: "expressed_preference",
   },
+  // Deprecated compatibility profile for legacy OpenClaw records. New feedback uses projection_feedback.
   openclaw_projection_feedback: {
     observation_prefix: "OpenClaw runtime feedback: ",
     episode_summary: "Runtime feedback produced a bounded preference episode.",

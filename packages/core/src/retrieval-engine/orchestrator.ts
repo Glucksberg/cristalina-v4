@@ -20,7 +20,7 @@ import type {
 } from "../types.js";
 import { buildDeterministicVectorChunks } from "./chunking.js";
 import { createDeterministicFixtureEmbeddingProvider, type EmbeddingProvider } from "./embedding-provider.js";
-import { executeExactVectorSearch, executeHybridRetrieval } from "./exact-vector.js";
+import { assertRetrievalRecipeAuthority, executeExactVectorSearch, executeHybridRetrieval } from "./exact-vector.js";
 
 export interface ExecuteDeterministicRetrievalInput {
   now: string;
@@ -58,18 +58,6 @@ export interface DeterministicRetrievalRun {
   candidates: RetrievalCandidate[];
   result: RetrievalResult;
   vector_artifacts: VectorArtifact[];
-}
-
-function assertRecipeAuthority(input: ExecuteDeterministicRetrievalInput): void {
-  const requiredKind = input.recipe.required_authenticated_principal_kind;
-  if (!requiredKind) return;
-
-  const observedKind = input.query.authenticated_principal?.kind;
-  if (observedKind !== requiredKind) {
-    throw new Error(
-      `Retrieval recipe ${input.recipe.id} requires authenticated principal kind ${requiredKind}; got ${observedKind ?? "none"}`,
-    );
-  }
 }
 
 function sha256(value: string): string {
@@ -185,7 +173,10 @@ export function executeDeterministicRetrieval(input: ExecuteDeterministicRetriev
       throw new Error(`Retrieval query requested layer is outside recipe scope: ${layer}`);
     }
   }
-  assertRecipeAuthority(input);
+  assertRetrievalRecipeAuthority({
+    recipe: input.recipe,
+    authenticated_principal: input.query.authenticated_principal,
+  });
   const effectiveRecipe: RetrievalRecipe = {
     ...input.recipe,
     layer_scope: input.query.requested_layers,
@@ -247,6 +238,7 @@ export function executeDeterministicRetrieval(input: ExecuteDeterministicRetriev
     records: input.records,
     index_manifest_ref: index_manifest.id,
     search_generation: input.search_generation,
+    authenticated_principal: input.query.authenticated_principal,
     read_context: input.read_context,
   });
   const result = executeHybridRetrieval({
@@ -254,6 +246,7 @@ export function executeDeterministicRetrieval(input: ExecuteDeterministicRetriev
     recipe: effectiveRecipe,
     candidates: exact.candidates,
     trace_ref: input.trace_ref,
+    authenticated_principal: input.query.authenticated_principal,
   });
 
   return {
