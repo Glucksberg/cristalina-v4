@@ -4,7 +4,11 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { appendAuditChange, appendValidationLog } from "../audit/log.js";
 import { resolveProjectionArtifactPath } from "../adapter-sdk/projection-path.js";
 import type { ProjectionReadContext } from "../adapter-sdk/projection.js";
-import { compileMemoryBrowserProjection, type MemoryBrowserProjectionResult } from "../projection-engine/memory-browser.js";
+import {
+  compileMemoryBrowserProjection,
+  readMemoryBrowserProjectionConsistency,
+  type MemoryBrowserProjectionResult,
+} from "../projection-engine/memory-browser.js";
 import { STORAGE_LAYOUT } from "../storage.js";
 import { atomicWriteText, isMissingFileError } from "../store/atomic-write.js";
 import {
@@ -784,9 +788,16 @@ async function loadPersistedMemoryBrowserProjection(
     readFile(resolveProjectionArtifactPath(rootDir, jsonArtifact.path), "utf8"),
     readFile(resolveProjectionArtifactPath(rootDir, htmlArtifact.path), "utf8"),
   ]);
+  const snapshot = JSON.parse(json) as Record<string, unknown>;
+  const consistency = readMemoryBrowserProjectionConsistency(snapshot);
+  if (manifest.snapshot_strategy !== consistency.snapshot_strategy) {
+    throw new Error(
+      `Persisted wiki maintenance run ${input.ids.run} has memory browser snapshot strategy ${consistency.snapshot_strategy} but manifest declares ${manifest.snapshot_strategy}`,
+    );
+  }
 
   return {
-    snapshot: JSON.parse(json) as Record<string, unknown>,
+    snapshot,
     json,
     html,
     artifacts,

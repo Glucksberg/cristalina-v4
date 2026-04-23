@@ -82,6 +82,27 @@ export interface MemoryBrowserProjectionResult {
 }
 
 export const MEMORY_BROWSER_PROJECTION_COMPILER_VERSION = "memory_browser.v1";
+export const MEMORY_BROWSER_OBSERVED_LAYERS = [
+  "raw",
+  "runtime",
+  "world",
+  "canon",
+  "wiki",
+  "governance",
+  "derived",
+  "audits",
+] as const;
+
+export type MemoryBrowserObservedLayer = (typeof MEMORY_BROWSER_OBSERVED_LAYERS)[number];
+
+export interface MemoryBrowserProjectionConsistency {
+  snapshot_strategy: "mixed_state_tolerant";
+  source_checkpoint_ref: null;
+  continuity_epoch: null;
+  generation: null;
+  boundary_note: string;
+  observed_layer_updates: Record<MemoryBrowserObservedLayer, string | null>;
+}
 
 function countBy<T extends { kind: string }>(records: T[]): Record<string, number> {
   return records.reduce<Record<string, number>>((counts, record) => {
@@ -106,6 +127,58 @@ function latestObservedAt(records: Array<{ created_at: string; updated_at?: stri
   return records
     .map((record) => record.updated_at ?? record.created_at)
     .reduce((latest, current) => (current > latest ? current : latest));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function readMemoryBrowserProjectionConsistency(
+  snapshot: Record<string, unknown>,
+): MemoryBrowserProjectionConsistency {
+  const rawConsistency = snapshot.consistency;
+  if (!isRecord(rawConsistency)) {
+    throw new Error("Memory browser snapshot must declare consistency metadata");
+  }
+  const consistency = rawConsistency as Record<string, unknown>;
+  if (consistency.snapshot_strategy !== "mixed_state_tolerant") {
+    throw new Error("Memory browser snapshot must declare snapshot_strategy=mixed_state_tolerant");
+  }
+  if (consistency.source_checkpoint_ref !== null) {
+    throw new Error("Memory browser snapshot must keep source_checkpoint_ref null for mixed-state reads");
+  }
+  if (consistency.continuity_epoch !== null) {
+    throw new Error("Memory browser snapshot must keep continuity_epoch null for mixed-state reads");
+  }
+  if (consistency.generation !== null) {
+    throw new Error("Memory browser snapshot must keep generation null for mixed-state reads");
+  }
+  if (typeof consistency.boundary_note !== "string" || consistency.boundary_note.length === 0) {
+    throw new Error("Memory browser snapshot must declare a boundary_note");
+  }
+  if (!isRecord(consistency.observed_layer_updates)) {
+    throw new Error("Memory browser snapshot must declare observed_layer_updates");
+  }
+  const observedLayerUpdates = consistency.observed_layer_updates as Record<string, unknown>;
+
+  const observed_layer_updates = Object.fromEntries(
+    MEMORY_BROWSER_OBSERVED_LAYERS.map((layer) => {
+      const value = observedLayerUpdates[layer];
+      if (value !== null && typeof value !== "string") {
+        throw new Error(`Memory browser snapshot observed_layer_updates.${layer} must be string or null`);
+      }
+      return [layer, value ?? null];
+    }),
+  ) as Record<MemoryBrowserObservedLayer, string | null>;
+
+  return {
+    snapshot_strategy: "mixed_state_tolerant",
+    source_checkpoint_ref: null,
+    continuity_epoch: null,
+    generation: null,
+    boundary_note: consistency.boundary_note,
+    observed_layer_updates,
+  };
 }
 
 function text(value: unknown): string {

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { compileMemoryBrowserProjection } from "../projection-engine/memory-browser.js";
+import { resolveProjectionArtifactPath } from "../adapter-sdk/projection-path.js";
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { executeCanonicalProposalWorkflow } from "./pipeline.js";
 import {
@@ -701,6 +702,51 @@ test("wiki maintenance reuse keeps persisted memory-browser artifacts stable aft
   assert.equal(replayed.memory_browser.json, firstJson);
   assert.equal(replayed.memory_browser.html, firstHtml);
   assert.equal(JSON.stringify(replayed.memory_browser.manifest), firstManifest);
+});
+
+test("wiki maintenance reuse rejects persisted memory-browser snapshots without observed boundaries", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-reuse-browser-boundary-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = {
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_reuse_browser_boundary_001",
+      source_page: "wiki_page_reuse_browser_boundary_source_001",
+      topic_page: "wiki_page_reuse_browser_boundary_topic_001",
+      browser_json_artifact: "artifact_reuse_browser_boundary_json_001",
+      browser_html_artifact: "artifact_reuse_browser_boundary_html_001",
+      browser_manifest: "manifest_reuse_browser_boundary_001",
+    }),
+    source_record: sourceRecord("src_reuse_browser_boundary_001"),
+    source_summary: "Original source summary.",
+    topic: {
+      title: "Reuse Browser Boundary Guard",
+      summary: "Original topic summary.",
+    },
+  } satisfies WikiMaintenanceInput;
+
+  const first = await runWikiMaintenanceToStore(input);
+  const jsonArtifact = first.memory_browser.artifacts.find((artifact) => artifact.artifact_kind === "memory_browser_json");
+  assert.ok(jsonArtifact);
+  const corruptedSnapshot = {
+    ...(first.memory_browser.snapshot as Record<string, unknown>),
+    consistency: {
+      ...((first.memory_browser.snapshot as { consistency?: Record<string, unknown> }).consistency ?? {}),
+      observed_layer_updates: undefined,
+    },
+  };
+  await writeFile(
+    resolveProjectionArtifactPath(rootDir, jsonArtifact.path),
+    `${JSON.stringify(corruptedSnapshot, null, 2)}\n`,
+    "utf8",
+  );
+
+  await assert.rejects(
+    () => runWikiMaintenanceToStore(input),
+    /observed_layer_updates/,
+  );
 });
 
 test("wiki maintenance serializes concurrent index and log updates", async (t) => {
