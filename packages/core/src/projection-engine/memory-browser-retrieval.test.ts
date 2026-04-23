@@ -4,7 +4,10 @@ import test from "node:test";
 import { executeExactVectorSearch } from "../retrieval-engine/exact-vector.js";
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateCoreRecord } from "../validation.js";
-import { compileMemoryBrowserProjection } from "./memory-browser.js";
+import {
+  compileMemoryBrowserProjection,
+  MEMORY_BROWSER_PROJECTION_COMPILER_VERSION,
+} from "./memory-browser.js";
 
 test("memory browser inspects symbolic and vector retrieval artifacts without changing authority", () => {
   const fixture = buildSymbolicRetrievalFixture();
@@ -62,6 +65,7 @@ test("memory browser inspects symbolic and vector retrieval artifacts without ch
   assert.match(browser.html, /Symbol Anchors/);
   assert.match(browser.html, /Vector Search Runs/);
   assert.match(browser.json, /unsupported_wiki_claim/);
+  assert.equal(browser.manifest.compiler_version, MEMORY_BROWSER_PROJECTION_COMPILER_VERSION);
   assert.deepEqual(browser.manifest.retrieval_trace_refs, ["retrieval_trace_symbolic_fixture_001"]);
   assert.ok(browser.manifest.upstream_refs.includes(fixture.symbol_anchor.id));
   assert.ok(browser.manifest.upstream_refs.includes(exactSearch.search_run.id));

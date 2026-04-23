@@ -81,6 +81,8 @@ export interface MemoryBrowserProjectionResult {
   manifest: ProjectionManifest;
 }
 
+export const MEMORY_BROWSER_PROJECTION_COMPILER_VERSION = "memory_browser.v1";
+
 function countBy<T extends { kind: string }>(records: T[]): Record<string, number> {
   return records.reduce<Record<string, number>>((counts, record) => {
     counts[record.kind] = (counts[record.kind] ?? 0) + 1;
@@ -461,6 +463,7 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
     projection_profile: "memory_browser",
     audience: "memory_browser",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
+    compiler_version: MEMORY_BROWSER_PROJECTION_COMPILER_VERSION,
     context_refs: [],
     suppressed_refs: suppressed_records.map((record) => record.id),
     suppressed_records,

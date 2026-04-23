@@ -1097,7 +1097,7 @@ export interface ProjectionManifest extends RecordEnvelope {
   projection_profile: string;
   audience: string;
   read_policy_version: string;
-  compiler_version?: string | null;
+  compiler_version: string;
   actor_identity_ref?: string | null;
   owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;

@@ -16,6 +16,7 @@
         "projection_profile",
         "audience",
         "read_policy_version",
+        "compiler_version",
         "context_refs",
         "artifact_refs",
         "upstream_refs"
@@ -50,10 +51,7 @@
           "minLength": 1
         },
         "compiler_version": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": "string",
           "minLength": 1
         },
         "actor_identity_ref": {

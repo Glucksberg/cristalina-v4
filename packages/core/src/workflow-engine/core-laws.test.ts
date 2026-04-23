@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { DEFAULT_PROJECTION_READ_POLICY_VERSION } from "../adapter-sdk/projection.js";
 import { applyApprovedCanonicalProposal } from "../canon/engine.js";
+import { RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION } from "../projection-engine/openclaw.js";
 import type { CanonicalMemoryObject } from "../types.js";
 import {
   acceptContradictionResolution,
@@ -1421,6 +1422,7 @@ test("openclaw projection preserves visibility and renders reconciled statuses",
   assert.equal(projection.manifest.runtime_session_ref, intake.runtime_session?.id);
   assert.equal(projection.manifest.conversation_thread_ref, intake.conversation_thread?.id);
   assert.equal(projection.manifest.read_policy_version, DEFAULT_PROJECTION_READ_POLICY_VERSION);
+  assert.equal(projection.manifest.compiler_version, RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION.openclaw);
   assert.deepEqual(
     projection.manifest.context_refs,
     [

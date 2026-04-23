@@ -22,7 +22,10 @@ import { createHermesProjectionFixture } from "../test-support/projection-fixtur
 import { initializeStore, writeCoreRecord } from "../store/io.js";
 import { ValidationError } from "../validation.js";
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
-import { compileOpenClawBootstrapProjection } from "../projection-engine/openclaw.js";
+import {
+  compileOpenClawBootstrapProjection,
+  RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION,
+} from "../projection-engine/openclaw.js";
 import type { Diagnostic } from "../types.js";
 
 test("runtime projection helper lists and loads OpenClaw projections from real flow state", async (t) => {
@@ -97,6 +100,7 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
 
   assert.equal(summaries.length, 1);
   assert.equal(summaries[0]!.manifest_id, first.records.projection_manifest.id);
+  assert.equal(summaries[0]!.compiler_version, RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION.openclaw);
   assert.equal(summaries[0]!.generation, null);
   assert.equal(summaries[0]!.pending_review_count, 1);
 
@@ -658,6 +662,86 @@ test("runtime projection helper can require checkpoint-consistent latest views a
   );
 });
 
+test("runtime projection helper can require a compiler version for the selected runtime context", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T14:00:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_compiler_old",
+    diagnostic_id: "diag_hermes_compiler_old",
+    review_id: "cur_hermes_compiler_old",
+    proposal_ref: "prop_hermes_compiler_old",
+    markdown_heading: "Hermes Runtime Memory Compiler Old",
+    diagnostic_message: "Older compiler fixture.",
+    provenance_source_ref: "tests/runtime-projection/compiler-old",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_compiler_shared",
+    runtime_instance_ref: "runtime_compiler_shared",
+    runtime_session_ref: "session_compiler_shared",
+    conversation_thread_ref: "thread_compiler_shared",
+    markdown_artifact_id: "part_hermes_compiler_old",
+    canon_artifact_id: "part_hermes_compiler_old_canon",
+    compiler_version: "hermes.runtime.v1",
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T14:01:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_compiler_new",
+    diagnostic_id: "diag_hermes_compiler_new",
+    review_id: "cur_hermes_compiler_new",
+    proposal_ref: "prop_hermes_compiler_new",
+    markdown_heading: "Hermes Runtime Memory Compiler New",
+    diagnostic_message: "Newer compiler fixture.",
+    provenance_source_ref: "tests/runtime-projection/compiler-new",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_compiler_shared",
+    runtime_instance_ref: "runtime_compiler_shared",
+    runtime_session_ref: "session_compiler_shared",
+    conversation_thread_ref: "thread_compiler_shared",
+    markdown_artifact_id: "part_hermes_compiler_new",
+    canon_artifact_id: "part_hermes_compiler_new_canon",
+    compiler_version: "hermes.runtime.v2",
+  });
+
+  const latestAny = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    owner_identity_ref: "actor_owner_compiler_shared",
+    runtime_instance_ref: "runtime_compiler_shared",
+    runtime_session_ref: "session_compiler_shared",
+    conversation_thread_ref: "thread_compiler_shared",
+  });
+  assert.ok(latestAny);
+  assert.equal(latestAny!.manifest.id, "pmf_hermes_compiler_new");
+
+  const latestV1 = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    compiler_version: "hermes.runtime.v1",
+    owner_identity_ref: "actor_owner_compiler_shared",
+    runtime_instance_ref: "runtime_compiler_shared",
+    runtime_session_ref: "session_compiler_shared",
+    conversation_thread_ref: "thread_compiler_shared",
+  });
+  assert.ok(latestV1);
+  assert.equal(latestV1!.manifest.id, "pmf_hermes_compiler_old");
+
+  await assert.rejects(
+    () =>
+      loadLatestProjectionRuntimeView(rootDir, "hermes", {
+        compiler_version: "hermes.runtime.v3",
+        owner_identity_ref: "actor_owner_compiler_shared",
+        runtime_instance_ref: "runtime_compiler_shared",
+        runtime_session_ref: "session_compiler_shared",
+        conversation_thread_ref: "thread_compiler_shared",
+      }),
+    /did not satisfy compiler_version=hermes\.runtime\.v3/,
+  );
+});
+
 test("runtime projection helper rejects stored projection artifacts that escape derived storage", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
   t.after(async () => {
@@ -704,6 +788,7 @@ test("runtime projection helper rejects stored projection artifacts that escape 
       projection_profile: "hermes/runtime-bootstrap",
       audience: "runtime",
       read_policy_version: "projection-read-v2",
+      compiler_version: "hermes.runtime.v1",
       context_refs: [],
       artifact_refs: ["part_hermes_escape_test_001"],
       upstream_refs: ["ref_escape_test_001"],

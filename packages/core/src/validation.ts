@@ -1002,7 +1002,8 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   if (value.policy_snapshot_ref !== undefined && value.policy_snapshot_ref !== null && typeof value.policy_snapshot_ref !== "string") {
     issues.push({ path: "policy_snapshot_ref", message: "expected string or null" });
   }
-  for (const optionalStringKey of ["compiler_version", "source_checkpoint_ref", "continuity_epoch"] as const) {
+  pushRequiredString(issues, value, "compiler_version");
+  for (const optionalStringKey of ["source_checkpoint_ref", "continuity_epoch"] as const) {
     const optionalValue = value[optionalStringKey];
     if (optionalValue !== undefined && optionalValue !== null && typeof optionalValue !== "string") {
       issues.push({ path: optionalStringKey, message: "expected string or null" });

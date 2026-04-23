@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { validateCoreRecord } from "../validation.js";
-import { compileOpenClawBootstrapProjection } from "./openclaw.js";
+import {
+  compileOpenClawBootstrapProjection,
+  RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION,
+} from "./openclaw.js";
 
 test("OpenClaw projection exposes included and suppressed retrieval candidates as trace metadata", () => {
   const fixture = buildSymbolicRetrievalFixture();
@@ -27,6 +30,7 @@ test("OpenClaw projection exposes included and suppressed retrieval candidates a
   });
 
   assert.match(projection.markdown, /## Retrieval/);
+  assert.equal(projection.manifest.compiler_version, RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION.openclaw);
   assert.match(projection.markdown, /\[included:candidate_canon_symbolic_001\] canon\/canon/);
   assert.match(projection.markdown, /\[suppressed:candidate_wiki_symbolic_001\] wiki\/editorial/);
   assert.deepEqual(projection.manifest.retrieval_trace_refs, ["retrieval_trace_symbolic_fixture_001"]);

@@ -318,7 +318,7 @@ export interface ProjectionManifestInput {
   projection_profile: string;
   audience: string;
   read_policy_version: string;
-  compiler_version?: string | null;
+  compiler_version: string;
   actor_identity_ref?: string | null;
   owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
@@ -367,7 +367,7 @@ export function createProjectionManifest(input: ProjectionManifestInput): Projec
     projection_profile: input.projection_profile,
     audience: input.audience,
     read_policy_version: input.read_policy_version,
-    compiler_version: input.compiler_version ?? null,
+    compiler_version: input.compiler_version,
     actor_identity_ref: input.actor_identity_ref ?? null,
     owner_identity_ref: input.owner_identity_ref ?? null,
     runtime_instance_ref: input.runtime_instance_ref ?? null,

@@ -32,6 +32,11 @@ import type {
 
 type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
 
+export const RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION: Record<ProjectionAdapterKind, string> = {
+  openclaw: "openclaw.runtime_bootstrap.v1",
+  hermes: "hermes.runtime_bootstrap.v1",
+};
+
 export function defaultRuntimeBootstrapProjectionPath(
   adapter: ProjectionAdapterKind,
   manifestId: string,
@@ -504,6 +509,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     projection_profile: "bootstrap",
     audience: "runtime",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
+    compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[adapter],
     actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
     owner_identity_ref: input.identity_context?.owner_identity_ref ?? null,
     runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,

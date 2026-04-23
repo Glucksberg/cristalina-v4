@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createProjectionArtifact, createProjectionManifest } from "../adapter-sdk/projection.js";
+import { RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION } from "../projection-engine/openclaw.js";
 import { initializeStore, writeCoreRecord } from "../store/io.js";
 import type { CurationPacket, Diagnostic, ProjectionManifest } from "../types.js";
 
@@ -24,7 +25,7 @@ export interface HermesProjectionFixtureInput {
   conversation_thread_ref: string;
   markdown_artifact_id: string;
   canon_artifact_id: string;
-  compiler_version?: string | null;
+  compiler_version?: string;
   source_checkpoint_ref?: string | null;
   continuity_epoch?: string | null;
   generation?: number | null;
@@ -150,7 +151,7 @@ export async function createHermesProjectionFixture(
     projection_profile: input.projection_profile,
     audience: "runtime",
     read_policy_version: input.read_policy_version,
-    compiler_version: input.compiler_version ?? null,
+    compiler_version: input.compiler_version ?? RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION.hermes,
     actor_identity_ref: input.actor_identity_ref ?? null,
     owner_identity_ref: input.owner_identity_ref,
     runtime_instance_ref: input.runtime_instance_ref,
