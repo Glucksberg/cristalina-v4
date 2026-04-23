@@ -241,16 +241,18 @@ Risk being avoided:
 The hardening pass should produce at minimum:
 
 1. a binding hardening plan
-2. a binding object-envelope document
-3. a binding runtime-identity document
-4. a binding disposition and consolidation document
-5. updated roadmap and decisions
-6. updated core scaffold types
-7. updated schemas for:
+2. a focused consistency hardening plan for idempotency, temporal law,
+   retirement, continuity, versioning, and cross-subsystem reads
+3. a binding object-envelope document
+4. a binding runtime-identity document
+5. a binding disposition and consolidation document
+6. updated roadmap and decisions
+7. updated core scaffold types
+8. updated schemas for:
    - object envelope
    - runtime identity
    - disposition record
-8. a runtime-validation plan for replacing scaffold interfaces with executable schema enforcement
+9. a runtime-validation plan for replacing scaffold interfaces with executable schema enforcement
 
 ---
 

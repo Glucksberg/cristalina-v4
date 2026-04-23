@@ -73,22 +73,28 @@ This section is a cumulative memory of durable lessons from each work session in
 
 Rules:
 
-- each session should end with exactly one short sentence added here
+- each session may end with one or more short sentences added here when the work produced multiple distinct durable lessons
 - each sentence should capture a durable engineering lesson, not a status update
+- when a session adds multiple sentences, they should be the smallest non-overlapping set that captures the distinct lessons from that work
 - prefer lessons about contracts, layer boundaries, legality of transitions, validation depth, and sequencing
 - if a new sentence duplicates or supersedes an old one, rewrite or replace instead of growing noise
 - keep the list readable and high-signal
 - before proposing or reviewing a new session phrase, the agent should read all existing session phrases to avoid semantic duplication
 - if a substantially similar phrase already exists and the session did not add a distinct new lesson, the correct outcome is to leave the session without a new phrase
 - if a similar phrase already exists but the current session adds a distinct durable lesson worth preserving, the agent may suggest a new phrase candidate and should explain what is new about it
-- after any commit in this repository, the agent should inspect this section for a phrase matching the current session, show it if it exists, or explicitly say that no phrase is registered for the current session yet
+- after any commit in this repository, the agent should inspect this section for phrase coverage matching the current session, show the matching phrase or phrases if they exist, or explicitly say that no phrase is registered for the current session yet
 - after any commit in this repository, the agent should also show the phrases from the 5 most recent sessions in the same message so the user can curate with recent context in view
 - after any commit in this repository, the agent should count the current `AGENTS.md` size in characters with `wc -m < AGENTS.md`, show that number alongside the session phrases, and add exactly one of these status lines: `seu arquivo agents.md ainda esta com tamanho aceitavel` when the count is below 26214 characters, `alerta: seu arquivo agents.md esta chegando perto do limite recomendado` when the count is from 26214 through 32768 characters, or `arquivo agents.md grande demais. pode piorar a performance do agente.` when the count is above 32768 characters. The hard threshold follows the Codex `project_doc_max_bytes` default of 32 KiB as a practical character-count proxy for this mostly ASCII file, and the warning threshold is 80% of that limit.
 - session phrases must be curated by the user; the agent may suggest candidates, but should not add, rewrite, or finalize a session phrase without explicit user approval
 
 Current session phrases:
 
-- 2026-04-23: Memory hardening only stays durable when raw evidence ownership is explicit, runtime thread context merges instead of replacing history, and accepted operational caveats are recorded as scope notes instead of being left implicit in code or reviews.
+- 2026-04-23: Memory replay only stays correct when retries, duplicate deliveries, and recovery runs converge on the same durable state instead of producing semantically new events.
+- 2026-04-23: Temporal memory only stays honest when observation time, persistence time, governance time, projection time, and resume time remain distinct and replay uses recorded chronology instead of fresh wall-clock assumptions.
+- 2026-04-23: Durable memory only stays current when supersession, expiry, and retirement deactivate old truth across canon, wiki, retrieval, and projections without making history disappear.
+- 2026-04-23: Session continuity only stays legal when checkpoints remain authoritative, handoff packs stay derived, and resume receipts prove continuity without becoming a shadow write path.
+- 2026-04-23: Derived artifacts only stay trustworthy when policy, compiler, index, and generation versions are explicit enough to detect stale outputs, replay old results, and migrate without silent semantic drift.
+- 2026-04-23: Cross-subsystem reads only stay coherent when mixed-state tolerance versus snapshot requirement is explicit, diagnosable, and enforced at the read boundary instead of assumed from timing.
 - 2026-04-22: Typed references only preserve provenance when every graph edge, retrieval candidate, and adapter feedback path resolves identity from declared records or fails into diagnostics instead of inventing authority from ids or legacy names.
 - 2026-04-22: Adapter parity only stays correct when runtime-neutral flows read adapter identity from persisted manifests, materialize projections under the declared adapter, and prove Hermes and OpenClaw through the same queue, projection, and authority contracts.
 - 2026-04-22: Memory correctness only closes when create paths cannot reuse canonical identity, retrieval budgets are spent after legality suppression, and non-canonical intake can replay or repair partial evidence writes.
