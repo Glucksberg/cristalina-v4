@@ -49,6 +49,13 @@
           "type": "string",
           "minLength": 1
         },
+        "compiler_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
         "actor_identity_ref": {
           "type": [
             "string",
@@ -79,10 +86,40 @@
             "null"
           ]
         },
+        "source_checkpoint_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "continuity_epoch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generation": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
         "policy_snapshot_ref": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "snapshot_strategy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "mixed_state_tolerant",
+            "checkpoint_consistent",
+            null
           ]
         },
         "context_refs": {

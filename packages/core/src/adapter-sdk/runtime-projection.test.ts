@@ -97,6 +97,7 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
 
   assert.equal(summaries.length, 1);
   assert.equal(summaries[0]!.manifest_id, first.records.projection_manifest.id);
+  assert.equal(summaries[0]!.generation, null);
   assert.equal(summaries[0]!.pending_review_count, 1);
 
   const latest = await loadLatestProjectionRuntimeView(rootDir, "openclaw");
@@ -452,6 +453,87 @@ test("runtime projection helper requires identity context when one thread has pr
 
   assert.ok(latest);
   assert.equal(latest!.manifest.id, "pmf_hermes_identity_ambiguity_b");
+});
+
+test("runtime projection helper prefers higher generation within the same continuity epoch when timestamps tie", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T12:00:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_generation_001",
+    diagnostic_id: "diag_hermes_generation_001",
+    review_id: "cur_hermes_generation_001",
+    proposal_ref: "prop_hermes_generation_001",
+    markdown_heading: "Hermes Runtime Memory Generation 1",
+    diagnostic_message: "Generation 1 fixture.",
+    provenance_source_ref: "tests/runtime-projection/generation-001",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_generation_shared",
+    runtime_instance_ref: "runtime_generation_shared",
+    runtime_session_ref: "session_generation_shared",
+    conversation_thread_ref: "thread_generation_shared",
+    markdown_artifact_id: "part_hermes_generation_001",
+    canon_artifact_id: "part_hermes_generation_001_canon",
+    compiler_version: "hermes.runtime.v1",
+    source_checkpoint_ref: "chkpt_generation_shared",
+    continuity_epoch: "epoch_generation_shared",
+    generation: 1,
+    snapshot_strategy: "checkpoint_consistent",
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T12:00:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_generation_002",
+    diagnostic_id: "diag_hermes_generation_002",
+    review_id: "cur_hermes_generation_002",
+    proposal_ref: "prop_hermes_generation_002",
+    markdown_heading: "Hermes Runtime Memory Generation 2",
+    diagnostic_message: "Generation 2 fixture.",
+    provenance_source_ref: "tests/runtime-projection/generation-002",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_generation_shared",
+    runtime_instance_ref: "runtime_generation_shared",
+    runtime_session_ref: "session_generation_shared",
+    conversation_thread_ref: "thread_generation_shared",
+    markdown_artifact_id: "part_hermes_generation_002",
+    canon_artifact_id: "part_hermes_generation_002_canon",
+    compiler_version: "hermes.runtime.v1",
+    source_checkpoint_ref: "chkpt_generation_shared",
+    continuity_epoch: "epoch_generation_shared",
+    generation: 2,
+    snapshot_strategy: "checkpoint_consistent",
+  });
+
+  const summaries = await listProjectionRuntimeViews(rootDir, "hermes", {
+    owner_identity_ref: "actor_owner_generation_shared",
+    runtime_instance_ref: "runtime_generation_shared",
+    runtime_session_ref: "session_generation_shared",
+    conversation_thread_ref: "thread_generation_shared",
+  });
+
+  assert.equal(summaries[0]!.manifest_id, "pmf_hermes_generation_002");
+  assert.equal(summaries[0]!.generation, 2);
+  assert.equal(summaries[0]!.continuity_epoch, "epoch_generation_shared");
+  assert.equal(summaries[0]!.source_checkpoint_ref, "chkpt_generation_shared");
+  assert.equal(summaries[0]!.snapshot_strategy, "checkpoint_consistent");
+
+  const latest = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    owner_identity_ref: "actor_owner_generation_shared",
+    runtime_instance_ref: "runtime_generation_shared",
+    runtime_session_ref: "session_generation_shared",
+    conversation_thread_ref: "thread_generation_shared",
+  });
+
+  assert.ok(latest);
+  assert.equal(latest!.manifest.id, "pmf_hermes_generation_002");
+  assert.equal(latest!.manifest.generation, 2);
 });
 
 test("runtime projection helper rejects stored projection artifacts that escape derived storage", async (t) => {

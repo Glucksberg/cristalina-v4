@@ -24,6 +24,11 @@ export interface HermesProjectionFixtureInput {
   conversation_thread_ref: string;
   markdown_artifact_id: string;
   canon_artifact_id: string;
+  compiler_version?: string | null;
+  source_checkpoint_ref?: string | null;
+  continuity_epoch?: string | null;
+  generation?: number | null;
+  snapshot_strategy?: ProjectionManifest["snapshot_strategy"];
 }
 
 export interface HermesProjectionFixtureResult {
@@ -145,11 +150,16 @@ export async function createHermesProjectionFixture(
     projection_profile: input.projection_profile,
     audience: "runtime",
     read_policy_version: input.read_policy_version,
+    compiler_version: input.compiler_version ?? null,
     actor_identity_ref: input.actor_identity_ref ?? null,
     owner_identity_ref: input.owner_identity_ref,
     runtime_instance_ref: input.runtime_instance_ref,
     runtime_session_ref: input.runtime_session_ref,
     conversation_thread_ref: input.conversation_thread_ref,
+    source_checkpoint_ref: input.source_checkpoint_ref ?? null,
+    continuity_epoch: input.continuity_epoch ?? null,
+    generation: input.generation ?? null,
+    snapshot_strategy: input.snapshot_strategy ?? null,
     context_refs: [
       ...(input.actor_identity_ref ? [input.actor_identity_ref] : []),
       input.owner_identity_ref,

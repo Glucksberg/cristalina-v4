@@ -39,6 +39,7 @@ import {
   LAYERS,
   MEMORY_OBJECT_KINDS,
   PROPOSAL_OPERATIONS,
+  PROJECTION_SNAPSHOT_STRATEGIES,
   RUNTIMES,
   RETRIEVAL_SUPPRESSION_REASONS,
   SESSION_RESUME_RECEIPT_STATUSES,
@@ -934,6 +935,30 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   }
   if (value.policy_snapshot_ref !== undefined && value.policy_snapshot_ref !== null && typeof value.policy_snapshot_ref !== "string") {
     issues.push({ path: "policy_snapshot_ref", message: "expected string or null" });
+  }
+  for (const optionalStringKey of ["compiler_version", "source_checkpoint_ref", "continuity_epoch"] as const) {
+    const optionalValue = value[optionalStringKey];
+    if (optionalValue !== undefined && optionalValue !== null && typeof optionalValue !== "string") {
+      issues.push({ path: optionalStringKey, message: "expected string or null" });
+    }
+  }
+  if (value.generation !== undefined && value.generation !== null) {
+    if (typeof value.generation !== "number" || !Number.isInteger(value.generation) || value.generation < 0) {
+      issues.push({ path: "generation", message: "expected non-negative integer or null" });
+    }
+  }
+  if (value.snapshot_strategy !== undefined && value.snapshot_strategy !== null &&
+    !isEnumValue(value.snapshot_strategy, PROJECTION_SNAPSHOT_STRATEGIES)) {
+    issues.push({
+      path: "snapshot_strategy",
+      message: `expected one of: ${PROJECTION_SNAPSHOT_STRATEGIES.join(", ")}`,
+    });
+  }
+  if (typeof value.source_checkpoint_ref === "string" && value.snapshot_strategy === "mixed_state_tolerant") {
+    issues.push({
+      path: "snapshot_strategy",
+      message: "source_checkpoint_ref requires checkpoint_consistent snapshot strategy",
+    });
   }
   if (!isStringArray(value.context_refs) || !hasUniqueEntries(value.context_refs)) {
     issues.push({ path: "context_refs", message: "expected unique string array" });

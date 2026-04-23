@@ -275,7 +275,15 @@ test("projection manifest schema stays aligned with adapter and read-discipline 
 
   assert.deepEqual(expectEnum(properties.adapter), ["openclaw", "hermes"]);
   assert.equal((properties.read_policy_version as { type?: string } | undefined)?.type, "string");
+  assert.deepEqual((properties.compiler_version as { type?: string[] } | undefined)?.type, ["string", "null"]);
   assert.deepEqual((properties.owner_identity_ref as { type?: string[] } | undefined)?.type, ["string", "null"]);
+  assert.deepEqual((properties.source_checkpoint_ref as { type?: string[] } | undefined)?.type, ["string", "null"]);
+  assert.deepEqual((properties.continuity_epoch as { type?: string[] } | undefined)?.type, ["string", "null"]);
+  assert.deepEqual((properties.generation as { type?: string[] } | undefined)?.type, ["integer", "null"]);
+  assert.deepEqual(
+    (properties.snapshot_strategy as { enum?: Array<string | null> } | undefined)?.enum,
+    ["mixed_state_tolerant", "checkpoint_consistent", null],
+  );
   assert.equal((properties.context_refs as { type?: string } | undefined)?.type, "array");
   assert.equal((properties.review_refs as { type?: string } | undefined)?.type, "array");
   assert.equal((properties.retrieval_trace_refs as { type?: string } | undefined)?.type, "array");

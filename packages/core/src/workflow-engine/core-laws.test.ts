@@ -1412,9 +1412,14 @@ test("projection manifests require declared context refs and coherent suppressio
     projection_profile: "bootstrap",
     audience: "runtime",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
+    compiler_version: 7,
     actor_identity_ref: "actor_agent_test_001",
     owner_identity_ref: "actor_owner_test_001",
     runtime_instance_ref: "runtime_test_001",
+    source_checkpoint_ref: "chkpt_projection_invalid_001",
+    continuity_epoch: 12,
+    generation: -1,
+    snapshot_strategy: "mixed_state_tolerant",
     context_refs: ["runtime_test_001"],
     suppressed_refs: ["foreign_world_claim"],
     suppressed_records: [
@@ -1430,6 +1435,10 @@ test("projection manifests require declared context refs and coherent suppressio
 
   assert.ok(issues.some((issue) => issue.path === "context_refs" && issue.message.includes("actor_agent_test_001")));
   assert.ok(issues.some((issue) => issue.path === "context_refs" && issue.message.includes("actor_owner_test_001")));
+  assert.ok(issues.some((issue) => issue.path === "compiler_version"));
+  assert.ok(issues.some((issue) => issue.path === "continuity_epoch"));
+  assert.ok(issues.some((issue) => issue.path === "generation"));
+  assert.ok(issues.some((issue) => issue.path === "snapshot_strategy" && issue.message.includes("checkpoint_consistent")));
   assert.ok(issues.some((issue) => issue.path === "suppressed_refs" && issue.message.includes("foreign_world_claim")));
   assert.ok(issues.some((issue) => issue.path === "suppressed_records" && issue.message.includes("other_world_claim")));
 });

@@ -23,11 +23,16 @@ type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
 export interface ProjectionRuntimeSummary {
   manifest_id: string;
   compiled_at: string;
+  compiler_version?: string | null;
   actor_identity_ref?: string | null;
   owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
+  source_checkpoint_ref?: string | null;
+  continuity_epoch?: string | null;
+  generation?: number | null;
+  snapshot_strategy?: ProjectionManifest["snapshot_strategy"];
   diagnostic_count: number;
   review_count: number;
   pending_review_count: number;
@@ -64,7 +69,23 @@ export interface ProjectionRuntimeRetrievalContext {
 function compareProjectionTimestamps(left: ProjectionManifest, right: ProjectionManifest): number {
   const leftTimestamp = Date.parse(left.updated_at ?? left.created_at);
   const rightTimestamp = Date.parse(right.updated_at ?? right.created_at);
-  return rightTimestamp - leftTimestamp;
+  if (rightTimestamp !== leftTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+
+  if (
+    typeof left.continuity_epoch === "string" &&
+    typeof right.continuity_epoch === "string" &&
+    left.continuity_epoch === right.continuity_epoch
+  ) {
+    const leftGeneration = typeof left.generation === "number" ? left.generation : -1;
+    const rightGeneration = typeof right.generation === "number" ? right.generation : -1;
+    if (rightGeneration !== leftGeneration) {
+      return rightGeneration - leftGeneration;
+    }
+  }
+
+  return right.id.localeCompare(left.id);
 }
 
 function matchesProjectionRuntimeFilter(
@@ -219,11 +240,16 @@ export async function listProjectionRuntimeViews(
       return {
         manifest_id: manifest.id,
         compiled_at: manifest.updated_at ?? manifest.created_at,
+        compiler_version: manifest.compiler_version ?? null,
         actor_identity_ref: manifest.actor_identity_ref ?? null,
         owner_identity_ref: manifest.owner_identity_ref ?? null,
         runtime_instance_ref: manifest.runtime_instance_ref ?? null,
         runtime_session_ref: manifest.runtime_session_ref ?? null,
         conversation_thread_ref: manifest.conversation_thread_ref ?? null,
+        source_checkpoint_ref: manifest.source_checkpoint_ref ?? null,
+        continuity_epoch: manifest.continuity_epoch ?? null,
+        generation: manifest.generation ?? null,
+        snapshot_strategy: manifest.snapshot_strategy ?? null,
         diagnostic_count: diagnostics.filter((record) => diagnosticIds.has(record.id)).length,
         review_count: matchingReviews.length,
         pending_review_count: matchingReviews.filter((record) => record.status === "pending").length,
