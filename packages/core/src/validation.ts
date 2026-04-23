@@ -967,6 +967,37 @@ function validateWikiMaintenanceRun(value: unknown): ValidationIssue[] {
   if (value.retention_reviewed_refs !== undefined && !isStringArray(value.retention_reviewed_refs)) {
     issues.push({ path: "retention_reviewed_refs", message: "expected string array" });
   }
+  if (value.memory_browser_boundary !== undefined && value.memory_browser_boundary !== null) {
+    if (!isRecord(value.memory_browser_boundary)) {
+      issues.push({ path: "memory_browser_boundary", message: "expected object" });
+    } else {
+      if (value.memory_browser_boundary.snapshot_strategy !== "mixed_state_tolerant") {
+        issues.push({
+          path: "memory_browser_boundary.snapshot_strategy",
+          message: 'expected "mixed_state_tolerant"',
+        });
+      }
+      if (
+        typeof value.memory_browser_boundary.boundary_note !== "string" ||
+        value.memory_browser_boundary.boundary_note.length === 0
+      ) {
+        issues.push({ path: "memory_browser_boundary.boundary_note", message: "expected non-empty string" });
+      }
+      if (!isRecord(value.memory_browser_boundary.observed_layer_updates)) {
+        issues.push({ path: "memory_browser_boundary.observed_layer_updates", message: "expected object" });
+      } else {
+        for (const key of ["raw", "runtime", "world", "canon", "wiki", "governance", "derived", "audits"] as const) {
+          const observedAt = value.memory_browser_boundary.observed_layer_updates[key];
+          if (observedAt !== null && typeof observedAt !== "string") {
+            issues.push({
+              path: `memory_browser_boundary.observed_layer_updates.${key}`,
+              message: "expected string or null",
+            });
+          }
+        }
+      }
+    }
+  }
   return issues;
 }
 

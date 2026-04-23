@@ -105,7 +105,11 @@ test("source_ingested refreshes wiki pages, claim lifecycle metadata, audit, and
   });
 
   assert.equal(result.run.status, "completed");
-  assert.equal((await loadWikiMaintenanceRuns(rootDir)).length, 1);
+  const runs = await loadWikiMaintenanceRuns(rootDir);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0]?.memory_browser_boundary?.snapshot_strategy, "mixed_state_tolerant");
+  assert.equal(runs[0]?.memory_browser_boundary?.observed_layer_updates.wiki, now);
+  assert.equal(runs[0]?.memory_browser_boundary?.observed_layer_updates.raw, now);
   const pages = await loadWikiPages(rootDir);
   const claims = await loadWikiClaims(rootDir);
   assert.equal(pages.length, 2);

@@ -110,6 +110,50 @@
         },
         "additionalProperties": true
       }
+    },
+    "memory_browser_boundary": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "snapshot_strategy",
+        "boundary_note",
+        "observed_layer_updates"
+      ],
+      "properties": {
+        "snapshot_strategy": {
+          "const": "mixed_state_tolerant"
+        },
+        "boundary_note": {
+          "type": "string"
+        },
+        "observed_layer_updates": {
+          "type": "object",
+          "required": [
+            "raw",
+            "runtime",
+            "world",
+            "canon",
+            "wiki",
+            "governance",
+            "derived",
+            "audits"
+          ],
+          "properties": {
+            "raw": { "type": ["string", "null"] },
+            "runtime": { "type": ["string", "null"] },
+            "world": { "type": ["string", "null"] },
+            "canon": { "type": ["string", "null"] },
+            "wiki": { "type": ["string", "null"] },
+            "governance": { "type": ["string", "null"] },
+            "derived": { "type": ["string", "null"] },
+            "audits": { "type": ["string", "null"] }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

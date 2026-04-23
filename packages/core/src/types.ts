@@ -1066,6 +1066,23 @@ export interface WikiGraphEdge {
   upstream_refs: string[];
 }
 
+export interface MixedStateObservedLayerUpdates {
+  raw: string | null;
+  runtime: string | null;
+  world: string | null;
+  canon: string | null;
+  wiki: string | null;
+  governance: string | null;
+  derived: string | null;
+  audits: string | null;
+}
+
+export interface WikiMaintenanceBoundaryReceipt {
+  snapshot_strategy: "mixed_state_tolerant";
+  boundary_note: string;
+  observed_layer_updates: MixedStateObservedLayerUpdates;
+}
+
 export interface WikiMaintenanceRun extends RecordEnvelope {
   kind: "wiki_maintenance_run";
   layer: "wiki";
@@ -1079,6 +1096,7 @@ export interface WikiMaintenanceRun extends RecordEnvelope {
   graph_edges: WikiGraphEdge[];
   quality_score?: number;
   retention_reviewed_refs?: string[];
+  memory_browser_boundary?: WikiMaintenanceBoundaryReceipt | null;
 }
 
 export interface ProjectionArtifact extends RecordEnvelope {

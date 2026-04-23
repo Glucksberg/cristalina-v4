@@ -1122,7 +1122,7 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
     ...(input.session_crystallization?.upstream_refs ?? []),
     ...(input.retention_reviewed_refs ?? []),
   ]);
-  const run: WikiMaintenanceRun = {
+  const pendingRun: WikiMaintenanceRun = {
     id: input.ids.run,
     kind: "wiki_maintenance_run",
     layer: "wiki",
@@ -1140,6 +1140,32 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
     graph_edges,
     quality_score: claims[0]?.quality_score ?? pages[0]?.quality_score,
     retention_reviewed_refs: input.retention_reviewed_refs,
+    memory_browser_boundary: null,
+  };
+  const reused = await readFile(coreRecordPath(input.rootDir, {
+    id: input.ids.run,
+    kind: "wiki_maintenance_run",
+    layer: "wiki",
+  } as WikiMaintenanceRun), "utf8")
+    .then(() => true)
+    .catch((error) => {
+      if (isMissingFileError(error)) return false;
+      throw error;
+    });
+
+  const memory_browser = reused
+    ? await loadPersistedMemoryBrowserProjection(input.rootDir, input)
+    : await compileMemoryBrowserFromStoreState(input.rootDir, input, {
+        source_records: input.source_record ? [input.source_record] : [],
+        wiki_pages: pages,
+        wiki_claims: claims,
+        wiki_maintenance_runs: [pendingRun],
+        diagnostics,
+      });
+  const memory_browser_boundary = readMemoryBrowserProjectionConsistency(memory_browser.snapshot);
+  const run: WikiMaintenanceRun = {
+    ...pendingRun,
+    memory_browser_boundary,
   };
 
   const records: CoreRecord[] = [
@@ -1150,13 +1176,6 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
   ];
   const validation_issues = records.flatMap((record) => validateCoreRecord(record));
   assertNoValidationIssues(validation_issues, "wiki maintenance");
-
-  const reused = await readFile(coreRecordPath(input.rootDir, run), "utf8")
-    .then(() => true)
-    .catch((error) => {
-      if (isMissingFileError(error)) return false;
-      throw error;
-    });
 
   if (reused) {
     await assertReusedWikiMaintenanceMatchesInput({
@@ -1169,16 +1188,6 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
       markdowns,
     });
   }
-
-  const memory_browser = reused
-    ? await loadPersistedMemoryBrowserProjection(input.rootDir, input)
-    : await compileMemoryBrowserFromStoreState(input.rootDir, input, {
-        source_records: input.source_record ? [input.source_record] : [],
-        wiki_pages: pages,
-        wiki_claims: claims,
-        wiki_maintenance_runs: [run],
-        diagnostics,
-      });
   const writeFiles: MaterializedFile[] = [
     ...(!reused && input.source_record
       ? [{
