@@ -127,6 +127,10 @@ test("source_ingested refreshes wiki pages, claim lifecycle metadata, audit, and
   assert.equal(result.memory_browser.manifest.audience, "memory_browser");
   assert.match(result.memory_browser.html, /Wiki material is editorial memory/);
   assert.equal((result.memory_browser.snapshot as { read_only: boolean }).read_only, true);
+  assert.equal(
+    (result.memory_browser.snapshot as { consistency?: { snapshot_strategy?: string } }).consistency?.snapshot_strategy,
+    "mixed_state_tolerant",
+  );
 });
 
 test("source_ingested preserves wiki claim freshness when maintenance reruns without new evidence", async (t) => {

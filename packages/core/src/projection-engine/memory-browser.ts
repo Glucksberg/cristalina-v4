@@ -240,6 +240,13 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
     projection_profile: "memory_browser",
     generated_at: input.now,
     read_only: true,
+    consistency: {
+      snapshot_strategy: "mixed_state_tolerant" as const,
+      source_checkpoint_ref: null,
+      continuity_epoch: null,
+      generation: null,
+      boundary_note: "Cross-subsystem reads may observe mixed state under the current trust model.",
+    },
     authority_model: {
       wiki: "editorial memory; not canonical authority",
       browser: "derived read-only projection; never a write path",
