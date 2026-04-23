@@ -98,6 +98,7 @@ test("external candidate normalization suppresses mapped refs without a local re
   assert.equal(candidate.authority, "derived");
   assert.deepEqual(candidate.suppression_reasons, ["invalid_external_candidate"]);
   assert.equal(candidate.can_support_proposal, false);
+  assert.equal(candidate.text_preview, undefined);
   assert.deepEqual(validateRetrievalContract(candidate), []);
 
   const hybrid = executeHybridRetrieval({
@@ -146,6 +147,7 @@ test("external candidate normalization suppresses authority labels that drift fr
   assert.equal(candidate.authority, "editorial");
   assert.deepEqual(candidate.suppression_reasons, ["invalid_external_candidate"]);
   assert.equal(candidate.can_support_proposal, false);
+  assert.equal(candidate.text_preview, undefined);
   assert.deepEqual(validateRetrievalContract(candidate), []);
 });
 
@@ -250,6 +252,8 @@ test("external candidate normalization suppresses unmapped or forbidden candidat
   assert.equal(unmapped.authority, "derived");
   assert.equal(unmapped.can_support_proposal, false);
   assert.equal(forbidden.can_support_proposal, false);
+  assert.equal(unmapped.text_preview, undefined);
+  assert.equal(forbidden.text_preview, undefined);
   assert.deepEqual(validateRetrievalContract(unmapped), []);
   assert.deepEqual(validateRetrievalContract(forbidden), []);
 

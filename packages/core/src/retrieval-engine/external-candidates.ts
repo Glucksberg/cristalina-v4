@@ -172,14 +172,14 @@ export function normalizeExternalCandidates(input: NormalizeExternalCandidatesIn
     const layer = mappedRecord ? mappedRecord.layer : "derived";
     const authority = mappedRecord ? authorityForLayer(mappedRecord.layer) : "derived";
     const suppression_reasons = reasons.length > 0 ? reasons : undefined;
-    const readPolicySuppressed = reasons.includes("visibility_scope_mismatch");
+    const legallySuppressed = reasons.length > 0;
 
     return {
       id: `candidate_external_${safeId(candidate.provider_id)}_${safeId(candidate.external_candidate_id)}`,
       ref,
       layer,
       authority,
-      text_preview: readPolicySuppressed ? undefined : mappedRecord ? recordText(mappedRecord) : candidate.text_preview,
+      text_preview: legallySuppressed ? undefined : mappedRecord ? recordText(mappedRecord) : candidate.text_preview,
       symbol_refs: unique(candidate.symbol_refs ?? []),
       semantic_slot: candidate.semantic_slot,
       vector_score: candidate.score,
