@@ -19,6 +19,7 @@ import {
 import { resolveProjectionArtifactPath, stripProjectionArtifactFragment } from "./projection-path.js";
 
 type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
+export type ProjectionConsistencyRequirement = "allow_mixed_state" | "require_checkpoint_consistent";
 
 export interface ProjectionRuntimeSummary {
   manifest_id: string;
@@ -44,6 +45,7 @@ export interface ProjectionRuntimeFilter {
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
+  consistency_requirement?: ProjectionConsistencyRequirement;
 }
 
 export interface ProjectionRuntimeView {
@@ -116,6 +118,60 @@ function matchesProjectionRuntimeFilter(
   }
 
   return true;
+}
+
+function matchesProjectionIdentityFilter(filter?: ProjectionRuntimeFilter): ProjectionRuntimeFilter | undefined {
+  if (!filter) {
+    return undefined;
+  }
+
+  return {
+    actor_identity_ref: filter.actor_identity_ref,
+    owner_identity_ref: filter.owner_identity_ref,
+    runtime_instance_ref: filter.runtime_instance_ref,
+    runtime_session_ref: filter.runtime_session_ref,
+    conversation_thread_ref: filter.conversation_thread_ref,
+  };
+}
+
+function isCheckpointConsistentManifest(
+  manifest: Pick<ProjectionManifest, "snapshot_strategy" | "source_checkpoint_ref" | "continuity_epoch" | "generation">,
+): boolean {
+  return (
+    manifest.snapshot_strategy === "checkpoint_consistent" &&
+    typeof manifest.source_checkpoint_ref === "string" &&
+    manifest.source_checkpoint_ref.length > 0 &&
+    typeof manifest.continuity_epoch === "string" &&
+    manifest.continuity_epoch.length > 0 &&
+    typeof manifest.generation === "number" &&
+    Number.isInteger(manifest.generation) &&
+    manifest.generation >= 0
+  );
+}
+
+function matchesProjectionConsistencyRequirement(
+  manifest: Pick<ProjectionManifest, "snapshot_strategy" | "source_checkpoint_ref" | "continuity_epoch" | "generation">,
+  requirement: ProjectionConsistencyRequirement | undefined,
+): boolean {
+  if (!requirement || requirement === "allow_mixed_state") {
+    return true;
+  }
+
+  return isCheckpointConsistentManifest(manifest);
+}
+
+function assertProjectionConsistencyRequirement(
+  manifest: Pick<ProjectionManifest, "id" | "snapshot_strategy" | "source_checkpoint_ref" | "continuity_epoch" | "generation">,
+  adapter: ProjectionAdapterKind,
+  requirement: ProjectionConsistencyRequirement | undefined,
+): void {
+  if (matchesProjectionConsistencyRequirement(manifest, requirement)) {
+    return;
+  }
+
+  throw new Error(
+    `${adapter} projection manifest ${manifest.id} does not satisfy require_checkpoint_consistent; expected snapshot_strategy=checkpoint_consistent with source_checkpoint_ref, continuity_epoch, and generation`,
+  );
 }
 
 function selectionDimensionIsAmbiguous(
@@ -230,7 +286,11 @@ export async function listProjectionRuntimeViews(
   ]);
 
   return manifests
-    .filter((manifest) => manifest.adapter === adapter && matchesProjectionRuntimeFilter(manifest, filter))
+    .filter((manifest) =>
+      manifest.adapter === adapter &&
+      matchesProjectionRuntimeFilter(manifest, filter) &&
+      matchesProjectionConsistencyRequirement(manifest, filter?.consistency_requirement)
+    )
     .sort(compareProjectionTimestamps)
     .map((manifest) => {
       const diagnosticIds = new Set(manifest.diagnostic_refs ?? []);
@@ -261,6 +321,7 @@ export async function loadProjectionRuntimeView(input: {
   rootDir: string;
   manifest_id: string;
   adapter: ProjectionAdapterKind;
+  consistency_requirement?: ProjectionConsistencyRequirement;
 }): Promise<ProjectionRuntimeView> {
   const storeRoot = resolve(input.rootDir);
   const manifests = await loadProjectionManifests(storeRoot);
@@ -268,6 +329,7 @@ export async function loadProjectionRuntimeView(input: {
   if (!manifest) {
     throw new Error(`${input.adapter} projection manifest ${input.manifest_id} does not exist`);
   }
+  assertProjectionConsistencyRequirement(manifest, input.adapter, input.consistency_requirement);
 
   const [artifacts, diagnostics, reviews] = await Promise.all([
     loadProjectionArtifacts(storeRoot, input.adapter),
@@ -306,6 +368,14 @@ export async function loadLatestProjectionRuntimeView(
   filter?: ProjectionRuntimeFilter,
 ): Promise<ProjectionRuntimeView | undefined> {
   const summaries = await listProjectionRuntimeViews(rootDir, adapter, filter);
+  if (summaries.length === 0 && filter?.consistency_requirement === "require_checkpoint_consistent") {
+    const identitySummaries = await listProjectionRuntimeViews(rootDir, adapter, matchesProjectionIdentityFilter(filter));
+    if (identitySummaries.length > 0) {
+      throw new Error(
+        `Latest ${adapter} projection did not satisfy require_checkpoint_consistent for the selected runtime context`,
+      );
+    }
+  }
   if (projectionSelectionIsAmbiguous(summaries, filter)) {
     throw new Error(
       `Latest ${adapter} projection is ambiguous without full runtime and identity context; provide actor_identity_ref, owner_identity_ref, runtime_instance_ref, runtime_session_ref, or conversation_thread_ref`,
@@ -320,5 +390,6 @@ export async function loadLatestProjectionRuntimeView(
     rootDir,
     manifest_id: latest.manifest_id,
     adapter,
+    consistency_requirement: filter?.consistency_requirement,
   });
 }

@@ -260,6 +260,17 @@ test("runtime projection helper resolves Hermes projection markdown from manifes
   assert.equal(direct.markdown, storedMarkdown);
   assert.equal(direct.diagnostics[0]!.id, "diag_hermes_core_runtime_projection_test_001");
   assert.match(direct.markdown, /\(owner_ratification; answered\)/);
+
+  await assert.rejects(
+    () =>
+      loadProjectionRuntimeView({
+        rootDir,
+        manifest_id: fixture.manifest.id,
+        adapter: "hermes",
+        consistency_requirement: "require_checkpoint_consistent",
+      }),
+    /does not satisfy require_checkpoint_consistent/,
+  );
 });
 
 test("runtime projection helper requires runtime context when multiple latest manifests exist", async (t) => {
@@ -534,6 +545,117 @@ test("runtime projection helper prefers higher generation within the same contin
   assert.ok(latest);
   assert.equal(latest!.manifest.id, "pmf_hermes_generation_002");
   assert.equal(latest!.manifest.generation, 2);
+});
+
+test("runtime projection helper can require checkpoint-consistent latest views and reject mixed-state-only contexts", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T13:00:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_consistency_old",
+    diagnostic_id: "diag_hermes_consistency_old",
+    review_id: "cur_hermes_consistency_old",
+    proposal_ref: "prop_hermes_consistency_old",
+    markdown_heading: "Hermes Runtime Memory Consistent",
+    diagnostic_message: "Checkpoint-consistent fixture.",
+    provenance_source_ref: "tests/runtime-projection/consistency-old",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_consistency_shared",
+    runtime_instance_ref: "runtime_consistency_shared",
+    runtime_session_ref: "session_consistency_shared",
+    conversation_thread_ref: "thread_consistency_shared",
+    markdown_artifact_id: "part_hermes_consistency_old",
+    canon_artifact_id: "part_hermes_consistency_old_canon",
+    compiler_version: "hermes.runtime.v1",
+    source_checkpoint_ref: "chkpt_consistency_shared",
+    continuity_epoch: "epoch_consistency_shared",
+    generation: 1,
+    snapshot_strategy: "checkpoint_consistent",
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T13:01:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_consistency_new",
+    diagnostic_id: "diag_hermes_consistency_new",
+    review_id: "cur_hermes_consistency_new",
+    proposal_ref: "prop_hermes_consistency_new",
+    markdown_heading: "Hermes Runtime Memory Mixed",
+    diagnostic_message: "Mixed-state tolerant fixture.",
+    provenance_source_ref: "tests/runtime-projection/consistency-new",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_consistency_shared",
+    runtime_instance_ref: "runtime_consistency_shared",
+    runtime_session_ref: "session_consistency_shared",
+    conversation_thread_ref: "thread_consistency_shared",
+    markdown_artifact_id: "part_hermes_consistency_new",
+    canon_artifact_id: "part_hermes_consistency_new_canon",
+    snapshot_strategy: "mixed_state_tolerant",
+  });
+
+  const latestMixed = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    owner_identity_ref: "actor_owner_consistency_shared",
+    runtime_instance_ref: "runtime_consistency_shared",
+    runtime_session_ref: "session_consistency_shared",
+    conversation_thread_ref: "thread_consistency_shared",
+  });
+  assert.ok(latestMixed);
+  assert.equal(latestMixed!.manifest.id, "pmf_hermes_consistency_new");
+
+  const latestConsistent = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    owner_identity_ref: "actor_owner_consistency_shared",
+    runtime_instance_ref: "runtime_consistency_shared",
+    runtime_session_ref: "session_consistency_shared",
+    conversation_thread_ref: "thread_consistency_shared",
+    consistency_requirement: "require_checkpoint_consistent",
+  });
+  assert.ok(latestConsistent);
+  assert.equal(latestConsistent!.manifest.id, "pmf_hermes_consistency_old");
+  assert.equal(latestConsistent!.manifest.snapshot_strategy, "checkpoint_consistent");
+
+  const mixedOnlyRootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(mixedOnlyRootDir, { recursive: true, force: true });
+  });
+
+  await createHermesProjectionFixture(mixedOnlyRootDir, {
+    now: "2026-04-23T13:02:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_consistency_only_mixed",
+    diagnostic_id: "diag_hermes_consistency_only_mixed",
+    review_id: "cur_hermes_consistency_only_mixed",
+    proposal_ref: "prop_hermes_consistency_only_mixed",
+    markdown_heading: "Hermes Runtime Memory Mixed Only",
+    diagnostic_message: "Only mixed-state fixture.",
+    provenance_source_ref: "tests/runtime-projection/consistency-only-mixed",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_consistency_only_mixed",
+    runtime_instance_ref: "runtime_consistency_only_mixed",
+    runtime_session_ref: "session_consistency_only_mixed",
+    conversation_thread_ref: "thread_consistency_only_mixed",
+    markdown_artifact_id: "part_hermes_consistency_only_mixed",
+    canon_artifact_id: "part_hermes_consistency_only_mixed_canon",
+    snapshot_strategy: "mixed_state_tolerant",
+  });
+
+  await assert.rejects(
+    () =>
+      loadLatestProjectionRuntimeView(mixedOnlyRootDir, "hermes", {
+        owner_identity_ref: "actor_owner_consistency_only_mixed",
+        runtime_instance_ref: "runtime_consistency_only_mixed",
+        runtime_session_ref: "session_consistency_only_mixed",
+        conversation_thread_ref: "thread_consistency_only_mixed",
+        consistency_requirement: "require_checkpoint_consistent",
+      }),
+    /did not satisfy require_checkpoint_consistent/,
+  );
 });
 
 test("runtime projection helper rejects stored projection artifacts that escape derived storage", async (t) => {
