@@ -8,6 +8,7 @@ import {
   compileMemoryBrowserProjection,
   MEMORY_BROWSER_PROJECTION_COMPILER_VERSION,
 } from "../projection-engine/memory-browser.js";
+import { DEFAULT_PROJECTION_READ_POLICY_VERSION } from "../adapter-sdk/projection.js";
 import { resolveProjectionArtifactPath } from "../adapter-sdk/projection-path.js";
 import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { executeCanonicalProposalWorkflow } from "./pipeline.js";
@@ -792,6 +793,44 @@ test("wiki maintenance recompiles stale memory-browser manifests without replayi
   assert.equal(replayed.run.id, input.ids.run);
   assert.equal(replayed.memory_browser.manifest.compiler_version, MEMORY_BROWSER_PROJECTION_COMPILER_VERSION);
   assert.equal(log.match(/wiki_run_reuse_browser_compiler_001/g)?.length ?? 0, 1);
+});
+
+test("wiki maintenance recompiles stale memory-browser read-policy manifests without replaying the run", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-reuse-browser-policy-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = {
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_reuse_browser_policy_001",
+      source_page: "wiki_page_reuse_browser_policy_source_001",
+      topic_page: "wiki_page_reuse_browser_policy_topic_001",
+      browser_json_artifact: "artifact_reuse_browser_policy_json_001",
+      browser_html_artifact: "artifact_reuse_browser_policy_html_001",
+      browser_manifest: "manifest_reuse_browser_policy_001",
+    }),
+    source_record: sourceRecord("src_reuse_browser_policy_001"),
+    source_summary: "Original source summary.",
+    topic: {
+      title: "Reuse Browser Policy Guard",
+      summary: "Original topic summary.",
+    },
+  } satisfies WikiMaintenanceInput;
+
+  const first = await runWikiMaintenanceToStore(input);
+  await writeCoreRecord(rootDir, {
+    ...first.memory_browser.manifest,
+    read_policy_version: "projection-read-v0",
+  });
+
+  const replayed = await runWikiMaintenanceToStore(input);
+  const log = await readFile(join(rootDir, "wiki/log.md"), "utf8");
+
+  assert.equal(replayed.reused, false);
+  assert.equal(replayed.run.id, input.ids.run);
+  assert.equal(replayed.memory_browser.manifest.read_policy_version, DEFAULT_PROJECTION_READ_POLICY_VERSION);
+  assert.equal(log.match(/wiki_run_reuse_browser_policy_001/g)?.length ?? 0, 1);
 });
 
 test("wiki maintenance serializes concurrent index and log updates", async (t) => {

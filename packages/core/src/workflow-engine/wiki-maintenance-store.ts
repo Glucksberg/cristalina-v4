@@ -3,7 +3,10 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { appendAuditChange, appendValidationLog } from "../audit/log.js";
 import { resolveProjectionArtifactPath } from "../adapter-sdk/projection-path.js";
-import type { ProjectionReadContext } from "../adapter-sdk/projection.js";
+import {
+  DEFAULT_PROJECTION_READ_POLICY_VERSION,
+  type ProjectionReadContext,
+} from "../adapter-sdk/projection.js";
 import {
   compileMemoryBrowserProjection,
   MEMORY_BROWSER_PROJECTION_COMPILER_VERSION,
@@ -821,7 +824,10 @@ async function canReusePersistedMemoryBrowserProjection(
     ),
   );
 
-  return manifest.compiler_version === MEMORY_BROWSER_PROJECTION_COMPILER_VERSION;
+  return (
+    manifest.compiler_version === MEMORY_BROWSER_PROJECTION_COMPILER_VERSION &&
+    manifest.read_policy_version === DEFAULT_PROJECTION_READ_POLICY_VERSION
+  );
 }
 
 function buildMemoryBrowserFiles(rootDir: string, projection: MemoryBrowserProjectionResult): MaterializedFile[] {
