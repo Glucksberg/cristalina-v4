@@ -949,18 +949,6 @@ async function materializeFiles(files: MaterializedFile[]): Promise<void> {
   }
 }
 
-async function ensureFileContent(filePath: string, expectedContent: string): Promise<void> {
-  const currentContent = await readFile(filePath, "utf8").catch((error) => {
-    if (isMissingFileError(error)) return undefined;
-    throw error;
-  });
-  if (currentContent === expectedContent) {
-    return;
-  }
-
-  await writeTextFile(filePath, expectedContent);
-}
-
 function recoveryJournalPath(
   rootDir: string,
   operation: RecoveryJournal["operation"],
@@ -3189,93 +3177,61 @@ async function buildProjectionFromStoreState(
   });
 }
 
+async function buildProjectionFromPersistedFlowSnapshot(
+  rootDir: string,
+  paths: ConversationPreferenceStorePaths,
+  input: ConversationPreferenceStoreInput,
+  loaded: LoadedAuthoritativeFlow,
+) {
+  const projectionAdapter = projectionAdapterForRuntime(input.source.runtime);
+  return executeRuntimeBootstrapWorkflow({
+    adapter: projectionAdapter,
+    now: loaded.ratification_record.updated_at ?? loaded.ratification_record.created_at,
+    projection_path: relativeStorePath(rootDir, paths.projection_markdown),
+    visibility_state: loaded.canonical_record?.visibility_state ?? loaded.intake.world_claim.visibility_state,
+    canonical_records: loaded.canonical_record ? [loaded.canonical_record] : [],
+    world_claims: [loaded.intake.world_claim],
+    episodes: [loaded.intake.episode],
+    entities: [loaded.intake.subject_entity, loaded.intake.preference_entity],
+    relations: [loaded.intake.preference_relation],
+    contradictions: loaded.contradiction ? [loaded.contradiction] : [],
+    contradiction_resolutions: loaded.contradiction_resolution ? [loaded.contradiction_resolution] : [],
+    curation_packets: [
+      ...(loaded.owner_ratification_queue ? [loaded.owner_ratification_queue] : []),
+      ...(loaded.manual_contradiction_review_queue ? [loaded.manual_contradiction_review_queue] : []),
+    ],
+    wiki_pages: [loaded.intake.wiki_page],
+    wiki_claims: [loaded.intake.wiki_claim],
+    diagnostics: loaded.diagnostic ? [loaded.diagnostic] : [],
+    runtime_identity: {
+      actor_identity: loaded.intake.agent_identity,
+      owner_identity: loaded.intake.owner_identity,
+      runtime_instance: loaded.intake.runtime_instance,
+      runtime_session: loaded.intake.runtime_session,
+      conversation_thread: loaded.intake.conversation_thread,
+    },
+    identity_context: {
+      actor_identity_ref: loaded.intake.agent_identity?.id ?? null,
+      owner_identity_ref: loaded.intake.owner_identity?.id ?? null,
+      runtime_instance_ref: loaded.intake.runtime_instance?.id ?? null,
+      runtime_session_ref: loaded.intake.runtime_session?.id ?? null,
+      conversation_thread_ref: loaded.intake.conversation_thread?.id ?? null,
+    },
+    ids: {
+      canon_artifact: input.ids.canon_artifact,
+      world_artifact: input.ids.world_artifact,
+      wiki_artifact: input.ids.wiki_artifact,
+      manifest: input.ids.projection_manifest,
+    },
+  });
+}
+
 async function readProjectionArtifacts(paths: ConversationPreferenceStorePaths): Promise<ProjectionArtifact[]> {
   return Promise.all([
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.canon),
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.world),
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.wiki),
   ]);
-}
-
-function latestTimestamp(input: {
-  fallback: string;
-  records: Array<{
-    created_at: string;
-    updated_at?: string | null;
-  }>;
-}): string {
-  let latest = input.fallback;
-  let latestValue = Date.parse(latest);
-
-  for (const record of input.records) {
-    for (const candidate of [record.created_at, record.updated_at ?? undefined]) {
-      if (!candidate) continue;
-      const parsed = Date.parse(candidate);
-      if (Number.isNaN(parsed)) continue;
-      if (Number.isNaN(latestValue) || parsed > latestValue) {
-        latest = candidate;
-        latestValue = parsed;
-      }
-    }
-  }
-
-  return latest;
-}
-
-async function readPersistedProjectionTimestamp(filePath: string): Promise<string | undefined> {
-  if (!(await pathExists(filePath))) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(await readFile(filePath, "utf8")) as { created_at?: unknown };
-    return typeof parsed.created_at === "string" ? parsed.created_at : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function deriveReplayProjectionTimestamp(
-  input: ConversationPreferenceStoreInput,
-  paths: ConversationPreferenceStorePaths,
-  loaded: LoadedAuthoritativeFlow,
-): Promise<string> {
-  const records: Array<{
-    created_at: string;
-    updated_at?: string | null;
-  }> = [
-    loaded.source_record,
-    loaded.intake.observation,
-    ...(loaded.intake.agent_identity ? [loaded.intake.agent_identity] : []),
-    ...(loaded.intake.owner_identity ? [loaded.intake.owner_identity] : []),
-    ...(loaded.intake.runtime_instance ? [loaded.intake.runtime_instance] : []),
-    ...(loaded.intake.runtime_session ? [loaded.intake.runtime_session] : []),
-    ...(loaded.intake.conversation_thread ? [loaded.intake.conversation_thread] : []),
-    loaded.intake.episode,
-    loaded.intake.subject_entity,
-    loaded.intake.preference_entity,
-    loaded.intake.preference_relation,
-    loaded.intake.world_claim,
-    loaded.intake.wiki_page,
-    loaded.intake.wiki_claim,
-    loaded.intake.proposal,
-    loaded.intake.disposition_record,
-    loaded.ratification_record,
-    ...(loaded.diagnostic ? [loaded.diagnostic] : []),
-    ...(loaded.canonical_record ? [loaded.canonical_record] : []),
-  ];
-
-  if (paths.contradiction && (await pathExists(paths.contradiction))) {
-    records.push(await readCoreRecord<Contradiction>(paths.contradiction));
-  }
-  if (paths.contradiction_resolution && (await pathExists(paths.contradiction_resolution))) {
-    records.push(await readCoreRecord<ContradictionResolution>(paths.contradiction_resolution));
-  }
-
-  return latestTimestamp({
-    fallback: input.now,
-    records,
-  });
 }
 
 async function ensureReplayableArtifacts(
@@ -3287,35 +3243,48 @@ async function ensureReplayableArtifacts(
   if (persistedSource !== serializeSourcePayload(input)) {
     throw new Error("Existing conversation preference source payload does not match input");
   }
-
-  await ensureFileContent(
-    paths.wiki_page_markdown,
-    renderWikiMarkdown(
-      loaded.intake.wiki_page,
-      loaded.source_record,
-      loaded.intake.world_claim.id,
-      loaded.intake.world_claim.statement,
-      loaded.canonical_record?.id,
-    ),
-  );
-
-  const projectionTimestamp =
-    await readPersistedProjectionTimestamp(paths.projection_manifest) ??
-    await deriveReplayProjectionTimestamp(input, paths, loaded);
-  const projection = await buildProjectionFromStoreState(
-    resolve(input.rootDir),
-    paths,
-    input,
-    loaded.canonical_record,
-    loaded.intake,
-    projectionTimestamp,
-  );
-
-  await ensureFileContent(paths.projection_markdown, projection.markdown);
-  await ensureFileContent(paths.projection_artifacts.canon, serializeCoreRecordContent(projection.artifacts[0]!));
-  await ensureFileContent(paths.projection_artifacts.world, serializeCoreRecordContent(projection.artifacts[1]!));
-  await ensureFileContent(paths.projection_artifacts.wiki, serializeCoreRecordContent(projection.artifacts[2]!));
-  await ensureFileContent(paths.projection_manifest, serializeCoreRecordContent(projection.manifest));
+  try {
+    await readFile(paths.wiki_page_markdown, "utf8");
+    await readFile(paths.projection_markdown, "utf8");
+    await readProjectionArtifacts(paths);
+    await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+    return;
+  } catch {
+    const projection = await buildProjectionFromPersistedFlowSnapshot(resolve(input.rootDir), paths, input, loaded);
+    const files: MaterializedFile[] = [
+      {
+        path: paths.wiki_page_markdown,
+        content: renderWikiMarkdown(
+          loaded.intake.wiki_page,
+          loaded.source_record,
+          loaded.intake.world_claim.id,
+          loaded.intake.world_claim.statement,
+          loaded.canonical_record?.id,
+        ),
+      },
+      {
+        path: paths.projection_markdown,
+        content: projection.markdown,
+      },
+      {
+        path: paths.projection_artifacts.canon,
+        content: serializeCoreRecordContent(projection.artifacts[0]!),
+      },
+      {
+        path: paths.projection_artifacts.world,
+        content: serializeCoreRecordContent(projection.artifacts[1]!),
+      },
+      {
+        path: paths.projection_artifacts.wiki,
+        content: serializeCoreRecordContent(projection.artifacts[2]!),
+      },
+      {
+        path: paths.projection_manifest,
+        content: serializeCoreRecordContent(projection.manifest),
+      },
+    ];
+    await materializeFiles(files);
+  }
 }
 
 function renderWikiMarkdown(
@@ -4370,6 +4339,16 @@ async function applyOwnerRatificationToExistingFlow(
   },
 ): Promise<ConversationPreferenceStoreResult> {
   if (existingFlow.records.owner_ratification_queue?.status && existingFlow.records.owner_ratification_queue.status !== "pending") {
+    if (
+      existingFlow.records.owner_ratification_queue.status === "applied" &&
+      existingFlow.records.ratification_record.decision === "approved" &&
+      existingFlow.records.canonical_record
+    ) {
+      return {
+        ...existingFlow,
+        reused: true,
+      };
+    }
     throw new Error(`Owner ratification queue entry is already closed with status ${existingFlow.records.owner_ratification_queue.status}`);
   }
 
@@ -4747,6 +4726,17 @@ async function closeOwnerReviewQueueToExistingFlow(
   }
 
   if (queue.status !== "pending") {
+    const expectedDecision = input.queue_status === "answered" ? "rejected" : "expired";
+    if (
+      queue.status === input.queue_status &&
+      existingFlow.records.ratification_record.decision === expectedDecision &&
+      !existingFlow.records.canonical_record
+    ) {
+      return {
+        ...existingFlow,
+        reused: true,
+      };
+    }
     throw new Error(`Owner ratification queue entry is already closed with status ${queue.status}`);
   }
 

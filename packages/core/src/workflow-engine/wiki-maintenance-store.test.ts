@@ -511,6 +511,65 @@ test("wiki maintenance rejects reuse drift and authenticates actor before writin
   );
 });
 
+test("wiki maintenance reuse keeps persisted memory-browser artifacts stable after unrelated writes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-reuse-browser-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = {
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_reuse_browser_001",
+      source_page: "wiki_page_reuse_browser_source_001",
+      topic_page: "wiki_page_reuse_browser_topic_001",
+      browser_json_artifact: "artifact_reuse_browser_json_001",
+      browser_html_artifact: "artifact_reuse_browser_html_001",
+      browser_manifest: "manifest_reuse_browser_001",
+    }),
+    source_record: sourceRecord("src_reuse_browser_001"),
+    source_summary: "Original source summary.",
+    topic: {
+      title: "Reuse Browser Guard",
+      summary: "Original topic summary.",
+    },
+  } satisfies WikiMaintenanceInput;
+
+  const first = await runWikiMaintenanceToStore(input);
+  const firstJson = first.memory_browser.json;
+  const firstHtml = first.memory_browser.html;
+  const firstManifest = JSON.stringify(first.memory_browser.manifest);
+
+  await writeCoreRecord(rootDir, {
+    id: "mem_reuse_browser_unrelated_001",
+    kind: "fact",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "fixture",
+      source_ref: "fixture:reuse-browser",
+    },
+    statement: "Unrelated canon write after the maintenance run.",
+    semantic_slot: "fact:reuse-browser",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+    },
+  } satisfies CanonicalMemoryObject);
+
+  const replayed = await runWikiMaintenanceToStore(input);
+
+  assert.equal(replayed.reused, true);
+  assert.equal(replayed.memory_browser.json, firstJson);
+  assert.equal(replayed.memory_browser.html, firstHtml);
+  assert.equal(JSON.stringify(replayed.memory_browser.manifest), firstManifest);
+});
+
 test("wiki maintenance serializes concurrent index and log updates", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-concurrent-"));
   t.after(async () => {

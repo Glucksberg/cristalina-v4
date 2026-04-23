@@ -1195,6 +1195,7 @@ function validateSessionResumeReceipt(value: unknown): ValidationIssue[] {
   if (value.kind !== "session_resume_receipt") issues.push({ path: "kind", message: 'expected "session_resume_receipt"' });
   if (value.layer !== "audits") issues.push({ path: "layer", message: 'expected "audits"' });
   if (value.authoritative_home !== "governance") issues.push({ path: "authoritative_home", message: 'expected "governance"' });
+  pushSafeRecordId(issues, value.receipt_key, "receipt_key");
   pushEnum(issues, value, "receipt_status", SESSION_RESUME_RECEIPT_STATUSES);
   pushEnum(issues, value, "adapter", ["openclaw", "hermes"] as const);
   pushSafePathSegmentRef(issues, value.projection_manifest_ref, "projection_manifest_ref");
@@ -1205,6 +1206,12 @@ function validateSessionResumeReceipt(value: unknown): ValidationIssue[] {
   pushSafePathSegmentRef(issues, value.continuity_epoch, "continuity_epoch");
   pushRequiredString(issues, value, "read_policy_version");
   pushPositiveInteger(issues, value.generation, "generation");
+  if (value.policy_snapshot_ref !== undefined && value.policy_snapshot_ref !== null && typeof value.policy_snapshot_ref !== "string") {
+    issues.push({ path: "policy_snapshot_ref", message: "expected string or null" });
+  }
+  if (typeof value.compiler_version !== "string" || value.compiler_version.length === 0) {
+    issues.push({ path: "compiler_version", message: "session resume receipts require compiler_version" });
+  }
   if (
     !isStringArray(value.projection_artifact_refs) ||
     value.projection_artifact_refs.length === 0 ||

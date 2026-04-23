@@ -10,6 +10,8 @@ import type {
 } from "../types.js";
 import { createProjectionArtifact, createProjectionManifest } from "../adapter-sdk/projection.js";
 
+const SESSION_RESUME_COMPILER_VERSION = "session_resume_v2.compiler.v1";
+
 export interface CompileSessionPackInput {
   id: string;
   artifact_id: string;
@@ -32,7 +34,7 @@ export interface CompiledSessionPack {
 }
 
 export interface RecordSessionResumeReceiptInput {
-  id: string;
+  id?: string;
   now: string;
   receipt_status: SessionResumeReceiptStatus;
   adapter: Exclude<RuntimeKind, "generic">;
@@ -45,6 +47,23 @@ export interface RecordSessionResumeReceiptInput {
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+function sessionResumeReceiptKey(input: {
+  receipt_status: SessionResumeReceiptStatus;
+  adapter: Exclude<RuntimeKind, "generic">;
+  manifest: ProjectionManifest;
+  checkpoint: WorkingMemoryCheckpoint;
+}): string {
+  return [
+    "session_resume_receipt",
+    input.receipt_status,
+    input.adapter,
+    input.manifest.id,
+    input.checkpoint.id,
+    input.checkpoint.continuity_epoch,
+    `g${input.checkpoint.generation}`,
+  ].join("_");
 }
 
 function assertCheckpointEligible(input: CompileSessionPackInput): void {
@@ -126,10 +145,15 @@ export function compileSessionPack(input: CompileSessionPackInput): CompiledSess
     projection_profile: "session_resume_v2",
     audience: input.audience,
     read_policy_version: input.read_policy_version,
+    compiler_version: SESSION_RESUME_COMPILER_VERSION,
     runtime_instance_ref: input.checkpoint.runtime_instance_ref,
     runtime_session_ref: input.checkpoint.runtime_session_ref,
     conversation_thread_ref: input.checkpoint.conversation_thread_ref,
+    source_checkpoint_ref: input.checkpoint.id,
+    continuity_epoch: input.checkpoint.continuity_epoch,
+    generation: input.checkpoint.generation,
     policy_snapshot_ref: input.policy_snapshot_ref ?? input.checkpoint.policy_snapshot_ref ?? null,
+    snapshot_strategy: "checkpoint_consistent",
     context_refs: [
       input.checkpoint.runtime_instance_ref,
       input.checkpoint.runtime_session_ref,
@@ -169,18 +193,32 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
   if (input.manifest.read_policy_version !== input.checkpoint.read_policy_version) {
     throw new Error(`Session resume receipt read policy mismatch: ${input.manifest.read_policy_version}`);
   }
+  if (
+    input.manifest.policy_snapshot_ref !== undefined &&
+    input.manifest.policy_snapshot_ref !== null &&
+    input.checkpoint.policy_snapshot_ref !== undefined &&
+    input.checkpoint.policy_snapshot_ref !== null &&
+    input.manifest.policy_snapshot_ref !== input.checkpoint.policy_snapshot_ref
+  ) {
+    throw new Error(`Session resume receipt policy snapshot mismatch: ${input.manifest.policy_snapshot_ref}`);
+  }
+  if (input.manifest.source_checkpoint_ref && input.manifest.source_checkpoint_ref !== input.checkpoint.id) {
+    throw new Error(`Session resume receipt checkpoint mismatch: ${input.manifest.source_checkpoint_ref}`);
+  }
   if (!input.manifest.upstream_refs.includes(input.checkpoint.id)) {
     throw new Error(`Session resume receipt manifest missing checkpoint upstream ref: ${input.checkpoint.id}`);
   }
 
+  const receipt_key = sessionResumeReceiptKey(input);
   const upstream_refs = unique([
     input.manifest.id,
     ...input.manifest.artifact_refs,
+    ...input.manifest.upstream_refs,
     input.checkpoint.id,
     ...input.checkpoint.upstream_refs,
   ]);
   return {
-    id: input.id,
+    id: input.id ?? receipt_key,
     kind: "session_resume_receipt",
     layer: "audits",
     authoritative_home: "governance",
@@ -195,6 +233,7 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
       session_ref: input.checkpoint.runtime_session_ref,
       thread_ref: input.checkpoint.conversation_thread_ref,
     },
+    receipt_key,
     receipt_status: input.receipt_status,
     adapter: input.adapter,
     projection_manifest_ref: input.manifest.id,
@@ -206,6 +245,8 @@ export function recordSessionResumeReceipt(input: RecordSessionResumeReceiptInpu
     continuity_epoch: input.checkpoint.continuity_epoch,
     generation: input.checkpoint.generation,
     read_policy_version: input.checkpoint.read_policy_version,
+    policy_snapshot_ref: input.manifest.policy_snapshot_ref ?? input.checkpoint.policy_snapshot_ref ?? null,
+    compiler_version: input.manifest.compiler_version ?? SESSION_RESUME_COMPILER_VERSION,
     upstream_refs,
     authenticated_principal: input.authenticated_principal ?? null,
     diagnostic_refs: input.diagnostic_refs,

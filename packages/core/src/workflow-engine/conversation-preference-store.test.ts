@@ -308,6 +308,19 @@ test("owner ratification queue lists deferred owner-scoped claims and can ratify
 
   const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
   assert.deepEqual(queueAfter, []);
+
+  const ratifiedReplay = await ratifyQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:06:00.000Z",
+    actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: ownerPrincipal(input),
+    owner_actor_ref: input.identity_context!.ids.owner_identity!,
+    validation_scope: "test:conversation-preference:owner-ratification-replay",
+  });
+  assert.equal(ratifiedReplay.reused, true);
+  assert.equal(ratifiedReplay.records.owner_ratification_queue?.status, "applied");
+  assert.equal(ratifiedReplay.records.ratification_record.decision, "approved");
 });
 
 test("owner ratification queue recovers pending owner-ratification journals before applying by queue id", async (t) => {
@@ -486,6 +499,19 @@ test("owner ratification queue can be explicitly rejected by the owner", async (
 
   const queueAfter = await listConversationPreferenceOwnerRatificationQueue(rootDir);
   assert.deepEqual(queueAfter, []);
+
+  const rejectedReplay = await rejectQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:06:00.000Z",
+    actor: input.identity_context!.ids.owner_identity!,
+    authenticated_principal: ownerPrincipal(input),
+    owner_actor_ref: input.identity_context!.ids.owner_identity!,
+    validation_scope: "test:conversation-preference:owner-rejection-replay",
+  });
+  assert.equal(rejectedReplay.reused, true);
+  assert.equal(rejectedReplay.records.owner_ratification_queue?.status, "answered");
+  assert.equal(rejectedReplay.records.ratification_record.decision, "rejected");
 });
 
 test("owner ratification queue rejects a non-owner actor even when owner_actor_ref matches", async (t) => {
@@ -588,6 +614,18 @@ test("owner ratification queue can expire without owner ratification and blocks 
       }),
     /already closed with status expired/,
   );
+
+  const expiredReplay = await expireQueuedConversationPreferenceProposalToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:06:00.000Z",
+    actor: "system:test-expirer",
+    authenticated_principal: systemPrincipal("system:test-expirer"),
+    validation_scope: "test:conversation-preference:owner-expiration-replay",
+  });
+  assert.equal(expiredReplay.reused, true);
+  assert.equal(expiredReplay.records.owner_ratification_queue?.status, "expired");
+  assert.equal(expiredReplay.records.ratification_record.decision, "expired");
 });
 
 test("owner ratification queue rejects expiration by a non-owner non-system principal", async (t) => {
@@ -1899,12 +1937,39 @@ test("openclaw feedback round-trip preserves runtime identity and recompiles pro
   });
 
   const projectionMarkdown = await readFile(roundTrip.paths.projection_markdown, "utf8");
+  const projectionManifestSource = await readFile(roundTrip.paths.projection_manifest, "utf8");
+  const canonArtifactSource = await readFile(roundTrip.paths.projection_artifacts.canon, "utf8");
+  const worldArtifactSource = await readFile(roundTrip.paths.projection_artifacts.world, "utf8");
+  const wikiArtifactSource = await readFile(roundTrip.paths.projection_artifacts.wiki, "utf8");
   assert.equal(roundTrip.records.intake.runtime_instance?.id, seed.identity_context?.ids.runtime_instance);
   assert.equal(roundTrip.records.projection_manifest.runtime_instance_ref, seed.identity_context?.ids.runtime_instance);
   assert.equal(roundTrip.records.intake.observation.provenance.source_type, "openclaw_runtime_feedback");
   assert.match(projectionMarkdown, /\[runtime:runtime_test_001\]/);
   assert.match(projectionMarkdown, /\[wiki:wpg_feedback_test_001\]/);
   assert.match(projectionMarkdown, /## Contradiction Resolutions/);
+
+  await writeCoreRecord(rootDir, {
+    id: "mem_feedback_unrelated_001",
+    kind: "fact",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: "2026-04-12T01:30:00.000Z",
+    updated_at: "2026-04-12T01:30:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "fixture",
+      source_ref: "fixture:feedback-unrelated",
+    },
+    statement: "An unrelated canonical fact must not rewrite replayed projection artifacts.",
+    semantic_slot: "fact:feedback-unrelated",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+    },
+  });
 
   const replayed = await writeOpenClawPreferenceFeedbackFlowToStore({
     ...seed,
@@ -1942,6 +2007,11 @@ test("openclaw feedback round-trip preserves runtime identity and recompiles pro
     validation_scope: "test:openclaw-roundtrip",
   });
   assert.equal(replayed.reused, true);
+  assert.equal(await readFile(replayed.paths.projection_markdown, "utf8"), projectionMarkdown);
+  assert.equal(await readFile(replayed.paths.projection_manifest, "utf8"), projectionManifestSource);
+  assert.equal(await readFile(replayed.paths.projection_artifacts.canon, "utf8"), canonArtifactSource);
+  assert.equal(await readFile(replayed.paths.projection_artifacts.world, "utf8"), worldArtifactSource);
+  assert.equal(await readFile(replayed.paths.projection_artifacts.wiki, "utf8"), wikiArtifactSource);
 });
 
 test("projection excludes superseded canonical records during recompilation", async (t) => {

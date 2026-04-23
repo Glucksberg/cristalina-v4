@@ -38,6 +38,8 @@ import type {
   AuthenticatedPrincipal,
   CoreRecord,
   Diagnostic,
+  ProjectionArtifact,
+  ProjectionManifest,
   Proposal,
   Reference,
   RuntimeKind,
@@ -730,6 +732,55 @@ async function compileMemoryBrowserFromStoreState(
   });
 }
 
+async function loadPersistedMemoryBrowserProjection(
+  rootDir: string,
+  input: WikiMaintenanceInput,
+): Promise<MemoryBrowserProjectionResult> {
+  const manifest = await readCoreRecord<ProjectionManifest>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: input.ids.browser_manifest,
+        kind: "projection_manifest",
+        layer: "derived",
+      } as ProjectionManifest,
+    ),
+  );
+  const artifacts = await Promise.all(
+    manifest.artifact_refs.map((artifact_ref) =>
+      readCoreRecord<ProjectionArtifact>(
+        coreRecordPath(
+          rootDir,
+          {
+            id: artifact_ref,
+            kind: "projection_artifact",
+            layer: "derived",
+            adapter: manifest.adapter,
+          } as ProjectionArtifact,
+        ),
+      ),
+    ),
+  );
+  const jsonArtifact = artifacts.find((artifact) => artifact.artifact_kind === "memory_browser_json");
+  const htmlArtifact = artifacts.find((artifact) => artifact.artifact_kind === "memory_browser_html");
+  if (!jsonArtifact || !htmlArtifact) {
+    throw new Error(`Persisted wiki maintenance run ${input.ids.run} is missing memory browser artifacts`);
+  }
+
+  const [json, html] = await Promise.all([
+    readFile(resolveProjectionArtifactPath(rootDir, jsonArtifact.path), "utf8"),
+    readFile(resolveProjectionArtifactPath(rootDir, htmlArtifact.path), "utf8"),
+  ]);
+
+  return {
+    snapshot: JSON.parse(json) as Record<string, unknown>,
+    json,
+    html,
+    artifacts,
+    manifest,
+  };
+}
+
 function buildMemoryBrowserFiles(rootDir: string, projection: MemoryBrowserProjectionResult): MaterializedFile[] {
   return [
     {
@@ -1092,13 +1143,15 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
     });
   }
 
-  const memory_browser = await compileMemoryBrowserFromStoreState(input.rootDir, input, {
-    source_records: input.source_record ? [input.source_record] : [],
-    wiki_pages: pages,
-    wiki_claims: claims,
-    wiki_maintenance_runs: [run],
-    diagnostics,
-  });
+  const memory_browser = reused
+    ? await loadPersistedMemoryBrowserProjection(input.rootDir, input)
+    : await compileMemoryBrowserFromStoreState(input.rootDir, input, {
+        source_records: input.source_record ? [input.source_record] : [],
+        wiki_pages: pages,
+        wiki_claims: claims,
+        wiki_maintenance_runs: [run],
+        diagnostics,
+      });
   const writeFiles: MaterializedFile[] = [
     ...(!reused && input.source_record
       ? [{
@@ -1119,7 +1172,7 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
         }))
       : []),
     ...(!reused ? await buildWikiIndexAndLogFiles(input.rootDir, input, pages, claims, diagnostics) : []),
-    ...buildMemoryBrowserFiles(input.rootDir, memory_browser),
+    ...(!reused ? buildMemoryBrowserFiles(input.rootDir, memory_browser) : []),
   ];
   const append_entries: WikiMaintenanceAppendEntry[] = !reused
     ? [

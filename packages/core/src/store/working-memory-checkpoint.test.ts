@@ -116,6 +116,7 @@ test("session resume receipts persist under audit storage with checkpoint lineag
       session_ref: "session_working_memory_store_001",
       thread_ref: "thread_working_memory_store_001",
     },
+    receipt_key: "session_resume_receipt_applied_openclaw_projection_manifest_session_resume_store_001_working_memory_checkpoint_store_001_epoch_working_memory_store_001_g1",
     receipt_status: "applied",
     adapter: "openclaw",
     projection_manifest_ref: "projection_manifest_session_resume_store_001",
@@ -127,6 +128,8 @@ test("session resume receipts persist under audit storage with checkpoint lineag
     continuity_epoch: "epoch_working_memory_store_001",
     generation: 1,
     read_policy_version: "runtime_read_policy.v1",
+    policy_snapshot_ref: null,
+    compiler_version: "session_resume_v2.compiler.v1",
     upstream_refs: [
       "projection_manifest_session_resume_store_001",
       "projection_artifact_session_resume_store_001",

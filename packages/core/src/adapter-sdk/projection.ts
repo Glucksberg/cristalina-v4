@@ -316,12 +316,17 @@ export interface ProjectionManifestInput {
   projection_profile: string;
   audience: string;
   read_policy_version: string;
+  compiler_version?: string | null;
   actor_identity_ref?: string | null;
   owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
+  source_checkpoint_ref?: string | null;
+  continuity_epoch?: string | null;
+  generation?: number | null;
   policy_snapshot_ref?: string | null;
+  snapshot_strategy?: ProjectionManifest["snapshot_strategy"];
   context_refs: string[];
   suppressed_refs?: string[];
   suppressed_records?: Array<{
@@ -359,12 +364,17 @@ export function createProjectionManifest(input: ProjectionManifestInput): Projec
     projection_profile: input.projection_profile,
     audience: input.audience,
     read_policy_version: input.read_policy_version,
+    compiler_version: input.compiler_version ?? null,
     actor_identity_ref: input.actor_identity_ref ?? null,
     owner_identity_ref: input.owner_identity_ref ?? null,
     runtime_instance_ref: input.runtime_instance_ref ?? null,
     runtime_session_ref: input.runtime_session_ref ?? null,
     conversation_thread_ref: input.conversation_thread_ref ?? null,
+    source_checkpoint_ref: input.source_checkpoint_ref ?? null,
+    continuity_epoch: input.continuity_epoch ?? null,
+    generation: input.generation ?? null,
     policy_snapshot_ref: input.policy_snapshot_ref ?? null,
+    snapshot_strategy: input.snapshot_strategy ?? null,
     context_refs: input.context_refs,
     ...(input.suppressed_refs !== undefined ? { suppressed_refs: input.suppressed_refs } : {}),
     ...(input.suppressed_records !== undefined ? { suppressed_records: input.suppressed_records } : {}),

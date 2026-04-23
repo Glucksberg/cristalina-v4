@@ -12,6 +12,7 @@
         "kind",
         "layer",
         "authoritative_home",
+        "receipt_key",
         "receipt_status",
         "adapter",
         "projection_manifest_ref",
@@ -34,6 +35,10 @@
         },
         "authoritative_home": {
           "const": "governance"
+        },
+        "receipt_key": {
+          "type": "string",
+          "minLength": 1
         },
         "receipt_status": {
           "type": "string",
@@ -87,6 +92,16 @@
           "minimum": 1
         },
         "read_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_snapshot_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "compiler_version": {
           "type": "string",
           "minLength": 1
         },

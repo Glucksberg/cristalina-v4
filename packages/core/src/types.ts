@@ -236,6 +236,11 @@ export const SESSION_RESUME_RECEIPT_STATUSES = [
   "rejected",
 ] as const;
 
+export const PROJECTION_SNAPSHOT_STRATEGIES = [
+  "mixed_state_tolerant",
+  "checkpoint_consistent",
+] as const;
+
 export const CONTRADICTION_RESOLUTION_STRATEGIES = [
   "manual_review",
   "coexist_temporally",
@@ -301,6 +306,7 @@ export type VectorBlobEncoding = typeof VECTOR_BLOB_ENCODINGS[number];
 export type VectorMaintenanceJob = typeof VECTOR_MAINTENANCE_JOBS[number];
 export type VectorExportJsonlRowKind = typeof VECTOR_EXPORT_JSONL_ROW_KINDS[number];
 export type SessionResumeReceiptStatus = typeof SESSION_RESUME_RECEIPT_STATUSES[number];
+export type ProjectionSnapshotStrategy = typeof PROJECTION_SNAPSHOT_STRATEGIES[number];
 export type DispositionTargetLayer = Extract<Layer, "runtime" | "world" | "wiki" | "governance" | "canon" | "audits">;
 export type ContradictionResolutionStrategy = typeof CONTRADICTION_RESOLUTION_STRATEGIES[number];
 export type ContradictionResolutionStatus = typeof CONTRADICTION_RESOLUTION_STATUSES[number];
@@ -829,6 +835,7 @@ export interface SessionResumeReceipt extends RecordEnvelope {
   kind: "session_resume_receipt";
   layer: "audits";
   authoritative_home: "governance";
+  receipt_key: string;
   receipt_status: SessionResumeReceiptStatus;
   adapter: Exclude<RuntimeKind, "generic">;
   projection_manifest_ref: string;
@@ -840,6 +847,8 @@ export interface SessionResumeReceipt extends RecordEnvelope {
   continuity_epoch: string;
   generation: number;
   read_policy_version: string;
+  policy_snapshot_ref?: string | null;
+  compiler_version?: string | null;
   upstream_refs: string[];
   authenticated_principal?: AuthenticatedPrincipal | null;
   diagnostic_refs?: string[];
@@ -1079,12 +1088,17 @@ export interface ProjectionManifest extends RecordEnvelope {
   projection_profile: string;
   audience: string;
   read_policy_version: string;
+  compiler_version?: string | null;
   actor_identity_ref?: string | null;
   owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
+  source_checkpoint_ref?: string | null;
+  continuity_epoch?: string | null;
+  generation?: number | null;
   policy_snapshot_ref?: string | null;
+  snapshot_strategy?: ProjectionSnapshotStrategy | null;
   context_refs: string[];
   suppressed_refs?: string[];
   suppressed_records?: Array<{

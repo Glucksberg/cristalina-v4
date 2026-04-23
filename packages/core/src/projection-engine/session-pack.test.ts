@@ -125,6 +125,11 @@ test("session pack compilation emits derived projection artifacts from an active
   assert.equal(compiled.artifact.artifact_kind, "session_resume_markdown");
   assert.equal(compiled.artifact.path, "derived/openclaw/session-packs/session_session_pack_001/projection_artifact_session_resume_001.md");
   assert.equal(compiled.manifest.projection_profile, "session_resume_v2");
+  assert.equal(compiled.manifest.compiler_version, "session_resume_v2.compiler.v1");
+  assert.equal(compiled.manifest.source_checkpoint_ref, activeCheckpoint.id);
+  assert.equal(compiled.manifest.continuity_epoch, activeCheckpoint.continuity_epoch);
+  assert.equal(compiled.manifest.generation, activeCheckpoint.generation);
+  assert.equal(compiled.manifest.snapshot_strategy, "checkpoint_consistent");
   assert.equal(compiled.manifest.runtime_session_ref, activeCheckpoint.runtime_session_ref);
   assert.deepEqual(compiled.manifest.artifact_refs, [compiled.artifact.id]);
   assert.deepEqual(compiled.manifest.context_refs, [
@@ -153,6 +158,12 @@ test("session pack compilation emits derived projection artifacts from an active
   assert.deepEqual(validateCoreRecord(receipt), []);
   assert.equal(receipt.layer, "audits");
   assert.equal(receipt.authoritative_home, "governance");
+  assert.equal(
+    receipt.receipt_key,
+    "session_resume_receipt_consumed_openclaw_projection_manifest_session_resume_001_working_memory_checkpoint_session_pack_001_epoch_session_pack_001_g1",
+  );
+  assert.equal(receipt.compiler_version, "session_resume_v2.compiler.v1");
+  assert.equal(receipt.policy_snapshot_ref, null);
   assert.equal(receipt.projection_manifest_ref, compiled.manifest.id);
   assert.deepEqual(receipt.projection_artifact_refs, [compiled.artifact.id]);
   assert.equal(receipt.checkpoint_ref, activeCheckpoint.id);
@@ -262,4 +273,55 @@ test("session resume receipts reject manifests outside the session resume contra
       }),
     /read policy mismatch/,
   );
+
+  assert.throws(
+    () =>
+      recordSessionResumeReceipt({
+        now,
+        receipt_status: "applied",
+        adapter: "hermes",
+        manifest: {
+          ...compiled.manifest,
+          policy_snapshot_ref: "policy_snapshot_other_001",
+        },
+        checkpoint: {
+          ...activeCheckpoint,
+          policy_snapshot_ref: "policy_snapshot_session_pack_001",
+        },
+      }),
+    /policy snapshot mismatch/,
+  );
+});
+
+test("session resume receipts default to a deterministic id and preserve policy snapshot refs", () => {
+  const session = runtimeSession();
+  const thread = conversationThread();
+  const activeCheckpoint = {
+    ...checkpoint(),
+    policy_snapshot_ref: "policy_snapshot_session_pack_001",
+  };
+  const compiled = compileSessionPack({
+    id: "projection_manifest_session_resume_deterministic_001",
+    artifact_id: "projection_artifact_session_resume_deterministic_001",
+    now,
+    adapter: "openclaw",
+    checkpoint: activeCheckpoint,
+    upstream_records: [session, thread],
+    continuity_epoch: "epoch_session_pack_001",
+    generation: 1,
+    read_policy_version: "runtime_read_policy.v1",
+    audience: "runtime_resume",
+    policy_snapshot_ref: "policy_snapshot_session_pack_001",
+  });
+
+  const receipt = recordSessionResumeReceipt({
+    now,
+    receipt_status: "applied",
+    adapter: "openclaw",
+    manifest: compiled.manifest,
+    checkpoint: activeCheckpoint,
+  });
+
+  assert.equal(receipt.id, receipt.receipt_key);
+  assert.equal(receipt.policy_snapshot_ref, "policy_snapshot_session_pack_001");
 });
