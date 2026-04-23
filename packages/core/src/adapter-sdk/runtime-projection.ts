@@ -24,6 +24,7 @@ export type ProjectionConsistencyRequirement = "allow_mixed_state" | "require_ch
 export interface ProjectionRuntimeSummary {
   manifest_id: string;
   compiled_at: string;
+  read_policy_version: string;
   compiler_version: string;
   actor_identity_ref?: string | null;
   owner_identity_ref?: string | null;
@@ -40,6 +41,7 @@ export interface ProjectionRuntimeSummary {
 }
 
 export interface ProjectionRuntimeFilter {
+  read_policy_version?: string;
   compiler_version?: string;
   actor_identity_ref?: string | null;
   owner_identity_ref?: string | null;
@@ -126,7 +128,7 @@ function compareProjectionTimestamps(left: ProjectionManifest, right: Projection
 function matchesProjectionRuntimeFilter(
   manifest: Pick<
     ProjectionManifest,
-    "compiler_version" | "actor_identity_ref" | "owner_identity_ref" | "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref"
+    "read_policy_version" | "compiler_version" | "actor_identity_ref" | "owner_identity_ref" | "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref"
   >,
   filter?: ProjectionRuntimeFilter,
 ): boolean {
@@ -134,6 +136,9 @@ function matchesProjectionRuntimeFilter(
     return true;
   }
 
+  if (filter.read_policy_version !== undefined && manifest.read_policy_version !== filter.read_policy_version) {
+    return false;
+  }
   if (filter.actor_identity_ref !== undefined && manifest.actor_identity_ref !== filter.actor_identity_ref) {
     return false;
   }
@@ -163,6 +168,7 @@ function matchesProjectionIdentityFilter(filter?: ProjectionRuntimeFilter): Proj
 
   return {
     compiler_version: undefined,
+    read_policy_version: undefined,
     actor_identity_ref: filter.actor_identity_ref,
     owner_identity_ref: filter.owner_identity_ref,
     runtime_instance_ref: filter.runtime_instance_ref,
@@ -337,6 +343,7 @@ export async function listProjectionRuntimeViews(
       return {
         manifest_id: manifest.id,
         compiled_at: manifest.updated_at ?? manifest.created_at,
+        read_policy_version: manifest.read_policy_version,
         compiler_version: manifest.compiler_version,
         actor_identity_ref: manifest.actor_identity_ref ?? null,
         owner_identity_ref: manifest.owner_identity_ref ?? null,
@@ -423,6 +430,14 @@ export async function loadLatestProjectionRuntimeView(
     if (identitySummaries.length > 0) {
       throw new Error(
         `Latest ${adapter} projection did not satisfy compiler_version=${filter.compiler_version} for the selected runtime context`,
+      );
+    }
+  }
+  if (summaries.length === 0 && filter?.read_policy_version !== undefined) {
+    const identitySummaries = await listProjectionRuntimeViews(rootDir, adapter, matchesProjectionIdentityFilter(filter));
+    if (identitySummaries.length > 0) {
+      throw new Error(
+        `Latest ${adapter} projection did not satisfy read_policy_version=${filter.read_policy_version} for the selected runtime context`,
       );
     }
   }

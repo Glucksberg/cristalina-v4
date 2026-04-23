@@ -100,6 +100,7 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
 
   assert.equal(summaries.length, 1);
   assert.equal(summaries[0]!.manifest_id, first.records.projection_manifest.id);
+  assert.equal(summaries[0]!.read_policy_version, first.records.projection_manifest.read_policy_version);
   assert.equal(summaries[0]!.compiler_version, RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION.openclaw);
   assert.equal(summaries[0]!.generation, null);
   assert.equal(summaries[0]!.pending_review_count, 1);
@@ -774,6 +775,89 @@ test("runtime projection helper can require a compiler version for the selected 
         conversation_thread_ref: "thread_compiler_shared",
       }),
     /did not satisfy compiler_version=hermes\.runtime\.v3/,
+  );
+});
+
+test("runtime projection helper can require a read policy version for the selected runtime context", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T15:00:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_policy_old",
+    diagnostic_id: "diag_hermes_policy_old",
+    review_id: "cur_hermes_policy_old",
+    proposal_ref: "prop_hermes_policy_old",
+    markdown_heading: "Hermes Runtime Memory Policy Old",
+    diagnostic_message: "Older policy fixture.",
+    provenance_source_ref: "tests/runtime-projection/policy-old",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v1",
+    owner_identity_ref: "actor_owner_policy_shared",
+    runtime_instance_ref: "runtime_policy_shared",
+    runtime_session_ref: "session_policy_shared",
+    conversation_thread_ref: "thread_policy_shared",
+    markdown_artifact_id: "part_hermes_policy_old",
+    canon_artifact_id: "part_hermes_policy_old_canon",
+    compiler_version: "hermes.runtime.v1",
+  });
+
+  await createHermesProjectionFixture(rootDir, {
+    now: "2026-04-23T15:01:00.000Z",
+    status: "pending",
+    manifest_id: "pmf_hermes_policy_new",
+    diagnostic_id: "diag_hermes_policy_new",
+    review_id: "cur_hermes_policy_new",
+    proposal_ref: "prop_hermes_policy_new",
+    markdown_heading: "Hermes Runtime Memory Policy New",
+    diagnostic_message: "Newer policy fixture.",
+    provenance_source_ref: "tests/runtime-projection/policy-new",
+    projection_profile: "hermes/runtime-bootstrap",
+    read_policy_version: "projection-read-v2",
+    owner_identity_ref: "actor_owner_policy_shared",
+    runtime_instance_ref: "runtime_policy_shared",
+    runtime_session_ref: "session_policy_shared",
+    conversation_thread_ref: "thread_policy_shared",
+    markdown_artifact_id: "part_hermes_policy_new",
+    canon_artifact_id: "part_hermes_policy_new_canon",
+    compiler_version: "hermes.runtime.v1",
+  });
+
+  const latestAny = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
+    owner_identity_ref: "actor_owner_policy_shared",
+    runtime_instance_ref: "runtime_policy_shared",
+    runtime_session_ref: "session_policy_shared",
+    conversation_thread_ref: "thread_policy_shared",
+  });
+  assert.ok(latestAny);
+  assert.equal(latestAny!.manifest.id, "pmf_hermes_policy_new");
+
+  const latestV1 = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
+    read_policy_version: "projection-read-v1",
+    owner_identity_ref: "actor_owner_policy_shared",
+    runtime_instance_ref: "runtime_policy_shared",
+    runtime_session_ref: "session_policy_shared",
+    conversation_thread_ref: "thread_policy_shared",
+  });
+  assert.ok(latestV1);
+  assert.equal(latestV1!.manifest.id, "pmf_hermes_policy_old");
+
+  await assert.rejects(
+    () =>
+      loadLatestProjectionRuntimeView(rootDir, "hermes", {
+        consistency_requirement: "allow_mixed_state",
+        read_policy_version: "projection-read-v3",
+        owner_identity_ref: "actor_owner_policy_shared",
+        runtime_instance_ref: "runtime_policy_shared",
+        runtime_session_ref: "session_policy_shared",
+        conversation_thread_ref: "thread_policy_shared",
+      }),
+    /did not satisfy read_policy_version=projection-read-v3/,
   );
 });
 
