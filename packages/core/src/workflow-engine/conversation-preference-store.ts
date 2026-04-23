@@ -291,6 +291,20 @@ export type AuthenticatedConversationPreferenceQueuedManualContradictionReviewIn
     authenticated_principal: AuthenticatedPrincipal;
   };
 
+export interface ConversationPreferenceQueuedManualContradictionExpirationInput {
+  rootDir: string;
+  queue_id: string;
+  now: string;
+  actor: string;
+  authenticated_principal?: AuthenticatedPrincipal;
+  validation_scope?: string;
+}
+
+export type AuthenticatedConversationPreferenceQueuedManualContradictionExpirationInput =
+  ConversationPreferenceQueuedManualContradictionExpirationInput & {
+    authenticated_principal: AuthenticatedPrincipal;
+  };
+
 export interface ConversationPreferenceResolutionStoreResult {
   reused: boolean;
   paths: ConversationPreferenceStorePaths;
@@ -339,7 +353,8 @@ interface RecoveryJournal {
     | "conversation_preference_resolution_apply"
     | "conversation_preference_owner_ratification_apply"
     | "conversation_preference_owner_review_close"
-    | "conversation_preference_manual_contradiction_review_apply";
+    | "conversation_preference_manual_contradiction_review_apply"
+    | "conversation_preference_manual_contradiction_review_close";
   created_at: string;
   files: RecoveryJournalFile[];
   append_entries?: RecoveryJournalAppendEntry[];
@@ -1572,6 +1587,13 @@ async function recoverManualContradictionReviewApplication(rootDir: string, queu
   );
 }
 
+async function recoverManualContradictionReviewClosure(rootDir: string, queue_id: string): Promise<void> {
+  await recoverPendingJournal(
+    rootDir,
+    recoveryJournalPath(rootDir, "conversation_preference_manual_contradiction_review_close", queue_id),
+  );
+}
+
 function buildOwnerRatificationQueuePacket(input: {
   now: string;
   source_record: SourceRecord;
@@ -2168,6 +2190,108 @@ function buildResolutionApplicationAuditEntries(input: {
   ];
 }
 
+function buildManualContradictionReviewClosureFiles(input: {
+  paths: ConversationPreferenceStorePaths;
+  contradiction_resolution: ContradictionResolution;
+  manual_contradiction_review_queue?: CurationPacket;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): MaterializedFile[] {
+  return [
+    {
+      path: input.paths.contradiction_resolution!,
+      content: serializeCoreRecordContent(input.contradiction_resolution),
+    },
+    ...(input.manual_contradiction_review_queue
+      ? [{
+          path: input.paths.manual_contradiction_review_queue!,
+          content: serializeCoreRecordContent(input.manual_contradiction_review_queue),
+        }]
+      : []),
+    {
+      path: input.paths.projection_markdown,
+      content: input.projection.markdown,
+    },
+    {
+      path: input.paths.projection_artifacts.canon,
+      content: serializeCoreRecordContent(input.projection.artifacts[0]!),
+    },
+    {
+      path: input.paths.projection_artifacts.world,
+      content: serializeCoreRecordContent(input.projection.artifacts[1]!),
+    },
+    {
+      path: input.paths.projection_artifacts.wiki,
+      content: serializeCoreRecordContent(input.projection.artifacts[2]!),
+    },
+    {
+      path: input.paths.projection_manifest,
+      content: serializeCoreRecordContent(input.projection.manifest),
+    },
+  ];
+}
+
+function buildManualContradictionReviewClosureValidationIssues(input: {
+  contradiction: Contradiction;
+  contradiction_resolution: ContradictionResolution;
+  existing_world_claim: WorldClaim;
+  candidate_world_claim: WorldClaim;
+  manual_contradiction_review_queue?: CurationPacket;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): ValidationIssue[] {
+  return [
+    input.existing_world_claim,
+    input.candidate_world_claim,
+    input.contradiction,
+    input.contradiction_resolution,
+    ...(input.manual_contradiction_review_queue ? [input.manual_contradiction_review_queue] : []),
+    ...input.projection.artifacts,
+    input.projection.manifest,
+  ].flatMap((record) => validateCoreRecord(record));
+}
+
+function buildManualContradictionReviewClosureAuditEntries(input: {
+  now: string;
+  contradiction: Contradiction;
+  contradiction_resolution: ContradictionResolution;
+  manual_contradiction_review_queue?: CurationPacket;
+  projection: Awaited<ReturnType<typeof buildProjectionFromStoreState>>;
+}): AuditChangeEntry[] {
+  return [
+    {
+      entry_id: `audit:${input.contradiction_resolution.id}:manual_contradiction_review_close`,
+      at: input.now,
+      operation: "governance_reject",
+      record_id: input.contradiction_resolution.id,
+      record_kind: input.contradiction_resolution.kind,
+      record_layer: input.contradiction_resolution.layer,
+      detail: "Expired manual contradiction review and rejected the pending resolution without changing world truth.",
+      related_refs: [input.contradiction.id, input.contradiction_resolution.id],
+    },
+    ...(input.manual_contradiction_review_queue
+      ? [{
+          entry_id: `audit:${input.contradiction_resolution.id}:manual_contradiction_review_queue_close`,
+          at: input.now,
+          operation: "record_observation" as const,
+          record_id: input.manual_contradiction_review_queue.id,
+          record_kind: input.manual_contradiction_review_queue.kind,
+          record_layer: input.manual_contradiction_review_queue.layer,
+          detail: "Marked manual contradiction review queue entry as expired.",
+          related_refs: [input.contradiction.id, input.contradiction_resolution.id],
+        }]
+      : []),
+    {
+      entry_id: `audit:${input.contradiction_resolution.id}:projection_compile_manual_contradiction_review_close`,
+      at: input.now,
+      operation: "projection_compile",
+      record_id: input.projection.manifest.id,
+      record_kind: input.projection.manifest.kind,
+      record_layer: input.projection.manifest.layer,
+      detail: "Recompiled projection after manual contradiction review expired.",
+      related_refs: [input.contradiction.id, input.contradiction_resolution.id],
+    },
+  ];
+}
+
 function buildResolvedDeferredDiagnostic(input: {
   now: string;
   proposal: Proposal;
@@ -2351,6 +2475,43 @@ function applyManualContradictionReviewQueuePacket(input: {
     ...input.queue,
     updated_at: input.now,
     status: "applied",
+    contradiction_ref: input.contradiction.id,
+    contradiction_resolution_ref: input.contradiction_resolution.id,
+    upstream_refs: [
+      ...new Set([
+        ...(input.queue.upstream_refs ?? []),
+        input.contradiction.id,
+        input.contradiction_resolution.id,
+      ]),
+    ],
+    provenance: {
+      ...input.queue.provenance,
+      evidence_refs: [
+        ...new Set([
+          ...(input.queue.provenance.evidence_refs ?? []),
+          input.contradiction.id,
+          input.contradiction_resolution.id,
+        ]),
+      ],
+    },
+  };
+}
+
+function closeManualContradictionReviewQueuePacket(input: {
+  now: string;
+  queue: CurationPacket | undefined;
+  contradiction: Contradiction;
+  contradiction_resolution: ContradictionResolution;
+  queue_status: "expired";
+}): CurationPacket | undefined {
+  if (!input.queue) {
+    return undefined;
+  }
+
+  return {
+    ...input.queue,
+    updated_at: input.now,
+    status: input.queue_status,
     contradiction_ref: input.contradiction.id,
     contradiction_resolution_ref: input.contradiction_resolution.id,
     upstream_refs: [
@@ -4707,6 +4868,202 @@ async function applyManualContradictionReviewToExistingFlow(
   };
 }
 
+async function closeManualContradictionReviewQueueToExistingFlow(
+  rootDir: string,
+  existingFlow: ConversationPreferenceStoreResult,
+  projectionInput: ConversationPreferenceStoreInput,
+  input: {
+    now: string;
+    actor: string;
+    authenticated_principal?: AuthenticatedPrincipal;
+    validation_scope?: string;
+    queue_status: "expired";
+  },
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  const queue = existingFlow.records.manual_contradiction_review_queue;
+  if (!queue) {
+    throw new Error("Conversation preference flow does not have a manual contradiction review queue entry");
+  }
+
+  if (!existingFlow.records.contradiction) {
+    throw new Error("Conversation preference flow does not contain a contradiction to review");
+  }
+  if (!existingFlow.records.contradiction_resolution) {
+    throw new Error("Conversation preference flow does not contain a contradiction resolution to review");
+  }
+
+  if (queue.status !== "pending") {
+    if (
+      queue.status === input.queue_status &&
+      existingFlow.records.contradiction.status === "open" &&
+      existingFlow.records.contradiction_resolution.status === "rejected"
+    ) {
+      const existing_world_claim = await readCoreRecord<WorldClaim>(
+        coreRecordPath(
+          rootDir,
+          {
+            id: existingFlow.records.contradiction.left_ref.id,
+            kind: "preference",
+            layer: "world",
+          } as WorldClaim,
+        ),
+      );
+      const candidate_world_claim = await readCoreRecord<WorldClaim>(
+        coreRecordPath(
+          rootDir,
+          {
+            id: existingFlow.records.contradiction.right_ref.id,
+            kind: "preference",
+            layer: "world",
+          } as WorldClaim,
+        ),
+      );
+
+      return {
+        reused: true,
+        paths: existingFlow.paths,
+        records: {
+          ...existingFlow.records,
+          contradiction: existingFlow.records.contradiction,
+          contradiction_resolution: existingFlow.records.contradiction_resolution,
+          existing_world_claim,
+          candidate_world_claim,
+        },
+        validation_issues: [
+          ...existingFlow.validation_issues,
+          ...validateCoreRecord(existing_world_claim),
+          ...validateCoreRecord(candidate_world_claim),
+        ],
+      };
+    }
+
+    throw new Error(`Manual contradiction review queue entry is already closed with status ${queue.status}`);
+  }
+
+  if (existingFlow.records.contradiction_resolution.strategy !== "manual_review") {
+    throw new Error("Conversation preference flow is not waiting on manual contradiction review");
+  }
+
+  assertAuthorizedManualContradictionReview({
+    actor: input.actor,
+    authenticated_principal: input.authenticated_principal,
+    owner_identity_ref: queue.owner_identity_ref ?? null,
+  });
+
+  const existing_world_claim = await readCoreRecord<WorldClaim>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: existingFlow.records.contradiction.left_ref.id,
+        kind: "preference",
+        layer: "world",
+      } as WorldClaim,
+    ),
+  );
+  const candidate_world_claim = await readCoreRecord<WorldClaim>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: existingFlow.records.contradiction.right_ref.id,
+        kind: "preference",
+        layer: "world",
+      } as WorldClaim,
+    ),
+  );
+
+  const contradiction_resolution: ContradictionResolution = {
+    ...existingFlow.records.contradiction_resolution,
+    updated_at: input.now,
+    status: "rejected",
+  };
+  const updatedQueue = closeManualContradictionReviewQueuePacket({
+    now: input.now,
+    queue,
+    contradiction: existingFlow.records.contradiction,
+    contradiction_resolution,
+    queue_status: input.queue_status,
+  });
+
+  const projection = await buildProjectionFromStoreState(
+    rootDir,
+    existingFlow.paths,
+    projectionInput,
+    existingFlow.records.canonical_record,
+    existingFlow.records.intake,
+    input.now,
+    {
+      world_claims: [existing_world_claim, candidate_world_claim],
+      contradictions: [existingFlow.records.contradiction],
+      contradiction_resolutions: [contradiction_resolution],
+      curation_packets: updatedQueue ? [updatedQueue] : [],
+    },
+  );
+  const files = buildManualContradictionReviewClosureFiles({
+    paths: existingFlow.paths,
+    contradiction_resolution,
+    manual_contradiction_review_queue: updatedQueue,
+    projection,
+  });
+  const validation_issues = buildManualContradictionReviewClosureValidationIssues({
+    contradiction: existingFlow.records.contradiction,
+    contradiction_resolution,
+    existing_world_claim,
+    candidate_world_claim,
+    manual_contradiction_review_queue: updatedQueue,
+    projection,
+  });
+  assertNoValidationIssues(validation_issues, "conversation preference manual contradiction review closure");
+  const audit_entries = buildManualContradictionReviewClosureAuditEntries({
+    now: input.now,
+    contradiction: existingFlow.records.contradiction,
+    contradiction_resolution,
+    manual_contradiction_review_queue: updatedQueue,
+    projection,
+  });
+  const append_entries = buildConversationPreferenceAppendEntries({
+    now: input.now,
+    validation_scope: input.validation_scope ?? "workflow:conversation-preference:manual-contradiction-review-close",
+    validation_entry_id: `validation:${contradiction_resolution.id}:manual-contradiction-review-close`,
+    proposal_id: existingFlow.records.intake.proposal.id,
+    validation_issues,
+    audit_entries,
+  });
+  const journalPath = recoveryJournalPath(
+    rootDir,
+    "conversation_preference_manual_contradiction_review_close",
+    queue.id,
+  );
+  await writeRecoveryJournal(
+    journalPath,
+    buildRecoveryJournal({
+      rootDir,
+      operation: "conversation_preference_manual_contradiction_review_close",
+      created_at: input.now,
+      files,
+      append_entries,
+    }),
+  );
+  await materializeFiles(files);
+  await replayRecoveryJournalEntries(rootDir, append_entries);
+  await rm(journalPath, { force: true });
+
+  return {
+    reused: false,
+    paths: existingFlow.paths,
+    records: {
+      ...existingFlow.records,
+      contradiction: existingFlow.records.contradiction,
+      contradiction_resolution,
+      manual_contradiction_review_queue: updatedQueue,
+      existing_world_claim,
+      candidate_world_claim,
+      projection_artifacts: projection.artifacts,
+      projection_manifest: projection.manifest,
+    },
+    validation_issues,
+  };
+}
+
 async function closeOwnerReviewQueueToExistingFlow(
   rootDir: string,
   existingFlow: ConversationPreferenceStoreResult,
@@ -5053,6 +5410,43 @@ export async function applyQueuedConversationPreferenceManualContradictionReview
         existingFlow,
         buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
         input,
+      );
+    },
+  );
+}
+
+export async function expireQueuedConversationPreferenceManualContradictionReviewToStore(
+  input: AuthenticatedConversationPreferenceQueuedManualContradictionExpirationInput,
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  const rootDir = resolve(input.rootDir);
+  assertAuthenticatedPrincipalMatchesActor({
+    actor: input.actor,
+    authenticated_principal: requireAuthenticatedPrincipal(
+      input.authenticated_principal,
+      "Queued manual contradiction review expiration",
+    ),
+  });
+  return withStoreWriteLock(
+    rootDir,
+    `conversation_preference_manual_contradiction_review_close:${input.queue_id}`,
+    async () => {
+      await recoverManualContradictionReviewClosure(rootDir, input.queue_id);
+      const existingFlow = await loadConversationPreferenceFlowFromManualContradictionReviewQueue(
+        rootDir,
+        input.queue_id,
+      );
+      if (!existingFlow) {
+        throw new Error(`Manual contradiction review queue entry ${input.queue_id} does not exist`);
+      }
+
+      return closeManualContradictionReviewQueueToExistingFlow(
+        rootDir,
+        existingFlow,
+        buildSyntheticInputForStoredFlow(rootDir, existingFlow, input.now, input.actor, input.validation_scope),
+        {
+          ...input,
+          queue_status: "expired",
+        },
       );
     },
   );

@@ -255,10 +255,11 @@ export function partitionProjectionClaimsForRuntime<T extends ProjectionTraceabl
   const trace: T[] = [];
 
   for (const record of records) {
-    const isHistorical = record.temporal_state?.temporal_status === "historical";
+    const temporal_status = record.temporal_state?.temporal_status ?? "unresolved";
+    const isRuntimeCurrent = temporal_status === "active";
     const isDisputed = record.epistemic_state === "disputed";
 
-    if (isHistorical || isDisputed) {
+    if (!isRuntimeCurrent || isDisputed) {
       trace.push(record);
       continue;
     }

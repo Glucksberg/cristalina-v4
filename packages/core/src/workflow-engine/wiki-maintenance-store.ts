@@ -1014,9 +1014,12 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
     });
   }
 
+  const supersededClaimPageRef = input.claim?.supersedes_ref
+    ? existingClaims.find((claim) => claim.id === input.claim?.supersedes_ref)?.page_ref
+    : undefined;
   const claimPageRef = pages.find((page) => page.page_kind === "topic")?.id ??
     pages[0]?.id ??
-    input.claim?.supersedes_ref ??
+    supersededClaimPageRef ??
     existingPages[0]?.id;
   if (input.claim && input.ids.claim && claimPageRef) {
     const newClaim = buildClaim({

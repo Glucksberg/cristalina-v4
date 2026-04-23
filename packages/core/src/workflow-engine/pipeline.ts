@@ -1230,8 +1230,8 @@ export function reconcileConversationPreferenceSupersede(
     wiki_claim: {
       ...input.wiki_claim,
       updated_at: input.now,
-      statement: "The previous concise-answer preference is not currently active canon and is pending further confirmation.",
-      claim_status: "editorial",
+      claim_status: "superseded",
+      staleness_state: "superseded",
       upstream_refs: [...new Set([...(input.wiki_claim.upstream_refs ?? []), ...sharedRefs])],
     },
   };

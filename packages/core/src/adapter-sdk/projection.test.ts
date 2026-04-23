@@ -224,6 +224,21 @@ test("runtime claim partition moves disputed or historical claims out of the act
           temporal_status: "historical",
         },
       },
+      {
+        id: "wcl_bounded",
+        kind: "preference",
+        visibility_state: {
+          privacy_scope: "owner_private",
+        },
+        provenance: {
+          source_type: "conversation",
+          source_ref: "runtime/current#turn-003",
+        },
+        epistemic_state: "confirmed",
+        temporal_state: {
+          temporal_status: "bounded",
+        },
+      },
     ],
     {
       adapter: "openclaw",
@@ -232,5 +247,5 @@ test("runtime claim partition moves disputed or historical claims out of the act
   );
 
   assert.deepEqual(result.active.map((entry) => entry.id), ["wcl_active"]);
-  assert.deepEqual(result.trace.map((entry) => entry.id), ["wcl_trace"]);
+  assert.deepEqual(result.trace.map((entry) => entry.id), ["wcl_trace", "wcl_bounded"]);
 });

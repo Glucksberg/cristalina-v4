@@ -1267,7 +1267,7 @@ test("openclaw projection preserves visibility and renders reconciled statuses",
   assert.deepEqual(projection.manifest.suppressed_records, []);
   assert.deepEqual(projection.manifest.diagnostic_refs, ["diag_test_004"]);
   assert.match(projection.markdown, /\(disputed; historical\)/);
-  assert.match(projection.markdown, /\(editorial\)/);
+  assert.match(projection.markdown, /\(superseded\)/);
   assert.match(projection.markdown, /\[episode:ep_test_004\]/);
   assert.match(projection.markdown, /\[contradiction:contra_test_004\]/);
   assert.match(projection.markdown, /\[diag:diag_test_004\]/);

@@ -296,6 +296,9 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
   const diagnostics = diagnosticsFilter.included;
   const curation_packets = curationPacketsFilter.included;
   const canonical_records = canonicalFilter.included.filter((record) => record.governance_state === "ratified");
+  const canonicalPartitions = partitionProjectionClaimsForRuntime(canonical_records, projectionContext);
+  const active_canonical_records = canonicalPartitions.active;
+  const traced_canonical_records = canonicalPartitions.trace;
 
   const suppressed_refs = [
     ...runtimeSuppressed,
@@ -428,7 +431,10 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     ...renderRuntimeSection(runtime_identity),
     "",
     "## Canon",
-    ...renderCanonSection(canonical_records),
+    ...renderCanonSection(active_canonical_records),
+    "",
+    "## Canon Trace",
+    ...renderCanonSection(traced_canonical_records),
     "",
     "## World Claims",
     ...renderWorldSection(active_world_claims),

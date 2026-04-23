@@ -9,6 +9,7 @@ import {
   applyConversationPreferenceResolutionToStore,
   type AuthenticatedConversationPreferenceStoreInput,
   applyQueuedConversationPreferenceManualContradictionReviewToStore,
+  expireQueuedConversationPreferenceManualContradictionReviewToStore,
   expireQueuedConversationPreferenceProposalToStore,
   listConversationPreferenceManualContradictionReviewQueue,
   listConversationPreferenceOwnerRatificationQueue,
@@ -1889,6 +1890,89 @@ test("manual contradiction review queue rejects calls without an authenticated o
       }),
     /Manual contradiction review requires authenticated system principal or owner actor_owner_test_001/,
   );
+});
+
+test("manual contradiction review queue can expire without changing world truth and supports retry idempotence", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput: AuthenticatedConversationPreferenceStoreInput = {
+    ...buildInput(rootDir),
+    now: firstInput.now,
+    statement: "The user now prefers exhaustive answers by default.",
+    source: {
+      id: "src_test_manual_queue_expire_002",
+      source_ref: "runtime/session-test#turn-manual-queue-expire-002",
+      content_ref: "raw/sources/conversation-turn-test-manual-queue-expire-002.json",
+      runtime: "openclaw",
+      message: "The user now says they prefer exhaustive answers by default.",
+    },
+    ids: {
+      observation: "obs_test_manual_queue_expire_002",
+      episode: "ep_test_manual_queue_expire_002",
+      subject_entity: "ent_subject_test_manual_queue_expire_002",
+      preference_entity: "ent_preference_test_manual_queue_expire_002",
+      preference_relation: "rel_preference_test_manual_queue_expire_002",
+      world_claim: "wcl_test_manual_queue_expire_002",
+      contradiction: "contra_test_manual_queue_expire_002",
+      contradiction_resolution: "cres_test_manual_queue_expire_002",
+      wiki_page: "wpg_test_manual_queue_expire_002",
+      wiki_claim: "wclm_test_manual_queue_expire_002",
+      proposal: "prop_test_manual_queue_expire_002",
+      disposition: "disp_test_manual_queue_expire_002",
+      ratification: "rat_test_manual_queue_expire_002",
+      diagnostic: "diag_test_manual_queue_expire_002",
+      canonical: "mem_test_manual_queue_expire_002",
+      canon_artifact: "part_openclaw_canon_test_manual_queue_expire_002",
+      world_artifact: "part_openclaw_world_test_manual_queue_expire_002",
+      wiki_artifact: "part_openclaw_wiki_test_manual_queue_expire_002",
+      projection_manifest: "pmf_openclaw_test_manual_queue_expire_002",
+    },
+  };
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+  assert.equal(second.records.manual_contradiction_review_queue?.status, "pending");
+
+  const queue = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  const expired = await expireQueuedConversationPreferenceManualContradictionReviewToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:06:00.000Z",
+    actor: "system:manual-contradiction-review",
+    authenticated_principal: systemPrincipal("system:manual-contradiction-review"),
+    validation_scope: "test:conversation-preference:manual-contradiction-review-expire",
+  });
+
+  assert.equal(expired.records.contradiction.status, "open");
+  assert.equal(expired.records.contradiction_resolution.status, "rejected");
+  assert.equal(expired.records.manual_contradiction_review_queue?.status, "expired");
+  assert.equal(expired.records.existing_world_claim.temporal_state?.temporal_status, "active");
+  assert.equal(expired.records.candidate_world_claim.temporal_state?.temporal_status, "active");
+
+  const projectionMarkdown = await readFile(expired.paths.projection_markdown, "utf8");
+  assert.match(projectionMarkdown, /\[contradiction-resolution:cres_test_manual_queue_expire_002\] \(rejected\) manual_review/);
+  assert.match(projectionMarkdown, /\[review:cur_manual_contradiction_cres_test_manual_queue_expire_002\] \(contradiction_manual_review; expired\)/);
+
+  const queueAfter = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  assert.deepEqual(queueAfter, []);
+
+  const expiredReplay = await expireQueuedConversationPreferenceManualContradictionReviewToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:06:00.000Z",
+    actor: "system:manual-contradiction-review",
+    authenticated_principal: systemPrincipal("system:manual-contradiction-review"),
+    validation_scope: "test:conversation-preference:manual-contradiction-review-expire",
+  });
+  assert.equal(expiredReplay.reused, true);
+  assert.equal(expiredReplay.records.manual_contradiction_review_queue?.status, "expired");
+  assert.equal(expiredReplay.records.contradiction_resolution.status, "rejected");
 });
 
 test("openclaw feedback round-trip preserves runtime identity and recompiles projection", async (t) => {

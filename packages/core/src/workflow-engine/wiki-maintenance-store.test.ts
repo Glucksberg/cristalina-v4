@@ -129,6 +129,57 @@ test("source_ingested refreshes wiki pages, claim lifecycle metadata, audit, and
   assert.equal((result.memory_browser.snapshot as { read_only: boolean }).read_only, true);
 });
 
+test("claim_superseded keeps the replacement claim on the superseded claim page instead of fabricating a page ref from claim id", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await runWikiMaintenanceToStore({
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_source_supersede_seed",
+      source_page: "wiki_page_source_supersede_seed",
+      topic_page: "wiki_page_topic_supersede_seed",
+      claim: "wiki_claim_supersede_seed",
+      browser_json_artifact: "artifact_memory_browser_json_supersede_seed",
+      browser_html_artifact: "artifact_memory_browser_html_supersede_seed",
+      browser_manifest: "manifest_memory_browser_supersede_seed",
+    }),
+    source_record: sourceRecord("src_wiki_supersede_seed"),
+    source_summary: "Seed wiki memory for supersession tests.",
+    topic: {
+      title: "Supersession Topic",
+      summary: "Topic page should survive claim supersession without losing page linkage.",
+    },
+    claim: {
+      statement: "Original wiki claim.",
+      support_refs: ["src_wiki_supersede_seed"],
+    },
+  });
+
+  const result = await runWikiMaintenanceToStore({
+    ...baseInput(rootDir, "claim_superseded", {
+      run: "wiki_run_claim_superseded_001",
+      claim: "wiki_claim_supersede_next",
+      browser_json_artifact: "artifact_memory_browser_json_supersede_next",
+      browser_html_artifact: "artifact_memory_browser_html_supersede_next",
+      browser_manifest: "manifest_memory_browser_supersede_next",
+    }),
+    source_record: sourceRecord("src_wiki_supersede_next"),
+    claim: {
+      statement: "Replacement wiki claim.",
+      support_refs: ["src_wiki_supersede_next"],
+      supersedes_ref: "wiki_claim_supersede_seed",
+    },
+  });
+
+  const replacement = result.claims.find((claim) => claim.id === "wiki_claim_supersede_next");
+  const superseded = result.claims.find((claim) => claim.id === "wiki_claim_supersede_seed");
+  assert.equal(replacement?.page_ref, "wiki_page_topic_supersede_seed");
+  assert.equal(superseded?.claim_status, "superseded");
+  assert.equal(superseded?.superseded_by_ref, "wiki_claim_supersede_next");
+});
+
 test("wiki support graph edges use typed upstream records and diagnose unresolved refs", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-typed-support-"));
   t.after(async () => {
