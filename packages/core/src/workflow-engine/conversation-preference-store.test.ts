@@ -1112,6 +1112,31 @@ test("writeConversationPreferenceFlowToStore rejects path collisions between raw
   );
 });
 
+test("writeConversationPreferenceFlowToStore rejects reusing a raw content_ref owned by another source record", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const first = buildInput(rootDir);
+  const firstResult = await writeConversationPreferenceFlowToStore(first);
+  const originalPayload = await readFile(firstResult.paths.raw_source, "utf8");
+
+  const second = cloneInputWithSuffix(
+    rootDir,
+    "content_ref_reuse_002",
+    "The user prefers exhaustive answers for audits.",
+  );
+  second.source.content_ref = first.source.content_ref;
+
+  await assert.rejects(
+    () => writeConversationPreferenceFlowToStore(second),
+    /already owned by source_record/,
+  );
+
+  assert.equal(await readFile(firstResult.paths.raw_source, "utf8"), originalPayload);
+});
+
 test("writeConversationPreferenceFlowToStore rejects wiki paths outside wiki/pages markdown storage", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -1209,6 +1234,36 @@ test("writeConversationPreferenceFlowToStore preserves canonical identity record
 
   assert.equal(ownerIdentity.updated_at, firstInput.now);
   assert.equal(ownerIdentity.label, firstInput.identity_context?.owner_label);
+});
+
+test("writeConversationPreferenceFlowToStore merges thread message_refs across distinct flows in the same thread", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const first = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(first);
+
+  const second = cloneInputWithSuffix(
+    rootDir,
+    "thread_merge_002",
+    "The user now asks for terse summaries first.",
+  );
+  second.identity_context = {
+    ...second.identity_context!,
+    message_refs: ["msg_test_002"],
+  };
+
+  await writeConversationPreferenceFlowToStore(second);
+
+  const thread = JSON.parse(
+    await readFile(join(rootDir, "runtime/threads/thread_test_001.json"), "utf8"),
+  ) as {
+    message_refs: string[];
+  };
+
+  assert.deepEqual(thread.message_refs, ["msg_test_001", "msg_test_002"]);
 });
 
 test("writeConversationPreferenceFlowToStore does not leak unscoped owner-private records into another runtime projection", async (t) => {

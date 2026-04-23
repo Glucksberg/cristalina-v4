@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as relativePosix } from "node:path/posix";
 
@@ -467,6 +467,57 @@ async function pathExists(filePath: string): Promise<boolean> {
     if (isMissingFileError(error)) return false;
     throw error;
   }
+}
+
+async function loadDeclaredSourceRecords(rootDir: string): Promise<SourceRecord[]> {
+  const sourcesDir = resolveStorePath(rootDir, "raw/sources");
+  const entries = await readdir(sourcesDir, { withFileTypes: true }).catch((error) => {
+    if (isMissingFileError(error)) return [];
+    throw error;
+  });
+  const records: SourceRecord[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) {
+      continue;
+    }
+
+    const candidate = JSON.parse(await readFile(join(sourcesDir, entry.name), "utf8")) as Record<string, unknown>;
+    if (
+      candidate.kind === "source_record" &&
+      typeof candidate.id === "string" &&
+      typeof candidate.content_ref === "string"
+    ) {
+      records.push(candidate as unknown as SourceRecord);
+    }
+  }
+
+  return records;
+}
+
+function sourceContentRefCollisionMessage(input: {
+  content_ref: string;
+  existing_source_id: string;
+  source_id: string;
+}): string {
+  return `Source content_ref ${input.content_ref} is already owned by source_record ${input.existing_source_id}; cannot reuse it for ${input.source_id}`;
+}
+
+async function assertSourceContentRefAvailable(rootDir: string, source_record: SourceRecord): Promise<void> {
+  const conflictingRecord = (await loadDeclaredSourceRecords(rootDir)).find(
+    (record) => record.content_ref === source_record.content_ref && record.id !== source_record.id,
+  );
+  if (!conflictingRecord) {
+    return;
+  }
+
+  throw new Error(
+    sourceContentRefCollisionMessage({
+      content_ref: source_record.content_ref,
+      existing_source_id: conflictingRecord.id,
+      source_id: source_record.id,
+    }),
+  );
 }
 
 function isAlreadyExistsError(error: unknown): boolean {
@@ -1474,6 +1525,16 @@ async function recoverOrResetWriteFlow(
   const journalPath = recoveryJournalPath(rootDir, "conversation_preference_write", input.ids.proposal);
   if (await recoverPendingJournal(rootDir, journalPath)) {
     return;
+  }
+
+  if ((await pathExists(paths.raw_source)) && !(await pathExists(paths.source_record))) {
+    const persistedRawSource = await readFile(paths.raw_source, "utf8");
+    const expectedRawSource = serializeSourcePayload(input);
+    if (persistedRawSource !== expectedRawSource) {
+      throw new Error(
+        `Raw source path ${paths.raw_source} is already occupied by different evidence; choose a distinct content_ref`,
+      );
+    }
   }
 
   if (await detectPartiallyMaterializedWriteFlow(paths)) {
@@ -3461,12 +3522,21 @@ async function reconcilePersistedRuntimeIdentityArtifacts(
     }
 
     const existing = await readCoreRecord<T>(filePath);
-    return {
+    const preservedRecord: T = {
       ...record,
       created_at: existing.created_at,
       provenance: existing.provenance,
       upstream_refs: existing.upstream_refs ?? record.upstream_refs,
     };
+
+    if (record.kind === "conversation_thread" && existing.kind === "conversation_thread") {
+      return {
+        ...preservedRecord,
+        message_refs: [...new Set([...existing.message_refs, ...record.message_refs])],
+      } as T;
+    }
+
+    return preservedRecord;
   }
 
   return {
@@ -3495,6 +3565,7 @@ export async function writeConversationPreferenceFlowToStore(
   await initializeStore(rootDir, input.now);
 
   const source_record = profile.source_normalization(input);
+  await assertSourceContentRefAvailable(rootDir, source_record);
   const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
   const previewPaths = buildPaths(rootDir, source_record, profile.proposal_emission({ input, source_record }), input);
 

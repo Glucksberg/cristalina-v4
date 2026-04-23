@@ -91,12 +91,26 @@ test("external candidate normalization suppresses mapped refs without a local re
   });
 
   assert.ok(candidate);
-  assert.equal(candidate.ref.id, fixture.canonical_record.id);
+  assert.equal(candidate.ref.id, "external_benchmark_provider_external-canon-without-local-record-001");
+  assert.equal(candidate.ref.kind, "external_candidate");
+  assert.equal(candidate.ref.layer, "derived");
   assert.equal(candidate.layer, "derived");
   assert.equal(candidate.authority, "derived");
   assert.deepEqual(candidate.suppression_reasons, ["invalid_external_candidate"]);
   assert.equal(candidate.can_support_proposal, false);
   assert.deepEqual(validateRetrievalContract(candidate), []);
+
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_external_missing_local_record_001",
+    recipe: {
+      ...fixture.recipe,
+      external_candidate_policy: "allow_normalized",
+    },
+    candidates: [candidate],
+  });
+  assert.equal(hybrid.included_candidates.length, 0);
+  assert.equal(hybrid.suppressed_candidates[0]?.ref.id, candidate.ref.id);
+  assert.equal(hybrid.suppressed_candidates[0]?.text_preview, undefined);
 });
 
 test("external candidate normalization suppresses authority labels that drift from the local record", () => {

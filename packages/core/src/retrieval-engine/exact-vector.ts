@@ -474,6 +474,7 @@ export function executeHybridRetrieval(input: HybridRetrievalInput): RetrievalRe
     const legallySuppressed = suppression_reasons.some((reason) => reason !== "projection_budget_exceeded");
     return {
       ...candidate,
+      text_preview: legallySuppressed ? undefined : candidate.text_preview,
       suppression_reasons: suppression_reasons.length > 0 ? suppression_reasons : undefined,
       can_support_proposal: legallySuppressed ? false : candidate.can_support_proposal,
     };

@@ -322,6 +322,31 @@ test("non-canonical intake rejects collisions between raw payload and authoritat
   );
 });
 
+test("non-canonical intake rejects reusing a raw content_ref owned by another source record", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const first = buildInput(rootDir, "evidence_only");
+  const firstResult = await writeNonCanonicalIntakeToStore(first);
+  const originalPayload = await readFile(firstResult.paths.raw_payload, "utf8");
+
+  const second = buildInput(rootDir, "diagnostic_only");
+  second.ids.source = "src_noncanonical_diagnostic_002";
+  second.ids.disposition = "disp_noncanonical_diagnostic_002";
+  second.ids.diagnostic = "diag_noncanonical_diagnostic_002";
+  second.source.content_ref = first.source.content_ref;
+  second.source.source_ref = "non-canonical/diagnostic/002";
+
+  await assert.rejects(
+    () => writeNonCanonicalIntakeToStore(second),
+    /already owned by source_record/,
+  );
+
+  assert.equal(await readFile(firstResult.paths.raw_payload, "utf8"), originalPayload);
+});
+
 test("non-canonical intake rejects reuse when payload or authenticated authority changes", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
   t.after(async () => {

@@ -15,6 +15,9 @@ It is not a full ADR system yet, but it plays the same role:
 - prevent architectural backsliding
 - make later implementation easier to evaluate
 
+Open operational caveats, accepted tradeoffs, and review notes that are not
+yet binding decisions belong in `docs/SCOPE-NOTES.md`.
+
 ---
 
 ## 2. Binding Decisions

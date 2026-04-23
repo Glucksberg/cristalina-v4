@@ -52,6 +52,7 @@ test("exact vector search and hybrid retrieval preserve authority and suppress e
   const suppressedWiki = hybrid.suppressed_candidates.find((candidate) => candidate.layer === "wiki");
   assert.equal(suppressedWiki?.authority, "editorial");
   assert.equal(suppressedWiki?.can_support_proposal, false);
+  assert.equal(suppressedWiki?.text_preview, undefined);
   assert.deepEqual(suppressedWiki?.suppression_reasons, ["unsupported_wiki_claim"]);
 });
 
@@ -381,6 +382,7 @@ test("hybrid retrieval honors recipes that forbid editorial wiki context", () =>
   assert.equal(hybrid.included_candidates.length, 0);
   assert.deepEqual(hybrid.suppressed_candidates[0]?.suppression_reasons, ["authority_mismatch"]);
   assert.equal(hybrid.suppressed_candidates[0]?.can_support_proposal, false);
+  assert.equal(hybrid.suppressed_candidates[0]?.text_preview, undefined);
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
 

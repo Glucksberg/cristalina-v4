@@ -168,7 +168,7 @@ export function normalizeExternalCandidates(input: NormalizeExternalCandidatesIn
       mapped_record: mappedRecord,
       read_context: input.read_context,
     });
-    const ref = mappedRecord ? localRefForRecord(mappedRecord) : mapped ? candidate.mapped_ref : fallbackRef(candidate);
+    const ref = mappedRecord ? localRefForRecord(mappedRecord) : fallbackRef(candidate);
     const layer = mappedRecord ? mappedRecord.layer : "derived";
     const authority = mappedRecord ? authorityForLayer(mappedRecord.layer) : "derived";
     const suppression_reasons = reasons.length > 0 ? reasons : undefined;

@@ -1,5 +1,5 @@
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as relativePosix } from "node:path/posix";
 
 import { appendAuditChange, appendValidationLog, type AuditChangeEntry, type ValidationLogEntry } from "../audit/log.js";
@@ -263,6 +263,57 @@ async function replayAppendEntries(
 
     await appendAuditChange(rootDir, entry.entry);
   }
+}
+
+async function loadDeclaredSourceRecords(rootDir: string): Promise<SourceRecord[]> {
+  const sourcesDir = resolveStorePath(rootDir, "raw/sources");
+  const entries = await readdir(sourcesDir, { withFileTypes: true }).catch((error) => {
+    if (isMissingFileError(error)) return [];
+    throw error;
+  });
+  const records: SourceRecord[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) {
+      continue;
+    }
+
+    const candidate = JSON.parse(await readFile(join(sourcesDir, entry.name), "utf8")) as Record<string, unknown>;
+    if (
+      candidate.kind === "source_record" &&
+      typeof candidate.id === "string" &&
+      typeof candidate.content_ref === "string"
+    ) {
+      records.push(candidate as unknown as SourceRecord);
+    }
+  }
+
+  return records;
+}
+
+function sourceContentRefCollisionMessage(input: {
+  content_ref: string;
+  existing_source_id: string;
+  source_id: string;
+}): string {
+  return `Source content_ref ${input.content_ref} is already owned by source_record ${input.existing_source_id}; cannot reuse it for ${input.source_id}`;
+}
+
+async function assertSourceContentRefAvailable(rootDir: string, source_record: SourceRecord): Promise<void> {
+  const conflictingRecord = (await loadDeclaredSourceRecords(rootDir)).find(
+    (record) => record.content_ref === source_record.content_ref && record.id !== source_record.id,
+  );
+  if (!conflictingRecord) {
+    return;
+  }
+
+  throw new Error(
+    sourceContentRefCollisionMessage({
+      content_ref: source_record.content_ref,
+      existing_source_id: conflictingRecord.id,
+      source_id: source_record.id,
+    }),
+  );
 }
 
 function safeJournalSegment(value: string): string {
@@ -693,6 +744,7 @@ async function writeNonCanonicalIntakeToStoreLocked(
   const content_ref = normalizeLegalRawContentRef(input.source.content_ref);
   const attachment_refs = [...new Set(input.source.attachment_refs?.map(normalizeAttachmentRef) ?? [])];
   const source_record = buildSourceRecord(input, content_ref, attachment_refs);
+  await assertSourceContentRefAvailable(rootDir, source_record);
   const runtime_context = buildRuntimeContext(input, source_record);
   const observation = buildObservation(
     {
@@ -727,6 +779,16 @@ async function writeNonCanonicalIntakeToStoreLocked(
   assertNoPathCollisions(paths);
   const journalPath = recoveryJournalPath(rootDir, disposition_record.id);
   await recoverPendingJournal(rootDir, journalPath);
+
+  if ((await pathExists(paths.raw_payload)) && !(await pathExists(paths.source_record))) {
+    const persistedRawPayload = await readFile(paths.raw_payload, "utf8");
+    const expectedRawPayload = serializePayload(input, attachment_refs);
+    if (persistedRawPayload !== expectedRawPayload) {
+      throw new Error(
+        `Raw payload path ${paths.raw_payload} is already occupied by different evidence; choose a distinct content_ref`,
+      );
+    }
+  }
 
   const validation_issues = [
     source_record,
