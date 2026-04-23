@@ -87,6 +87,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-22: Typed references only preserve provenance when every graph edge, retrieval candidate, and adapter feedback path resolves identity from declared records or fails into diagnostics instead of inventing authority from ids or legacy names.
 - 2026-04-22: Adapter parity only stays correct when runtime-neutral flows read adapter identity from persisted manifests, materialize projections under the declared adapter, and prove Hermes and OpenClaw through the same queue, projection, and authority contracts.
 - 2026-04-22: Memory correctness only closes when create paths cannot reuse canonical identity, retrieval budgets are spent after legality suppression, and non-canonical intake can replay or repair partial evidence writes.
 - 2026-04-22: Workflow hardening only closes when suppressed reads drop payload previews, non-canonical reuse proves every required artifact including raw evidence, and wiki maintenance serializes recoverable materialization across records, projections, index, and audit.
