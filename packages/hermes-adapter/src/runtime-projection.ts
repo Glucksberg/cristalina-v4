@@ -2,7 +2,7 @@ import {
   listProjectionRuntimeViews,
   loadLatestProjectionRuntimeView,
   loadProjectionRuntimeView,
-  type ProjectionRuntimeFilter,
+  type ProjectionRuntimeSelectionFilter,
   type ProjectionRuntimeSummary,
   type ProjectionRuntimeView,
 } from "../../core/dist/index.js";
@@ -26,7 +26,7 @@ export async function loadHermesProjectionRuntimeView(input: {
 
 export async function loadLatestHermesProjectionRuntimeView(
   rootDir: string,
-  filter?: ProjectionRuntimeFilter,
+  filter: ProjectionRuntimeSelectionFilter,
 ): Promise<HermesProjectionRuntimeView | undefined> {
   return loadLatestProjectionRuntimeView(rootDir, "hermes", filter);
 }

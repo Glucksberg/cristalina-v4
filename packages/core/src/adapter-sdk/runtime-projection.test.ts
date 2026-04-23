@@ -104,7 +104,9 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
   assert.equal(summaries[0]!.generation, null);
   assert.equal(summaries[0]!.pending_review_count, 1);
 
-  const latest = await loadLatestProjectionRuntimeView(rootDir, "openclaw");
+  const latest = await loadLatestProjectionRuntimeView(rootDir, "openclaw", {
+    consistency_requirement: "allow_mixed_state",
+  });
   assert.ok(latest);
   assert.equal(latest!.manifest.id, first.records.projection_manifest.id);
   assert.equal(latest!.pending_reviews.length, 1);
@@ -247,7 +249,9 @@ test("runtime projection helper resolves Hermes projection markdown from manifes
   assert.equal(summaries[0]!.review_count, 1);
   assert.equal(summaries[0]!.pending_review_count, 0);
 
-  const latest = await loadLatestProjectionRuntimeView(rootDir, "hermes");
+  const latest = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
+  });
   assert.ok(latest);
   assert.equal(latest!.manifest.id, fixture.manifest.id);
   assert.equal(latest!.pending_reviews.length, 0);
@@ -394,11 +398,14 @@ test("runtime projection helper requires runtime context when multiple latest ma
   await writeConversationPreferenceFlowToStore(secondInput);
 
   await assert.rejects(
-    () => loadLatestProjectionRuntimeView(rootDir, "openclaw"),
+    () => loadLatestProjectionRuntimeView(rootDir, "openclaw", {
+      consistency_requirement: "allow_mixed_state",
+    }),
     /ambiguous without full runtime and identity context/,
   );
 
   const latestForThreadA = await loadLatestProjectionRuntimeView(rootDir, "openclaw", {
+    consistency_requirement: "allow_mixed_state",
     conversation_thread_ref: "thread_runtime_projection_ambiguity_a",
   });
   assert.ok(latestForThreadA);
@@ -455,12 +462,14 @@ test("runtime projection helper requires identity context when one thread has pr
 
   await assert.rejects(
     () => loadLatestProjectionRuntimeView(rootDir, "hermes", {
+      consistency_requirement: "allow_mixed_state",
       conversation_thread_ref: "thread_identity_ambiguity_shared",
     }),
     /ambiguous without full runtime and identity context/,
   );
 
   const latest = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
     conversation_thread_ref: "thread_identity_ambiguity_shared",
     actor_identity_ref: "actor_agent_identity_ambiguity_b",
     owner_identity_ref: "actor_owner_identity_ambiguity_shared",
@@ -540,6 +549,7 @@ test("runtime projection helper prefers higher generation within the same contin
   assert.equal(summaries[0]!.snapshot_strategy, "checkpoint_consistent");
 
   const latest = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
     owner_identity_ref: "actor_owner_generation_shared",
     runtime_instance_ref: "runtime_generation_shared",
     runtime_session_ref: "session_generation_shared",
@@ -551,7 +561,7 @@ test("runtime projection helper prefers higher generation within the same contin
   assert.equal(latest!.manifest.generation, 2);
 });
 
-test("runtime projection helper can require checkpoint-consistent latest views and reject mixed-state-only contexts", async (t) => {
+test("runtime projection helper requires explicit consistency intent and prefers checkpoint-consistent latest views", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
   t.after(async () => {
     await rm(rootDir, { recursive: true, force: true });
@@ -603,14 +613,26 @@ test("runtime projection helper can require checkpoint-consistent latest views a
     snapshot_strategy: "mixed_state_tolerant",
   });
 
-  const latestMixed = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+  await assert.rejects(
+    () =>
+      (loadLatestProjectionRuntimeView as unknown as (
+        rootDir: string,
+        adapter: "hermes",
+        filter?: unknown,
+      ) => Promise<unknown>)(rootDir, "hermes"),
+    /requires an explicit consistency_requirement/,
+  );
+
+  const latestAllowed = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
     owner_identity_ref: "actor_owner_consistency_shared",
     runtime_instance_ref: "runtime_consistency_shared",
     runtime_session_ref: "session_consistency_shared",
     conversation_thread_ref: "thread_consistency_shared",
   });
-  assert.ok(latestMixed);
-  assert.equal(latestMixed!.manifest.id, "pmf_hermes_consistency_new");
+  assert.ok(latestAllowed);
+  assert.equal(latestAllowed!.manifest.id, "pmf_hermes_consistency_old");
+  assert.equal(latestAllowed!.manifest.snapshot_strategy, "checkpoint_consistent");
 
   const latestConsistent = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
     owner_identity_ref: "actor_owner_consistency_shared",
@@ -648,6 +670,16 @@ test("runtime projection helper can require checkpoint-consistent latest views a
     canon_artifact_id: "part_hermes_consistency_only_mixed_canon",
     snapshot_strategy: "mixed_state_tolerant",
   });
+
+  const latestMixedOnly = await loadLatestProjectionRuntimeView(mixedOnlyRootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
+    owner_identity_ref: "actor_owner_consistency_only_mixed",
+    runtime_instance_ref: "runtime_consistency_only_mixed",
+    runtime_session_ref: "session_consistency_only_mixed",
+    conversation_thread_ref: "thread_consistency_only_mixed",
+  });
+  assert.ok(latestMixedOnly);
+  assert.equal(latestMixedOnly!.manifest.id, "pmf_hermes_consistency_only_mixed");
 
   await assert.rejects(
     () =>
@@ -711,6 +743,7 @@ test("runtime projection helper can require a compiler version for the selected 
   });
 
   const latestAny = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
     owner_identity_ref: "actor_owner_compiler_shared",
     runtime_instance_ref: "runtime_compiler_shared",
     runtime_session_ref: "session_compiler_shared",
@@ -720,6 +753,7 @@ test("runtime projection helper can require a compiler version for the selected 
   assert.equal(latestAny!.manifest.id, "pmf_hermes_compiler_new");
 
   const latestV1 = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
+    consistency_requirement: "allow_mixed_state",
     compiler_version: "hermes.runtime.v1",
     owner_identity_ref: "actor_owner_compiler_shared",
     runtime_instance_ref: "runtime_compiler_shared",
@@ -732,6 +766,7 @@ test("runtime projection helper can require a compiler version for the selected 
   await assert.rejects(
     () =>
       loadLatestProjectionRuntimeView(rootDir, "hermes", {
+        consistency_requirement: "allow_mixed_state",
         compiler_version: "hermes.runtime.v3",
         owner_identity_ref: "actor_owner_compiler_shared",
         runtime_instance_ref: "runtime_compiler_shared",

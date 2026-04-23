@@ -126,7 +126,9 @@ test("OpenClaw adapter exposes pending owner review items from the latest projec
   assert.equal(summaries[0]!.manifest_id, result.records.projection_manifest.id);
   assert.equal(summaries[0]!.pending_review_count, 1);
 
-  const latest = await loadLatestOpenClawProjectionRuntimeView(rootDir);
+  const latest = await loadLatestOpenClawProjectionRuntimeView(rootDir, {
+    consistency_requirement: "allow_mixed_state",
+  });
   assert.ok(latest);
   assert.equal(latest!.manifest.id, result.records.projection_manifest.id);
   assert.equal(latest!.pending_reviews.length, 1);
@@ -194,7 +196,9 @@ test("OpenClaw adapter exposes core retrieval context without redefining retriev
     writeCoreRecord(rootDir, projection.manifest),
   ]);
 
-  const latest = await loadLatestOpenClawProjectionRuntimeView(rootDir);
+  const latest = await loadLatestOpenClawProjectionRuntimeView(rootDir, {
+    consistency_requirement: "allow_mixed_state",
+  });
 
   assert.ok(latest);
   assert.equal(latest!.retrieval_context.available, true);

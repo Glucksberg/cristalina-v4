@@ -89,7 +89,9 @@ test("Hermes adapter lists and loads pending projection reviews", async (t) => {
   assert.equal(summaries[0]!.review_count, 1);
   assert.equal(summaries[0]!.pending_review_count, 1);
 
-  const latest = await loadLatestHermesProjectionRuntimeView(rootDir);
+  const latest = await loadLatestHermesProjectionRuntimeView(rootDir, {
+    consistency_requirement: "allow_mixed_state",
+  });
   assert.ok(latest);
   assert.equal(latest!.manifest.id, fixture.manifest.id);
   assert.equal(latest!.pending_reviews.length, 1);
@@ -158,7 +160,9 @@ test("Hermes adapter exposes core retrieval context without redefining retrieval
     writeCoreRecord(rootDir, projection.manifest),
   ]);
 
-  const latest = await loadLatestHermesProjectionRuntimeView(rootDir);
+  const latest = await loadLatestHermesProjectionRuntimeView(rootDir, {
+    consistency_requirement: "allow_mixed_state",
+  });
 
   assert.ok(latest);
   assert.equal(latest!.retrieval_context.available, true);
@@ -298,7 +302,9 @@ test("Hermes adapter forwards authenticated principals through write-through ing
   assert.equal(ratified.records.owner_ratification_queue?.status, "applied");
   assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 1);
   assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
-  const ratifiedView = await loadLatestHermesProjectionRuntimeView(rootDir);
+  const ratifiedView = await loadLatestHermesProjectionRuntimeView(rootDir, {
+    consistency_requirement: "allow_mixed_state",
+  });
   assert.ok(ratifiedView);
   assert.match(ratifiedView!.markdown, /\[review:cur_owner_ratification_prop_hermes_adapter_test_001\] \(owner_ratification; applied\)/);
 

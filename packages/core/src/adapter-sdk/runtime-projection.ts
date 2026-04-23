@@ -49,6 +49,10 @@ export interface ProjectionRuntimeFilter {
   consistency_requirement?: ProjectionConsistencyRequirement;
 }
 
+export interface ProjectionRuntimeSelectionFilter extends ProjectionRuntimeFilter {
+  consistency_requirement: ProjectionConsistencyRequirement;
+}
+
 export interface ProjectionRuntimeView {
   manifest: ProjectionManifest;
   markdown: string;
@@ -69,7 +73,35 @@ export interface ProjectionRuntimeRetrievalContext {
   diagnostics: Diagnostic[];
 }
 
+function manifestsShareSelectionContext(
+  left: Pick<
+    ProjectionManifest,
+    "actor_identity_ref" | "owner_identity_ref" | "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref"
+  >,
+  right: Pick<
+    ProjectionManifest,
+    "actor_identity_ref" | "owner_identity_ref" | "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref"
+  >,
+): boolean {
+  return (
+    (left.actor_identity_ref ?? null) === (right.actor_identity_ref ?? null) &&
+    (left.owner_identity_ref ?? null) === (right.owner_identity_ref ?? null) &&
+    (left.runtime_instance_ref ?? null) === (right.runtime_instance_ref ?? null) &&
+    (left.runtime_session_ref ?? null) === (right.runtime_session_ref ?? null) &&
+    (left.conversation_thread_ref ?? null) === (right.conversation_thread_ref ?? null)
+  );
+}
+
 function compareProjectionTimestamps(left: ProjectionManifest, right: ProjectionManifest): number {
+  if (manifestsShareSelectionContext(left, right) && left.snapshot_strategy !== right.snapshot_strategy) {
+    if (left.snapshot_strategy === "checkpoint_consistent") {
+      return -1;
+    }
+    if (right.snapshot_strategy === "checkpoint_consistent") {
+      return 1;
+    }
+  }
+
   const leftTimestamp = Date.parse(left.updated_at ?? left.created_at);
   const rightTimestamp = Date.parse(right.updated_at ?? right.created_at);
   if (rightTimestamp !== leftTimestamp) {
@@ -370,8 +402,13 @@ export async function loadProjectionRuntimeView(input: {
 export async function loadLatestProjectionRuntimeView(
   rootDir: string,
   adapter: ProjectionAdapterKind,
-  filter?: ProjectionRuntimeFilter,
+  filter: ProjectionRuntimeSelectionFilter,
 ): Promise<ProjectionRuntimeView | undefined> {
+  if (!filter?.consistency_requirement) {
+    throw new Error(
+      `Latest ${adapter} projection requires an explicit consistency_requirement of allow_mixed_state or require_checkpoint_consistent`,
+    );
+  }
   const summaries = await listProjectionRuntimeViews(rootDir, adapter, filter);
   if (summaries.length === 0 && filter?.consistency_requirement === "require_checkpoint_consistent") {
     const identitySummaries = await listProjectionRuntimeViews(rootDir, adapter, matchesProjectionIdentityFilter(filter));
