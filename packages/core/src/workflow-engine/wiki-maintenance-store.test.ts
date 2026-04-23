@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { compileMemoryBrowserProjection } from "../projection-engine/memory-browser.js";
+import { buildSymbolicRetrievalFixture } from "../test-support/symbolic-retrieval-fixtures.js";
 import { executeCanonicalProposalWorkflow } from "./pipeline.js";
 import {
   buildWikiClaimProposalCandidate,
@@ -126,6 +127,48 @@ test("source_ingested refreshes wiki pages, claim lifecycle metadata, audit, and
   assert.equal(result.memory_browser.manifest.audience, "memory_browser");
   assert.match(result.memory_browser.html, /Wiki material is editorial memory/);
   assert.equal((result.memory_browser.snapshot as { read_only: boolean }).read_only, true);
+});
+
+test("wiki support graph edges use typed upstream records and diagnose unresolved refs", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-typed-support-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const fixture = buildSymbolicRetrievalFixture();
+  const result = await runWikiMaintenanceToStore({
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_typed_support_001",
+      topic_page: "wiki_page_typed_support_001",
+      claim: "wiki_claim_typed_support_001",
+      diagnostic: "diag_wiki_typed_support_001",
+      browser_json_artifact: "artifact_typed_support_json_001",
+      browser_html_artifact: "artifact_typed_support_html_001",
+      browser_manifest: "manifest_typed_support_001",
+    }),
+    support_records: [fixture.canonical_record, fixture.world_claim],
+    topic: {
+      title: "Typed Support",
+      summary: "Support edges preserve the authority of upstream records.",
+    },
+    claim: {
+      statement: "Wiki support edges should not invent raw source provenance.",
+      support_refs: [fixture.canonical_record.id, fixture.world_claim.id, "missing_support_ref_001"],
+    },
+  });
+
+  assert.equal(result.run.status, "completed_with_diagnostics");
+  assert.equal(result.run.graph_edges.length, 2);
+  assert.deepEqual(
+    result.run.graph_edges.map((edge) => edge.to_ref),
+    [
+      { id: fixture.canonical_record.id, kind: fixture.canonical_record.kind, layer: "canon" },
+      { id: fixture.world_claim.id, kind: fixture.world_claim.kind, layer: "world" },
+    ],
+  );
+  assert.ok(!result.run.graph_edges.some((edge) => edge.to_ref.id === "missing_support_ref_001"));
+  assert.equal(result.diagnostics[0]?.code, "wiki_unresolved_support_ref");
+  assert.deepEqual(result.diagnostics[0]?.related_refs, ["wiki_claim_typed_support_001", "missing_support_ref_001"]);
 });
 
 test("memory browser maintenance can materialize under Hermes with the same projection contract", async (t) => {

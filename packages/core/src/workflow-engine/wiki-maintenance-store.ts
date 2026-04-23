@@ -76,6 +76,7 @@ export interface WikiMaintenanceInput {
   event: WikiMaintenanceEvent;
   ids: WikiMaintenanceIds;
   source_record?: SourceRecord;
+  support_records?: CoreRecord[];
   source_summary?: string;
   visibility_state?: VisibilityState;
   topic?: {
@@ -387,8 +388,12 @@ function reference(record: { id: string; kind: string; layer: string }): Referen
   return { id: record.id, kind: record.kind, layer: record.layer as Reference["layer"] };
 }
 
-function rawSourceReference(id: string): Reference {
-  return { id, kind: "source_record", layer: "raw" };
+function buildReferenceIndex(records: CoreRecord[]): Map<string, Reference> {
+  return new Map(records.map((record) => [record.id, reference(record)]));
+}
+
+function resolveTypedReference(ref: string, referencesById: Map<string, Reference>): Reference | undefined {
+  return referencesById.get(ref);
 }
 
 function buildPage(input: {
@@ -861,6 +866,12 @@ export async function runWikiMaintenanceToStore(input: WikiMaintenanceInput): Pr
 async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Promise<WikiMaintenanceResult> {
   const existingPages = await loadWikiPages(input.rootDir);
   const existingClaims = await loadWikiClaims(input.rootDir);
+  const existingSupportRecords = await Promise.all([
+    loadSourceRecords(input.rootDir),
+    loadCanonicalRecords(input.rootDir),
+    loadWorldClaims(input.rootDir),
+    loadProposals(input.rootDir),
+  ]);
   const pages: WikiPage[] = [];
   const claims: WikiClaim[] = [];
   const graph_edges: WikiGraphEdge[] = [];
@@ -970,11 +981,32 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
       page.wiki_claim_refs = unique([...(page.wiki_claim_refs ?? []), newClaim.id]);
     }
 
+    const referencesById = buildReferenceIndex([
+      ...existingSupportRecords.flat(),
+      ...existingPages,
+      ...existingClaims,
+      ...(input.source_record ? [input.source_record] : []),
+      ...(input.support_records ?? []),
+      ...pages,
+      ...claims,
+    ]);
     for (const sourceRef of newClaim.support_refs ?? newClaim.source_refs) {
+      const toRef = resolveTypedReference(sourceRef, referencesById);
+      if (!toRef) {
+        diagnostics.push(diagnostic({
+          base: input,
+          id: diagnosticId(input, diagnostics.length),
+          code: "wiki_unresolved_support_ref",
+          severity: "warning",
+          message: `Wiki claim ${newClaim.id} references support ${sourceRef} without a typed upstream record.`,
+          related_refs: [newClaim.id, sourceRef],
+        }));
+        continue;
+      }
       graph_edges.push({
         edge_type: "supports",
         from_ref: reference(newClaim),
-        to_ref: rawSourceReference(sourceRef),
+        to_ref: toRef,
         upstream_refs: [sourceRef],
       });
     }
