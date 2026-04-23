@@ -6,6 +6,7 @@ import { resolveProjectionArtifactPath } from "../adapter-sdk/projection-path.js
 import type { ProjectionReadContext } from "../adapter-sdk/projection.js";
 import {
   compileMemoryBrowserProjection,
+  MEMORY_BROWSER_PROJECTION_COMPILER_VERSION,
   readMemoryBrowserProjectionConsistency,
   type MemoryBrowserProjectionResult,
 } from "../projection-engine/memory-browser.js";
@@ -805,6 +806,24 @@ async function loadPersistedMemoryBrowserProjection(
   };
 }
 
+async function canReusePersistedMemoryBrowserProjection(
+  rootDir: string,
+  input: WikiMaintenanceInput,
+): Promise<boolean> {
+  const manifest = await readCoreRecord<ProjectionManifest>(
+    coreRecordPath(
+      rootDir,
+      {
+        id: input.ids.browser_manifest,
+        kind: "projection_manifest",
+        layer: "derived",
+      } as ProjectionManifest,
+    ),
+  );
+
+  return manifest.compiler_version === MEMORY_BROWSER_PROJECTION_COMPILER_VERSION;
+}
+
 function buildMemoryBrowserFiles(rootDir: string, projection: MemoryBrowserProjectionResult): MaterializedFile[] {
   return [
     {
@@ -846,8 +865,11 @@ async function assertReusedWikiMaintenanceMatchesInput(input: {
   claims: WikiClaim[];
   diagnostics: Diagnostic[];
   markdowns: PlannedWikiMarkdown[];
+  skip_run?: boolean;
 }): Promise<void> {
-  assertRecordMatches("run", input.run, await readCoreRecord<WikiMaintenanceRun>(coreRecordPath(input.rootDir, input.run)));
+  if (!input.skip_run) {
+    assertRecordMatches("run", input.run, await readCoreRecord<WikiMaintenanceRun>(coreRecordPath(input.rootDir, input.run)));
+  }
   if (input.source_record) {
     assertRecordMatches("source_record", input.source_record, await readCoreRecord<SourceRecord>(coreRecordPath(input.rootDir, input.source_record)));
   }
@@ -1142,7 +1164,7 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
     retention_reviewed_refs: input.retention_reviewed_refs,
     memory_browser_boundary: null,
   };
-  const reused = await readFile(coreRecordPath(input.rootDir, {
+  const reusedAuthoritative = await readFile(coreRecordPath(input.rootDir, {
     id: input.ids.run,
     kind: "wiki_maintenance_run",
     layer: "wiki",
@@ -1153,7 +1175,8 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
       throw error;
     });
 
-  const memory_browser = reused
+  const reusedMemoryBrowser = reusedAuthoritative && await canReusePersistedMemoryBrowserProjection(input.rootDir, input);
+  const memory_browser = reusedMemoryBrowser
     ? await loadPersistedMemoryBrowserProjection(input.rootDir, input)
     : await compileMemoryBrowserFromStoreState(input.rootDir, input, {
         source_records: input.source_record ? [input.source_record] : [],
@@ -1177,7 +1200,7 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
   const validation_issues = records.flatMap((record) => validateCoreRecord(record));
   assertNoValidationIssues(validation_issues, "wiki maintenance");
 
-  if (reused) {
+  if (reusedAuthoritative) {
     await assertReusedWikiMaintenanceMatchesInput({
       rootDir: input.rootDir,
       source_record: input.source_record,
@@ -1186,31 +1209,38 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
       claims,
       diagnostics,
       markdowns,
+      skip_run: !reusedMemoryBrowser,
     });
   }
   const writeFiles: MaterializedFile[] = [
-    ...(!reused && input.source_record
+    ...(!reusedAuthoritative && input.source_record
       ? [{
           path: coreRecordPath(input.rootDir, input.source_record),
           content: serializeCoreRecordContent(input.source_record),
         }]
       : []),
-    ...(!reused
+    ...(!reusedAuthoritative
       ? records.map((record) => ({
           path: coreRecordPath(input.rootDir, record),
           content: serializeCoreRecordContent(record),
         }))
       : []),
-    ...(!reused
+    ...(!reusedAuthoritative
       ? markdowns.map((markdown) => ({
           path: resolveStorePath(input.rootDir, markdown.page.path),
           content: renderMarkdown(markdown.page, markdown.body),
         }))
       : []),
-    ...(!reused ? await buildWikiIndexAndLogFiles(input.rootDir, input, pages, claims, diagnostics) : []),
-    ...(!reused ? buildMemoryBrowserFiles(input.rootDir, memory_browser) : []),
+    ...(!reusedAuthoritative ? await buildWikiIndexAndLogFiles(input.rootDir, input, pages, claims, diagnostics) : []),
+    ...(reusedAuthoritative && !reusedMemoryBrowser
+      ? [{
+          path: coreRecordPath(input.rootDir, run),
+          content: serializeCoreRecordContent(run),
+        }]
+      : []),
+    ...(!reusedMemoryBrowser ? buildMemoryBrowserFiles(input.rootDir, memory_browser) : []),
   ];
-  const append_entries: WikiMaintenanceAppendEntry[] = !reused
+  const append_entries: WikiMaintenanceAppendEntry[] = !reusedAuthoritative
     ? [
         {
           kind: "validation_log",
@@ -1250,7 +1280,8 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
   await replayWikiMaintenanceAppendEntries(input.rootDir, append_entries);
   await rm(journalPath, { force: true });
 
-  const storedRun = reused ? await readCoreRecord<WikiMaintenanceRun>(coreRecordPath(input.rootDir, run)) : run;
+  const reused = reusedAuthoritative && reusedMemoryBrowser;
+  const storedRun = reusedAuthoritative ? await readCoreRecord<WikiMaintenanceRun>(coreRecordPath(input.rootDir, run)) : run;
   return {
     reused,
     run: storedRun,
