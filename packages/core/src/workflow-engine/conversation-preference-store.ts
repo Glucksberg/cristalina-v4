@@ -122,6 +122,7 @@ export interface ConversationPreferenceStoreInput {
     runtime: RuntimeKind;
     message: string;
     source_type?: string;
+    observed_at?: string;
     speaker_ref?: string | null;
   };
   ids: ConversationPreferenceStoreIds;
@@ -327,6 +328,11 @@ interface LoadedAuthoritativeFlow {
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
+}
+
+interface PreservedProjectionTimestamps {
+  manifest_created_at?: string;
+  artifact_created_at?: Partial<Record<"canon" | "world" | "wiki", string>>;
 }
 
 interface MaterializedFile {
@@ -724,6 +730,7 @@ function applyExplicitManualContradictionReview(input: {
     updated_at: input.now,
     strategy: input.strategy,
     status: "accepted",
+    accepted_at: input.now,
     winning_ref:
       input.strategy === "dismiss_contradiction"
         ? null
@@ -1165,6 +1172,7 @@ function buildSourceRecord(
       thread_ref: input.identity_context?.ids.conversation_thread,
     },
     content_ref,
+    observed_at: input.source.observed_at ?? input.now,
     intake_profile_ref: profile.profile_id,
     intake_runner_contract_version: profile.runner_contract_version,
     semantic_profile_fingerprint: profile.semantic_profile.fingerprint(semantic_profile),
@@ -3126,11 +3134,21 @@ async function assertLoadedFlowMatchesInput(
     typeof expectedIntake.proposal.candidate_payload.statement === "string"
       ? expectedIntake.proposal.candidate_payload.statement
       : undefined;
+  const loadedProposalTemporalState = (loaded.intake.proposal.candidate_payload.temporal_state ?? undefined) as {
+    valid_from?: string;
+  } | undefined;
+  const expectedProposalTemporalState = (expectedIntake.proposal.candidate_payload.temporal_state ?? undefined) as {
+    valid_from?: string;
+  } | undefined;
   const loadedSourcePayload = await readFile(paths.raw_source, "utf8");
   const expectedSourcePayload = serializeSourcePayload(input);
+  const compareObservedAt = input.source.observed_at !== undefined;
 
   if (loaded.source_record.id !== expectedSourceRecord.id) mismatches.push("source.id");
   if (loaded.source_record.content_ref !== expectedSourceRecord.content_ref) mismatches.push("source.content_ref");
+  if (compareObservedAt && (loaded.source_record.observed_at ?? null) !== (expectedSourceRecord.observed_at ?? null)) {
+    mismatches.push("source.observed_at");
+  }
   if (loaded.source_record.intake_profile_ref !== expectedSourceRecord.intake_profile_ref) mismatches.push("source.intake_profile_ref");
   if (loaded.source_record.intake_runner_contract_version !== expectedSourceRecord.intake_runner_contract_version) {
     mismatches.push("source.intake_runner_contract_version");
@@ -3148,19 +3166,34 @@ async function assertLoadedFlowMatchesInput(
   if (loaded.intake.observation.provenance.source_ref !== expectedIntake.observation.provenance.source_ref) mismatches.push("observation.provenance.source_ref");
   if (loaded.intake.observation.provenance.source_type !== expectedIntake.observation.provenance.source_type) mismatches.push("observation.provenance.source_type");
   if (loaded.intake.observation.summary !== expectedIntake.observation.summary) mismatches.push("observation.summary");
+  if (compareObservedAt && (loaded.intake.observation.observed_at ?? null) !== (expectedIntake.observation.observed_at ?? null)) {
+    mismatches.push("observation.observed_at");
+  }
   if (loaded.intake.observation.runtime_instance_ref !== expectedIntake.observation.runtime_instance_ref) mismatches.push("observation.runtime_instance_ref");
   if (loaded.intake.observation.runtime_session_ref !== expectedIntake.observation.runtime_session_ref) mismatches.push("observation.runtime_session_ref");
   if (loaded.intake.observation.conversation_thread_ref !== expectedIntake.observation.conversation_thread_ref) mismatches.push("observation.conversation_thread_ref");
   if (loaded.intake.episode.provenance.source_ref !== expectedIntake.episode.provenance.source_ref) mismatches.push("episode.provenance.source_ref");
   if (loaded.intake.episode.summary !== expectedIntake.episode.summary) mismatches.push("episode.summary");
+  if (compareObservedAt && loaded.intake.episode.temporal_state?.valid_from !== expectedIntake.episode.temporal_state?.valid_from) {
+    mismatches.push("episode.temporal_state.valid_from");
+  }
   if (loaded.intake.world_claim.provenance.source_ref !== expectedIntake.world_claim.provenance.source_ref) mismatches.push("world_claim.provenance.source_ref");
   if (loaded.intake.world_claim.statement !== expectedIntake.world_claim.statement) mismatches.push("world_claim.statement");
   if (loaded.intake.world_claim.semantic_slot !== expectedIntake.world_claim.semantic_slot) mismatches.push("world_claim.semantic_slot");
+  if (compareObservedAt && loaded.intake.world_claim.temporal_state?.valid_from !== expectedIntake.world_claim.temporal_state?.valid_from) {
+    mismatches.push("world_claim.temporal_state.valid_from");
+  }
   if (loaded.intake.subject_entity.label !== expectedIntake.subject_entity.label) mismatches.push("subject_entity.label");
   if (loaded.intake.preference_entity.label !== expectedIntake.preference_entity.label) mismatches.push("preference_entity.label");
   if (loaded.intake.preference_relation.relation_type !== expectedIntake.preference_relation.relation_type) mismatches.push("preference_relation.relation_type");
   if (loaded.intake.preference_relation.subject_ref.id !== expectedIntake.preference_relation.subject_ref.id) mismatches.push("preference_relation.subject_ref.id");
   if (loaded.intake.preference_relation.object_ref.id !== expectedIntake.preference_relation.object_ref.id) mismatches.push("preference_relation.object_ref.id");
+  if (
+    compareObservedAt &&
+    loaded.intake.preference_relation.temporal_state?.valid_from !== expectedIntake.preference_relation.temporal_state?.valid_from
+  ) {
+    mismatches.push("preference_relation.temporal_state.valid_from");
+  }
   if (loaded.intake.wiki_page.provenance.source_ref !== expectedIntake.wiki_page.provenance.source_ref) mismatches.push("wiki_page.provenance.source_ref");
   if (loaded.intake.wiki_page.title !== expectedIntake.wiki_page.title) mismatches.push("wiki_page.title");
   if (loaded.intake.wiki_page.path !== expectedIntake.wiki_page.path) mismatches.push("wiki_page.path");
@@ -3170,6 +3203,9 @@ async function assertLoadedFlowMatchesInput(
   if (loaded.intake.proposal.provenance.source_type !== expectedIntake.proposal.provenance.source_type) mismatches.push("proposal.provenance.source_type");
   if (loaded.intake.proposal.candidate_payload.semantic_slot !== expectedIntake.proposal.candidate_payload.semantic_slot) mismatches.push("proposal.candidate_payload.semantic_slot");
   if (loaded.intake.proposal.candidate_payload.statement !== expectedProposalStatement) mismatches.push("proposal.candidate_payload.statement");
+  if (compareObservedAt && loadedProposalTemporalState?.valid_from !== expectedProposalTemporalState?.valid_from) {
+    mismatches.push("proposal.candidate_payload.temporal_state.valid_from");
+  }
   if (loaded.intake.proposal.promotion_requirement !== expectedIntake.proposal.promotion_requirement) {
     mismatches.push("proposal.promotion_requirement");
   }
@@ -3234,6 +3270,42 @@ async function assertLoadedFlowMatchesInput(
   }
 }
 
+async function loadPreservedProjectionTimestamps(
+  paths: ConversationPreferenceStorePaths,
+): Promise<PreservedProjectionTimestamps | undefined> {
+  const readExistingRecord = async <T extends ProjectionArtifact | ProjectionManifest>(filePath: string): Promise<T | undefined> => {
+    if (!(await pathExists(filePath))) {
+      return undefined;
+    }
+
+    try {
+      return await readCoreRecord<T>(filePath);
+    } catch {
+      return undefined;
+    }
+  };
+
+  const [manifest, canonArtifact, worldArtifact, wikiArtifact] = await Promise.all([
+    readExistingRecord<ProjectionManifest>(paths.projection_manifest),
+    readExistingRecord<ProjectionArtifact>(paths.projection_artifacts.canon),
+    readExistingRecord<ProjectionArtifact>(paths.projection_artifacts.world),
+    readExistingRecord<ProjectionArtifact>(paths.projection_artifacts.wiki),
+  ]);
+
+  if (!manifest && !canonArtifact && !worldArtifact && !wikiArtifact) {
+    return undefined;
+  }
+
+  return {
+    manifest_created_at: manifest?.created_at,
+    artifact_created_at: {
+      ...(canonArtifact?.created_at ? { canon: canonArtifact.created_at } : {}),
+      ...(worldArtifact?.created_at ? { world: worldArtifact.created_at } : {}),
+      ...(wikiArtifact?.created_at ? { wiki: wikiArtifact.created_at } : {}),
+    },
+  };
+}
+
 async function buildProjectionFromStoreState(
   rootDir: string,
   paths: ConversationPreferenceStorePaths,
@@ -3256,6 +3328,7 @@ async function buildProjectionFromStoreState(
   },
 ) {
   const projectionAdapter = projectionAdapterForRuntime(input.source.runtime);
+  const preserved_timestamps = await loadPreservedProjectionTimestamps(paths);
   const [
     canonical_records,
     world_claims,
@@ -3335,6 +3408,7 @@ async function buildProjectionFromStoreState(
       wiki_artifact: input.ids.wiki_artifact,
       manifest: input.ids.projection_manifest,
     },
+    preserved_timestamps,
   });
 }
 
@@ -3345,6 +3419,7 @@ async function buildProjectionFromPersistedFlowSnapshot(
   loaded: LoadedAuthoritativeFlow,
 ) {
   const projectionAdapter = projectionAdapterForRuntime(input.source.runtime);
+  const preserved_timestamps = await loadPreservedProjectionTimestamps(paths);
   return executeRuntimeBootstrapWorkflow({
     adapter: projectionAdapter,
     now: loaded.ratification_record.updated_at ?? loaded.ratification_record.created_at,
@@ -3384,6 +3459,7 @@ async function buildProjectionFromPersistedFlowSnapshot(
       wiki_artifact: input.ids.wiki_artifact,
       manifest: input.ids.projection_manifest,
     },
+    preserved_timestamps,
   });
 }
 
@@ -4570,10 +4646,17 @@ async function applyOwnerRatificationToExistingFlow(
     throw new Error(`Explicit owner ratification could not promote the proposal: ${failedReasons}`);
   }
 
+  const ratification_record: RatificationRecord = {
+    ...canonicalWorkflow.ratification_record,
+    ...(existingFlow.records.ratification_record.deferred_at
+      ? { deferred_at: existingFlow.records.ratification_record.deferred_at }
+      : {}),
+  };
+
   const updatedDiagnostic = buildResolvedDeferredDiagnostic({
     now: input.now,
     proposal: existingFlow.records.intake.proposal,
-    ratification_record: canonicalWorkflow.ratification_record,
+    ratification_record,
     canonical_record: canonicalWorkflow.created_record,
     diagnostic: existingFlow.records.diagnostic,
   });
@@ -4581,7 +4664,7 @@ async function applyOwnerRatificationToExistingFlow(
     now: input.now,
     queue: existingFlow.records.owner_ratification_queue,
     proposal: existingFlow.records.intake.proposal,
-    ratification_record: canonicalWorkflow.ratification_record,
+    ratification_record,
     canonical_record: canonicalWorkflow.created_record,
     diagnostic: updatedDiagnostic,
   });
@@ -4603,14 +4686,14 @@ async function applyOwnerRatificationToExistingFlow(
   const files = buildOwnerRatificationFiles({
     paths: existingFlow.paths,
     owner_ratification_queue: updatedQueue,
-    ratification_record: canonicalWorkflow.ratification_record,
+    ratification_record,
     canonical_record: canonicalWorkflow.created_record,
     diagnostic: updatedDiagnostic,
     projection,
   });
   const validation_issues = buildOwnerRatificationValidationIssues({
     owner_ratification_queue: updatedQueue,
-    ratification_record: canonicalWorkflow.ratification_record,
+    ratification_record,
     canonical_record: canonicalWorkflow.created_record,
     diagnostic: updatedDiagnostic,
     projection,
@@ -4620,7 +4703,7 @@ async function applyOwnerRatificationToExistingFlow(
     now: input.now,
     proposal: existingFlow.records.intake.proposal,
     owner_ratification_queue: updatedQueue,
-    ratification_record: canonicalWorkflow.ratification_record,
+    ratification_record,
     canonical_record: canonicalWorkflow.created_record,
     projection,
   });
@@ -4657,7 +4740,7 @@ async function applyOwnerRatificationToExistingFlow(
     records: {
       ...existingFlow.records,
       owner_ratification_queue: updatedQueue,
-      ratification_record: canonicalWorkflow.ratification_record,
+      ratification_record,
       diagnostic: updatedDiagnostic,
       canonical_record: canonicalWorkflow.created_record,
       projection_artifacts: projection.artifacts,
@@ -4975,6 +5058,7 @@ async function closeManualContradictionReviewQueueToExistingFlow(
     ...existingFlow.records.contradiction_resolution,
     updated_at: input.now,
     status: "rejected",
+    rejected_at: input.now,
   };
   const updatedQueue = closeManualContradictionReviewQueuePacket({
     now: input.now,
@@ -5124,6 +5208,7 @@ async function closeOwnerReviewQueueToExistingFlow(
           ...existingFlow.records.ratification_record,
           updated_at: input.now,
           decision: "rejected",
+          rejected_at: input.now,
           actor: input.actor,
           authenticated_principal: input.authenticated_principal ?? null,
           upstream_refs: [
@@ -5138,6 +5223,7 @@ async function closeOwnerReviewQueueToExistingFlow(
           ...existingFlow.records.ratification_record,
           updated_at: input.now,
           decision: "expired",
+          expired_at: input.now,
           actor: input.actor,
           authenticated_principal: input.authenticated_principal ?? null,
           upstream_refs: [

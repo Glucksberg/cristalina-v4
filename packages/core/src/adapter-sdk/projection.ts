@@ -282,6 +282,7 @@ export interface ProjectionFragmentInput {
   authoritative_home: ProjectionArtifact["authoritative_home"];
   upstream_refs: string[];
   now: string;
+  created_at?: string;
   visibility_state: VisibilityState;
 }
 
@@ -295,7 +296,7 @@ export function createProjectionArtifact(input: ProjectionFragmentInput): Projec
     kind: "projection_artifact",
     layer: "derived",
     authoritative_home: input.authoritative_home,
-    created_at: input.now,
+    created_at: input.created_at ?? input.now,
     updated_at: input.now,
     visibility_state: input.visibility_state,
     provenance: {
@@ -344,6 +345,7 @@ export interface ProjectionManifestInput {
   artifact_refs: string[];
   upstream_refs: string[];
   now: string;
+  created_at?: string;
   visibility_state: VisibilityState;
 }
 
@@ -353,7 +355,7 @@ export function createProjectionManifest(input: ProjectionManifestInput): Projec
     kind: "projection_manifest",
     layer: "derived",
     authoritative_home: "governance",
-    created_at: input.now,
+    created_at: input.created_at ?? input.now,
     updated_at: input.now,
     visibility_state: input.visibility_state,
     provenance: {

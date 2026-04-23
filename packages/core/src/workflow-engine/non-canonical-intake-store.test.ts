@@ -113,6 +113,27 @@ test("runtime_only intake writes runtime observation without canon proposal", as
   await assertNoCanonProposalWorldOrWiki(rootDir);
 });
 
+test("runtime_only intake preserves observed_at separately from persistence time", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir, "runtime_only");
+  input.source.runtime_ref = "runtime_noncanonical_observed_001";
+  input.source.session_ref = "session_noncanonical_observed_001";
+  input.source.thread_ref = "thread_noncanonical_observed_001";
+  input.source.runtime = "openclaw";
+  input.source.observed_at = "2026-04-20T23:55:00.000Z";
+
+  const result = await writeNonCanonicalIntakeToStore(input);
+
+  assert.equal(result.records.source_record.created_at, input.now);
+  assert.equal(result.records.source_record.observed_at, "2026-04-20T23:55:00.000Z");
+  assert.equal(result.records.observation?.created_at, input.now);
+  assert.equal(result.records.observation?.observed_at, "2026-04-20T23:55:00.000Z");
+});
+
 test("diagnostic_only intake writes diagnostic and audit-linked disposition without canon proposal", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
   t.after(async () => {

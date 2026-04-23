@@ -223,6 +223,10 @@ export interface OpenClawBootstrapCompilationInput {
     wiki_artifact: string;
     manifest: string;
   };
+  preserved_timestamps?: {
+    manifest_created_at?: string;
+    artifact_created_at?: Partial<Record<"canon" | "world" | "wiki", string>>;
+  };
 }
 
 export interface OpenClawBootstrapCompilation {
@@ -384,6 +388,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       authoritative_home: "canon",
       upstream_refs: canon_refs,
       now: input.now,
+      created_at: input.preserved_timestamps?.artifact_created_at?.canon,
       visibility_state: input.visibility_state,
     }),
     createProjectionArtifact({
@@ -395,6 +400,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       authoritative_home: "world",
       upstream_refs: uniqueRefs(world_refs, episode_refs, entity_refs, relation_refs, contradiction_refs),
       now: input.now,
+      created_at: input.preserved_timestamps?.artifact_created_at?.world,
       visibility_state: input.visibility_state,
     }),
     createProjectionArtifact({
@@ -406,6 +412,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       authoritative_home: "wiki",
       upstream_refs: uniqueRefs(wiki_page_refs, wiki_claim_refs),
       now: input.now,
+      created_at: input.preserved_timestamps?.artifact_created_at?.wiki,
       visibility_state: input.visibility_state,
     }),
   ];
@@ -528,6 +535,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
       retrieval_upstream_refs,
     ),
     now: input.now,
+    created_at: input.preserved_timestamps?.manifest_created_at,
     visibility_state: input.visibility_state,
   });
 

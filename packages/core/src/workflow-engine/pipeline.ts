@@ -549,6 +549,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     semanticProfile.observation_prefix
       ? `${semanticProfile.observation_prefix}${input.statement}`
       : input.statement;
+  const observedAt = input.source_record.observed_at ?? input.now;
 
   const observation: Observation = {
     id: input.ids.observation,
@@ -563,6 +564,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     provenance,
     summary: observationSummary,
     epistemic_state: "observed",
+    observed_at: observedAt,
     runtime_instance_ref: runtimeIdentity.runtime_instance?.id ?? null,
     runtime_session_ref: runtimeIdentity.runtime_session?.id ?? null,
     conversation_thread_ref: runtimeIdentity.conversation_thread?.id ?? null,
@@ -586,7 +588,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     observation_refs: [observation.id],
     temporal_state: {
       temporal_status: "active",
-      valid_from: input.now,
+      valid_from: observedAt,
       valid_to: null,
     },
   };
@@ -656,7 +658,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     relation_type: semanticProfile.relation_type,
     temporal_state: {
       temporal_status: "active",
-      valid_from: input.now,
+      valid_from: observedAt,
       valid_to: null,
     },
   };
@@ -680,7 +682,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     epistemic_state: "inferred",
     temporal_state: {
       temporal_status: "active",
-      valid_from: input.now,
+      valid_from: observedAt,
       valid_to: null,
     },
     support_refs: [observation.id, episode.id, preference_relation.id],
@@ -752,7 +754,7 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
       semantic_slot: semanticSlot,
       temporal_state: {
         temporal_status: "active",
-        valid_from: input.now,
+        valid_from: observedAt,
         valid_to: null,
       },
       epistemic_state: "confirmed",
@@ -1015,6 +1017,7 @@ export function acceptContradictionResolution(input: {
     ...input.resolution,
     updated_at: input.now,
     status: "accepted",
+    accepted_at: input.now,
   };
 }
 
@@ -1083,6 +1086,9 @@ export function proposeContradictionResolution(
     contradiction_ref: input.contradiction.id,
     strategy,
     status: "proposed",
+    accepted_at: undefined,
+    rejected_at: undefined,
+    applied_at: undefined,
     winning_ref: {
       id: input.candidate_claim.id,
       kind: input.candidate_claim.kind,
@@ -1144,7 +1150,7 @@ export function applyContradictionResolution(input: {
           ...input.existing_claim,
           updated_at: input.now,
           epistemic_state: "disputed",
-          temporal_state: closeWorldClaimTemporalState(input.existing_claim, input.now),
+          temporal_state: closeWorldClaimAtSuccessorBoundary(input.existing_claim, input.candidate_claim, input.now),
         },
         candidate_claim: input.candidate_claim,
       };
@@ -1181,6 +1187,7 @@ export function applyAcceptedContradictionResolution(input: {
     ...input.resolution,
     updated_at: input.now,
     status: "applied",
+    applied_at: input.now,
   };
 
   const applied = applyContradictionResolution({
@@ -1202,6 +1209,21 @@ function closeWorldClaimTemporalState(record: WorldClaim, now: string): WorldCla
     valid_to: now,
     temporal_confidence: temporal_state?.temporal_confidence ?? null,
   };
+}
+
+function closeWorldClaimAtSuccessorBoundary(
+  record: WorldClaim,
+  successor: WorldClaim,
+  now: string,
+): WorldClaim["temporal_state"] {
+  const recordValidFrom = record.temporal_state?.valid_from ?? record.created_at;
+  const successorValidFrom = successor.temporal_state?.valid_from;
+  const validTo =
+    successorValidFrom && successorValidFrom >= recordValidFrom
+      ? successorValidFrom
+      : now;
+
+  return closeWorldClaimTemporalState(record, validTo);
 }
 
 export function reconcileConversationPreferenceSupersede(
@@ -1346,6 +1368,10 @@ export interface OpenClawBootstrapWorkflowInput {
     wiki_artifact: string;
     manifest: string;
   };
+  preserved_timestamps?: {
+    manifest_created_at?: string;
+    artifact_created_at?: Partial<Record<"canon" | "world" | "wiki", string>>;
+  };
 }
 
 export interface OpenClawBootstrapWorkflowResult {
@@ -1375,6 +1401,7 @@ export function executeOpenClawBootstrapWorkflow(input: OpenClawBootstrapWorkflo
     runtime_identity: input.runtime_identity,
     identity_context: input.identity_context,
     ids: input.ids,
+    preserved_timestamps: input.preserved_timestamps,
   });
 }
 

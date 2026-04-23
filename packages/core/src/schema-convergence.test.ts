@@ -159,9 +159,15 @@ test("contradiction resolution schema stays aligned with executable resolution e
   const schema = await readSchema("../../schemas/contradiction-resolution.schema.json");
   const variant = schema.allOf?.[1];
   const properties = variant?.properties ?? {};
+  const acceptedAt = properties.accepted_at as { type?: unknown } | undefined;
+  const rejectedAt = properties.rejected_at as { type?: unknown } | undefined;
+  const appliedAt = properties.applied_at as { type?: unknown } | undefined;
 
   assert.deepEqual(expectEnum(properties.strategy), [...CONTRADICTION_RESOLUTION_STRATEGIES]);
   assert.deepEqual(expectEnum(properties.status), [...CONTRADICTION_RESOLUTION_STATUSES]);
+  assert.equal(acceptedAt?.type, "string");
+  assert.equal(rejectedAt?.type, "string");
+  assert.equal(appliedAt?.type, "string");
 });
 
 test("source intake profile schema stays aligned with executable intake kinds", async () => {

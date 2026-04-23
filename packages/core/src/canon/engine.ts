@@ -78,13 +78,28 @@ function payloadTemporalState(payload: Record<string, unknown>, now: string): Te
   };
 }
 
-function closeTemporalState(record: CanonicalMemoryObject, now: string): TemporalState {
+function closeTemporalState(record: CanonicalMemoryObject, validTo: string): TemporalState {
   return {
     temporal_status: "historical",
     valid_from: record.temporal_state?.valid_from ?? record.created_at,
-    valid_to: now,
+    valid_to: validTo,
     temporal_confidence: record.temporal_state?.temporal_confidence ?? null,
   };
+}
+
+function closeTemporalStateAtSuccessorBoundary(
+  record: CanonicalMemoryObject,
+  successor: CanonicalMemoryObject,
+  now: string,
+): TemporalState {
+  const recordValidFrom = record.temporal_state?.valid_from ?? record.created_at;
+  const successorValidFrom = successor.temporal_state?.valid_from;
+  const validTo =
+    successorValidFrom && successorValidFrom >= recordValidFrom
+      ? successorValidFrom
+      : now;
+
+  return closeTemporalState(record, validTo);
 }
 
 function mergeLifecycleRefs(existingRefs: string[] | undefined, refsToAdd: string[]): string[] {
@@ -188,7 +203,7 @@ export function applyApprovedCanonicalRevise(input: {
     ...input.existing_record,
     updated_at: input.now,
     governance_state: "superseded",
-    temporal_state: closeTemporalState(input.existing_record, input.now),
+    temporal_state: closeTemporalStateAtSuccessorBoundary(input.existing_record, revised_record, input.now),
     superseded_by_ref: revised_record.id,
     upstream_refs: mergeLifecycleRefs(input.existing_record.upstream_refs, [
       input.proposal.id,

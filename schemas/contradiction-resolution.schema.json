@@ -49,6 +49,15 @@
             "applied"
           ]
         },
+        "accepted_at": {
+          "type": "string"
+        },
+        "rejected_at": {
+          "type": "string"
+        },
+        "applied_at": {
+          "type": "string"
+        },
         "winning_ref": {
           "type": [
             "object",

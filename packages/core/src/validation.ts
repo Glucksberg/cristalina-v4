@@ -166,6 +166,12 @@ function pushStringArray(issues: ValidationIssue[], record: Record<string, unkno
   }
 }
 
+function pushOptionalTimestamp(issues: ValidationIssue[], record: Record<string, unknown>, key: string, path = key): void {
+  if (record[key] !== undefined && record[key] !== null && !isIsoTimestamp(record[key])) {
+    issues.push({ path, message: "expected ISO-like timestamp or null" });
+  }
+}
+
 function pushRatio(issues: ValidationIssue[], value: unknown, path: string): void {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
     issues.push({ path, message: "expected number between 0 and 1" });
@@ -387,6 +393,7 @@ function validateObservation(value: unknown): ValidationIssue[] {
   if (value.authoritative_home !== "runtime") issues.push({ path: "authoritative_home", message: 'expected "runtime"' });
   pushRequiredString(issues, value, "summary");
   pushEnum(issues, value, "epistemic_state", EPISTEMIC_STATES);
+  pushOptionalTimestamp(issues, value, "observed_at");
   if (value.runtime_session_ref !== undefined && value.runtime_session_ref !== null && typeof value.runtime_instance_ref !== "string") {
     issues.push({ path: "runtime_instance_ref", message: "runtime_session_ref requires runtime_instance_ref" });
   }
@@ -408,6 +415,7 @@ function validateSourceRecord(value: unknown): ValidationIssue[] {
   if (value.layer !== "raw") issues.push({ path: "layer", message: 'expected "raw"' });
   if (value.authoritative_home !== "raw") issues.push({ path: "authoritative_home", message: 'expected "raw"' });
   pushRequiredString(issues, value, "content_ref");
+  pushOptionalTimestamp(issues, value, "observed_at");
   return issues;
 }
 
@@ -694,6 +702,38 @@ function validateRatificationRecord(value: unknown): ValidationIssue[] {
     issues.push({ path: "decision", message: 'expected one of: approved, rejected, deferred, expired' });
   }
   pushRequiredString(issues, value, "actor");
+  pushOptionalTimestamp(issues, value, "approved_at");
+  pushOptionalTimestamp(issues, value, "rejected_at");
+  pushOptionalTimestamp(issues, value, "deferred_at");
+  pushOptionalTimestamp(issues, value, "expired_at");
+  if (value.decision === "approved" && !isIsoTimestamp(value.approved_at)) {
+    issues.push({ path: "approved_at", message: "approved ratifications require approved_at" });
+  }
+  if (value.decision === "rejected" && !isIsoTimestamp(value.rejected_at)) {
+    issues.push({ path: "rejected_at", message: "rejected ratifications require rejected_at" });
+  }
+  if (value.decision === "deferred" && !isIsoTimestamp(value.deferred_at)) {
+    issues.push({ path: "deferred_at", message: "deferred ratifications require deferred_at" });
+  }
+  if (value.decision === "expired" && !isIsoTimestamp(value.expired_at)) {
+    issues.push({ path: "expired_at", message: "expired ratifications require expired_at" });
+  }
+  if (value.decision !== "approved" && value.approved_at !== undefined) {
+    issues.push({ path: "approved_at", message: "only approved ratifications may carry approved_at" });
+  }
+  if (value.decision !== "rejected" && value.rejected_at !== undefined) {
+    issues.push({ path: "rejected_at", message: "only rejected ratifications may carry rejected_at" });
+  }
+  if (value.decision === "rejected" || value.decision === "expired") {
+    if (!isIsoTimestamp(value.deferred_at) && value.deferred_at !== undefined) {
+      issues.push({ path: "deferred_at", message: "expected ISO-like timestamp or null" });
+    }
+  } else if (value.decision !== "deferred" && value.decision !== "approved" && value.deferred_at !== undefined) {
+    issues.push({ path: "deferred_at", message: "deferred_at is only valid for deferred ratifications and later terminal closures" });
+  }
+  if (value.decision !== "expired" && value.expired_at !== undefined) {
+    issues.push({ path: "expired_at", message: "only expired ratifications may carry expired_at" });
+  }
   if (value.authenticated_principal !== undefined && value.authenticated_principal !== null) {
     pushAuthenticatedPrincipal(issues, value.authenticated_principal, "authenticated_principal");
   }
@@ -726,6 +766,9 @@ function validateContradictionResolution(value: unknown): ValidationIssue[] {
   pushRequiredString(issues, value, "contradiction_ref");
   pushEnum(issues, value, "strategy", CONTRADICTION_RESOLUTION_STRATEGIES);
   pushEnum(issues, value, "status", CONTRADICTION_RESOLUTION_STATUSES);
+  pushOptionalTimestamp(issues, value, "accepted_at");
+  pushOptionalTimestamp(issues, value, "rejected_at");
+  pushOptionalTimestamp(issues, value, "applied_at");
   if (value.winning_ref !== undefined && value.winning_ref !== null) {
     pushReference(issues, value.winning_ref, "winning_ref");
   }
@@ -744,6 +787,29 @@ function validateContradictionResolution(value: unknown): ValidationIssue[] {
   pushRequiredString(issues, value, "rationale");
   if (value.diagnostic_refs !== undefined && !isStringArray(value.diagnostic_refs)) {
     issues.push({ path: "diagnostic_refs", message: "expected string array" });
+  }
+  if (value.status === "accepted" && !isIsoTimestamp(value.accepted_at)) {
+    issues.push({ path: "accepted_at", message: "accepted resolutions require accepted_at" });
+  }
+  if (value.status === "rejected" && !isIsoTimestamp(value.rejected_at)) {
+    issues.push({ path: "rejected_at", message: "rejected resolutions require rejected_at" });
+  }
+  if (value.status === "applied") {
+    if (!isIsoTimestamp(value.accepted_at)) {
+      issues.push({ path: "accepted_at", message: "applied resolutions must preserve accepted_at" });
+    }
+    if (!isIsoTimestamp(value.applied_at)) {
+      issues.push({ path: "applied_at", message: "applied resolutions require applied_at" });
+    }
+  }
+  if (value.status === "proposed" && value.accepted_at !== undefined) {
+    issues.push({ path: "accepted_at", message: "proposed resolutions cannot carry accepted_at" });
+  }
+  if (value.status !== "rejected" && value.rejected_at !== undefined) {
+    issues.push({ path: "rejected_at", message: "only rejected resolutions may carry rejected_at" });
+  }
+  if (value.status !== "applied" && value.applied_at !== undefined) {
+    issues.push({ path: "applied_at", message: "only applied resolutions may carry applied_at" });
   }
   return issues;
 }

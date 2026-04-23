@@ -65,6 +65,7 @@ export interface NonCanonicalIntakeInput {
     content_ref: string;
     source_type: string;
     payload: unknown;
+    observed_at?: string;
     speaker_ref?: string | null;
     runtime?: RuntimeKind;
     runtime_ref?: string | null;
@@ -547,6 +548,7 @@ function buildSourceRecord(input: NonCanonicalIntakeInput, content_ref: string, 
       evidence_refs: attachment_refs,
     },
     content_ref,
+    observed_at: input.source.observed_at ?? input.now,
     intake_profile_ref: `non_canonical/${input.mode}`,
     intake_runner_contract_version: "registered_intake_profile.v1",
     semantic_profile_fingerprint: `non_canonical:${input.mode}:${input.source.source_type}`,
@@ -572,6 +574,7 @@ function buildObservation(input: NonCanonicalIntakeInput, source_record: SourceR
     provenance: source_record.provenance,
     summary: typeof input.source.payload === "string" ? input.source.payload : JSON.stringify(input.source.payload),
     epistemic_state: "observed",
+    observed_at: source_record.observed_at ?? input.now,
     runtime_instance_ref: input.source.runtime_ref ?? null,
     runtime_session_ref: input.source.session_ref ?? null,
     conversation_thread_ref: input.source.thread_ref ?? null,

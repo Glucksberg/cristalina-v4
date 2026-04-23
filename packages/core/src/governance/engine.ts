@@ -267,6 +267,7 @@ export function evaluateCanonicalProposal(input: {
   const accepted = gate_results.every((result) => result.passed);
   const failed_gates = gate_results.filter((gate) => !gate.passed);
   const deferred = !accepted && shouldDeferProposal(failed_gates);
+  const decision = accepted ? "approved" : deferred ? "deferred" : "rejected";
   const ratification_record: RatificationRecord = {
     id: input.ratification_id,
     kind: "ratification",
@@ -281,9 +282,12 @@ export function evaluateCanonicalProposal(input: {
       evidence_refs: [...(proposal.provenance.evidence_refs ?? []), proposal.id],
     },
     proposal_ref: proposal.id,
-    decision: accepted ? "approved" : deferred ? "deferred" : "rejected",
+    decision,
     actor: input.actor,
     authenticated_principal: input.authenticated_principal ?? null,
+    ...(decision === "approved" ? { approved_at: input.now } : {}),
+    ...(decision === "deferred" ? { deferred_at: input.now } : {}),
+    ...(decision === "rejected" ? { rejected_at: input.now } : {}),
   };
 
   const diagnostic =

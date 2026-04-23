@@ -129,6 +129,68 @@ test("source_ingested refreshes wiki pages, claim lifecycle metadata, audit, and
   assert.equal((result.memory_browser.snapshot as { read_only: boolean }).read_only, true);
 });
 
+test("source_ingested preserves wiki claim freshness when maintenance reruns without new evidence", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-freshness-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await runWikiMaintenanceToStore({
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_freshness_001",
+      source_page: "wiki_page_source_freshness_001",
+      topic_page: "wiki_page_topic_freshness_001",
+      claim: "wiki_claim_freshness_001",
+      browser_json_artifact: "artifact_memory_browser_freshness_json_001",
+      browser_html_artifact: "artifact_memory_browser_freshness_html_001",
+      browser_manifest: "manifest_memory_browser_freshness_001",
+    }),
+    source_record: sourceRecord("src_wiki_freshness_001"),
+    source_summary: "Original source summary.",
+    topic: {
+      title: "Freshness Guard",
+      summary: "A rerun without new evidence must not refresh claim freshness.",
+    },
+    claim: {
+      statement: "Wiki freshness should only move when new support arrives.",
+      candidate_for_promotion: true,
+      support_refs: ["src_wiki_freshness_001"],
+      confidence_score: 0.86,
+    },
+  });
+
+  const rerun = await runWikiMaintenanceToStore({
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_freshness_002",
+      source_page: "wiki_page_source_freshness_001",
+      topic_page: "wiki_page_topic_freshness_001",
+      claim: "wiki_claim_freshness_001",
+      browser_json_artifact: "artifact_memory_browser_freshness_json_002",
+      browser_html_artifact: "artifact_memory_browser_freshness_html_002",
+      browser_manifest: "manifest_memory_browser_freshness_002",
+    }),
+    now: "2026-04-22T12:00:00.000Z",
+    source_record: sourceRecord("src_wiki_freshness_001"),
+    source_summary: "Original source summary.",
+    topic: {
+      title: "Freshness Guard",
+      summary: "A rerun without new evidence must not refresh claim freshness.",
+    },
+    claim: {
+      statement: "Wiki freshness should only move when new support arrives.",
+      candidate_for_promotion: true,
+      support_refs: ["src_wiki_freshness_001"],
+      confidence_score: 0.86,
+    },
+  });
+
+  const claim = rerun.claims.find((record) => record.id === "wiki_claim_freshness_001");
+  assert.ok(claim);
+  assert.equal(claim.last_seen_at, now);
+  assert.equal(claim.last_confirmed_at, now);
+  assert.equal(claim.updated_at, "2026-04-22T12:00:00.000Z");
+});
+
 test("claim_superseded keeps the replacement claim on the superseded claim page instead of fabricating a page ref from claim id", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-"));
   t.after(async () => {

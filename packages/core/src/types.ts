@@ -756,6 +756,7 @@ export interface SourceRecord extends RecordEnvelope {
   layer: "raw";
   authoritative_home: "raw";
   content_ref: string;
+  observed_at?: string;
   intake_profile_ref?: string;
   intake_runner_contract_version?: string;
   semantic_profile_fingerprint?: string;
@@ -767,6 +768,7 @@ export interface Observation extends RecordEnvelope {
   authoritative_home: "runtime";
   summary: string;
   epistemic_state: EpistemicState;
+  observed_at?: string;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
@@ -967,6 +969,10 @@ export interface RatificationRecord extends RecordEnvelope {
   decision: "approved" | "rejected" | "deferred" | "expired";
   actor: string;
   authenticated_principal?: AuthenticatedPrincipal | null;
+  approved_at?: string;
+  rejected_at?: string;
+  deferred_at?: string;
+  expired_at?: string;
 }
 
 export interface Contradiction extends RecordEnvelope {
@@ -989,6 +995,9 @@ export interface ContradictionResolution extends RecordEnvelope {
   losing_ref?: Reference | null;
   rationale: string;
   diagnostic_refs?: string[];
+  accepted_at?: string;
+  rejected_at?: string;
+  applied_at?: string;
 }
 
 export interface OntologyDefinition extends RecordEnvelope {

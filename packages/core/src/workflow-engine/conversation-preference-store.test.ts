@@ -190,6 +190,30 @@ test("writeConversationPreferenceFlowToStore preserves speaker provenance", asyn
   assert.equal(result.records.intake.disposition_record.provenance.speaker_ref, input.source.speaker_ref);
 });
 
+test("writeConversationPreferenceFlowToStore separates source observation time from persistence time", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.source.observed_at = "2026-04-11T23:58:00.000Z";
+
+  const result = await writeConversationPreferenceFlowToStore(input);
+
+  assert.equal(result.records.source_record.created_at, input.now);
+  assert.equal(result.records.source_record.observed_at, "2026-04-11T23:58:00.000Z");
+  assert.equal(result.records.intake.observation.created_at, input.now);
+  assert.equal(result.records.intake.observation.observed_at, "2026-04-11T23:58:00.000Z");
+  assert.equal(result.records.intake.episode.temporal_state?.valid_from, "2026-04-11T23:58:00.000Z");
+  assert.equal(result.records.intake.preference_relation.temporal_state?.valid_from, "2026-04-11T23:58:00.000Z");
+  assert.equal(result.records.intake.world_claim.temporal_state?.valid_from, "2026-04-11T23:58:00.000Z");
+  assert.equal(
+    (result.records.intake.proposal.candidate_payload.temporal_state as { valid_from?: string } | undefined)?.valid_from,
+    "2026-04-11T23:58:00.000Z",
+  );
+});
+
 test("writeConversationPreferenceFlowToStore derives distinct semantic slots for distinct speakers", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -245,6 +269,7 @@ test("writeConversationPreferenceFlowToStore routes participant-originated owner
   assert.deepEqual(result.records.intake.disposition_record.outcomes, ["world_update", "wiki_update", "queued_review"]);
   assert.equal(result.records.intake.disposition_record.proposal_refs, undefined);
   assert.equal(result.records.ratification_record.decision, "deferred");
+  assert.equal(result.records.ratification_record.deferred_at, input.now);
   assert.equal(result.records.canonical_record, undefined);
   assert.equal(result.records.diagnostic?.code, "proposal_deferred");
   assert.equal(result.records.owner_ratification_queue?.status, "pending");
@@ -297,6 +322,8 @@ test("owner ratification queue lists deferred owner-scoped claims and can ratify
   });
 
   assert.equal(ratified.records.ratification_record.decision, "approved");
+  assert.equal(ratified.records.ratification_record.deferred_at, input.now);
+  assert.equal(ratified.records.ratification_record.approved_at, "2026-04-12T00:05:00.000Z");
   assert.deepEqual(ratified.records.ratification_record.authenticated_principal, ownerPrincipal(input));
   assert.equal(ratified.records.canonical_record?.statement, input.statement);
   assert.equal(ratified.records.diagnostic?.code, "proposal_deferred_resolved");
@@ -492,6 +519,8 @@ test("owner ratification queue can be explicitly rejected by the owner", async (
   });
 
   assert.equal(rejected.records.ratification_record.decision, "rejected");
+  assert.equal(rejected.records.ratification_record.deferred_at, input.now);
+  assert.equal(rejected.records.ratification_record.rejected_at, "2026-04-12T00:05:00.000Z");
   assert.equal(rejected.records.owner_ratification_queue?.status, "answered");
   assert.equal(rejected.records.canonical_record, undefined);
   assert.equal(rejected.records.diagnostic?.code, "proposal_deferred_rejected");
@@ -592,6 +621,8 @@ test("owner ratification queue can expire without owner ratification and blocks 
   });
 
   assert.equal(expired.records.ratification_record.decision, "expired");
+  assert.equal(expired.records.ratification_record.deferred_at, input.now);
+  assert.equal(expired.records.ratification_record.expired_at, "2026-04-12T00:05:00.000Z");
   assert.deepEqual(
     expired.records.ratification_record.authenticated_principal,
     systemPrincipal("system:test-expirer"),
@@ -896,6 +927,29 @@ test("writeConversationPreferenceFlowToStore rejects reuse when raw source paylo
   );
 });
 
+test("writeConversationPreferenceFlowToStore rejects reuse when source observation time changes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.source.observed_at = "2026-04-11T23:58:00.000Z";
+  await writeConversationPreferenceFlowToStore(input);
+
+  await assert.rejects(
+    () =>
+      writeConversationPreferenceFlowToStore({
+        ...input,
+        source: {
+          ...input.source,
+          observed_at: "2026-04-12T00:03:00.000Z",
+        },
+      }),
+    /source\.observed_at|observation\.observed_at|temporal_state\.valid_from/,
+  );
+});
+
 test("writeConversationPreferenceFlowToStore rejects reuse when semantic profile fingerprint changes", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -1044,6 +1098,39 @@ test("writeConversationPreferenceFlowToStore repairs drifted derived artifacts o
   assert.match(repairedWikiMarkdown, /User Interaction Preferences/);
   assert.match(repairedProjectionMarkdown, /\[canon:mem_test_001\]/);
   assert.equal(auditLogAfter, auditLogBefore);
+});
+
+test("writeConversationPreferenceFlowToStore replays projection timestamps from persisted flow chronology", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  const first = await writeConversationPreferenceFlowToStore(input);
+  await unlink(first.paths.projection_markdown);
+  await unlink(first.paths.projection_artifacts.wiki);
+
+  const rerendered = await writeConversationPreferenceFlowToStore({
+    ...input,
+    now: "2026-04-12T02:00:00.000Z",
+  });
+  const rerenderedMarkdown = await readFile(first.paths.projection_markdown, "utf8");
+
+  assert.equal(rerendered.reused, true);
+  assert.equal(rerendered.records.projection_manifest.created_at, first.records.projection_manifest.created_at);
+  assert.equal(rerendered.records.projection_manifest.updated_at, first.records.projection_manifest.updated_at);
+
+  const [firstCanonArtifact, firstWorldArtifact] = first.records.projection_artifacts;
+  const [rerenderedCanonArtifact, rerenderedWorldArtifact, rerenderedWikiArtifact] = rerendered.records.projection_artifacts;
+
+  assert.equal(rerenderedCanonArtifact?.created_at, firstCanonArtifact?.created_at);
+  assert.equal(rerenderedWorldArtifact?.created_at, firstWorldArtifact?.created_at);
+  assert.equal(rerenderedCanonArtifact?.updated_at, firstCanonArtifact?.updated_at);
+  assert.equal(rerenderedWorldArtifact?.updated_at, firstWorldArtifact?.updated_at);
+  assert.equal(rerenderedWikiArtifact?.created_at, first.records.projection_manifest.created_at);
+  assert.equal(rerenderedWikiArtifact?.updated_at, first.records.projection_manifest.updated_at);
+  assert.match(rerenderedMarkdown, /Compiled at: 2026-04-12T00:00:00.000Z/);
 });
 
 test("writeConversationPreferenceFlowToStore recovers from partial authoritative materialization on rerun", async (t) => {
@@ -1597,7 +1684,10 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   assert.equal(applied.reused, false);
   assert.equal(applied.records.contradiction.status, "resolved");
   assert.equal(applied.records.contradiction_resolution.status, "applied");
+  assert.equal(applied.records.contradiction_resolution.accepted_at, "2026-04-12T01:05:00.000Z");
+  assert.equal(applied.records.contradiction_resolution.applied_at, "2026-04-12T01:05:00.000Z");
   assert.equal(applied.records.existing_world_claim.temporal_state?.temporal_status, "historical");
+  assert.equal(applied.records.existing_world_claim.temporal_state?.valid_to, "2026-04-12T01:00:00.000Z");
   assert.equal(applied.records.canonical_record, undefined);
 
   const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
@@ -1610,7 +1700,8 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   const reloaded = await readConversationPreferenceFlowResult(secondInput);
   assert.equal(reloaded?.records.contradiction_resolution?.status, "applied");
   const projectionManifestSource = await readFile(applied.paths.projection_manifest, "utf8");
-  assert.match(projectionManifestSource, /"created_at": "2026-04-12T01:05:00.000Z"/);
+  assert.match(projectionManifestSource, /"created_at": "2026-04-12T01:00:00.000Z"/);
+  assert.match(projectionManifestSource, /"updated_at": "2026-04-12T01:05:00.000Z"/);
 
   const appliedAgain = await applyConversationPreferenceResolutionToStore({
     ...secondInput,
@@ -1818,6 +1909,8 @@ test("manual contradiction review queue lists pending reviews and can apply an e
 
   assert.equal(applied.records.contradiction_resolution.status, "applied");
   assert.equal(applied.records.contradiction_resolution.strategy, "supersede_candidate");
+  assert.equal(applied.records.contradiction_resolution.accepted_at, "2026-04-12T00:06:00.000Z");
+  assert.equal(applied.records.contradiction_resolution.applied_at, "2026-04-12T00:06:00.000Z");
   assert.equal(applied.records.manual_contradiction_review_queue?.status, "applied");
   assert.equal(applied.records.candidate_world_claim.epistemic_state, "disputed");
   assert.equal(applied.records.candidate_world_claim.temporal_state?.temporal_status, "historical");
@@ -1951,6 +2044,7 @@ test("manual contradiction review queue can expire without changing world truth 
 
   assert.equal(expired.records.contradiction.status, "open");
   assert.equal(expired.records.contradiction_resolution.status, "rejected");
+  assert.equal(expired.records.contradiction_resolution.rejected_at, "2026-04-12T00:06:00.000Z");
   assert.equal(expired.records.manual_contradiction_review_queue?.status, "expired");
   assert.equal(expired.records.existing_world_claim.temporal_state?.temporal_status, "active");
   assert.equal(expired.records.candidate_world_claim.temporal_state?.temporal_status, "active");

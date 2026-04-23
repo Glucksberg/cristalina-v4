@@ -659,6 +659,103 @@ test("canonical supersede retires a record without creating a replacement", () =
   ]);
 });
 
+test("canonical revise closes the superseded record at the successor temporal boundary", () => {
+  const now = "2026-04-12T00:00:00.000Z";
+  const existingRecord: CanonicalMemoryObject = {
+    id: "mem_target_revise_temporal_001",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: "2026-04-01T00:00:00.000Z",
+    updated_at: "2026-04-01T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "conversation",
+      source_ref: "src_target_revise_temporal_001",
+    },
+    statement: "The user prefers concise answers.",
+    semantic_slot: "preference:participant:test-user:expressed-preference:user-interaction-preferences",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: {
+      temporal_status: "active",
+      valid_from: "2026-04-01T00:00:00.000Z",
+      valid_to: null,
+    },
+    supersedes_ref: null,
+    superseded_by_ref: null,
+    upstream_refs: ["mem_origin_revise_temporal_001"],
+  };
+
+  const applied = applyApprovedCanonicalProposal({
+    proposal: {
+      id: "prop_test_revise_temporal_boundary",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "conversation",
+        source_ref: "src_prop_revise_temporal_boundary",
+        evidence_refs: ["obs_test_revise_temporal_boundary"],
+      },
+      operation: "revise",
+      candidate_kind: "preference",
+      target_layer: "canon",
+      target_ref: {
+        id: existingRecord.id,
+        kind: existingRecord.kind,
+        layer: existingRecord.layer,
+      },
+      candidate_payload: {
+        kind: "preference",
+        statement: "The user prefers concise answers unless they ask for depth.",
+        semantic_slot: existingRecord.semantic_slot,
+        temporal_state: {
+          temporal_status: "active",
+          valid_from: "2026-04-20T00:00:00.000Z",
+          valid_to: null,
+        },
+      },
+      reason: "Revise canonical claim with explicit future effective date.",
+      evidence_refs: ["obs_test_revise_temporal_boundary"],
+      governance_state: "proposed",
+    },
+    ratification_record: {
+      id: "rat_test_revise_temporal_boundary",
+      kind: "ratification",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: now,
+      updated_at: now,
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "governance",
+        source_ref: "ratification/test/revise-temporal-boundary",
+      },
+      proposal_ref: "prop_test_revise_temporal_boundary",
+      decision: "approved",
+      actor: "system:test",
+      approved_at: now,
+    },
+    existing_record: existingRecord,
+    canonical_id: "mem_revised_temporal_001",
+    now,
+  });
+
+  assert.equal(applied.created_record?.temporal_state?.valid_from, "2026-04-20T00:00:00.000Z");
+  assert.equal(applied.updated_records[0]?.temporal_state?.valid_to, "2026-04-20T00:00:00.000Z");
+  assert.equal(applied.updated_records[0]?.updated_at, now);
+});
+
 test("canonical workflow blocks supersede while an active world contradiction is open", () => {
   const now = "2026-04-12T00:00:00.000Z";
   const targetRecord: CanonicalMemoryObject = {
@@ -789,6 +886,7 @@ test("canonical application rejects ratifications that do not belong to the prop
           proposal_ref: "prop_other",
           decision: "approved",
           actor: "system:test",
+          approved_at: now,
         },
         canonical_id: "mem_test_wrong_ratification",
         now,
@@ -848,6 +946,7 @@ test("canonical application rejects proposals that were not in proposed state", 
           proposal_ref: "prop_test_not_proposed",
           decision: "approved",
           actor: "system:test",
+          approved_at: now,
         },
         canonical_id: "mem_test_not_proposed",
         now,
@@ -937,6 +1036,7 @@ test("canonical revise application rejects mismatched canonical target contracts
           proposal_ref: "prop_test_target_contract_mismatch",
           decision: "approved",
           actor: "system:test",
+          approved_at: now,
         },
         existing_record: existingRecord,
         canonical_id: "mem_revised_target_contract_mismatch",
@@ -1094,6 +1194,7 @@ test("ratification records accept explicit expiration as a terminal decision", (
     proposal_ref: "prop_rat_expired_test_001",
     decision: "expired",
     actor: "system:test-expirer",
+    expired_at: "2026-04-12T00:05:00.000Z",
     authenticated_principal: {
       kind: "system",
       actor_ref: "system:test-expirer",
@@ -1121,6 +1222,7 @@ test("ratification records reject malformed authenticated principals", () => {
     proposal_ref: "prop_rat_invalid_principal_test_001",
     decision: "approved",
     actor: "actor_owner_invalid_principal_001",
+    approved_at: "2026-04-12T00:00:00.000Z",
     authenticated_principal: {
       kind: "owner",
       actor_ref: "",
@@ -1130,6 +1232,72 @@ test("ratification records reject malformed authenticated principals", () => {
 
   assert.ok(issues.some((issue) => issue.path === "authenticated_principal.actor_ref"));
   assert.ok(issues.some((issue) => issue.path === "authenticated_principal.system_scope"));
+});
+
+test("contradiction resolutions require explicit lifecycle timestamps for accepted and applied states", () => {
+  const acceptedIssues = validateCoreRecord({
+    id: "cres_lifecycle_missing_accepted_001",
+    kind: "contradiction_resolution",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:01:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "contradiction_resolution",
+      source_ref: "cres_lifecycle_missing_accepted_001",
+    },
+    contradiction_ref: "contra_lifecycle_missing_accepted_001",
+    strategy: "supersede_existing",
+    status: "accepted",
+    winning_ref: {
+      id: "wcl_winner_001",
+      kind: "preference",
+      layer: "world",
+    },
+    losing_ref: {
+      id: "wcl_loser_001",
+      kind: "preference",
+      layer: "world",
+    },
+    rationale: "Accepted contradiction resolution should carry accepted_at.",
+  });
+
+  const appliedIssues = validateCoreRecord({
+    id: "cres_lifecycle_missing_applied_001",
+    kind: "contradiction_resolution",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-04-12T00:00:00.000Z",
+    updated_at: "2026-04-12T00:02:00.000Z",
+    visibility_state: {
+      privacy_scope: "owner_private",
+    },
+    provenance: {
+      source_type: "contradiction_resolution",
+      source_ref: "cres_lifecycle_missing_applied_001",
+    },
+    contradiction_ref: "contra_lifecycle_missing_applied_001",
+    strategy: "supersede_existing",
+    status: "applied",
+    accepted_at: "2026-04-12T00:01:00.000Z",
+    winning_ref: {
+      id: "wcl_winner_002",
+      kind: "preference",
+      layer: "world",
+    },
+    losing_ref: {
+      id: "wcl_loser_002",
+      kind: "preference",
+      layer: "world",
+    },
+    rationale: "Applied contradiction resolution should carry applied_at.",
+  });
+
+  assert.ok(acceptedIssues.some((issue) => issue.path === "accepted_at"));
+  assert.ok(appliedIssues.some((issue) => issue.path === "applied_at"));
 });
 
 test("openclaw projection preserves visibility and renders reconciled statuses", () => {
@@ -1951,6 +2119,7 @@ test("contradiction handling can propose and apply a richer resolution path", ()
   assert.equal(resolution.status, "proposed");
   assert.equal(applied.contradiction.status, "resolved");
   assert.equal(applied.existing_claim.temporal_state?.temporal_status, "historical");
+  assert.equal(applied.existing_claim.temporal_state?.valid_to, "2026-04-12T00:00:00.000Z");
 });
 
 test("accepted contradiction resolution requires an explicit acceptance transition", () => {

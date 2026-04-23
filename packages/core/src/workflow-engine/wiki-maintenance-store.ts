@@ -468,16 +468,21 @@ function buildClaim(input: {
   claim: NonNullable<WikiMaintenanceInput["claim"]>;
   existing?: WikiClaim;
 }): WikiClaim {
+  const existingSourceRefs = input.existing?.source_refs ?? [];
+  const existingSupportRefs = input.existing?.support_refs ?? [];
   const source_refs = unique([
-    ...(input.existing?.source_refs ?? []),
+    ...existingSourceRefs,
     ...(input.claim.source_refs ?? []),
     ...(input.base.source_record ? [input.base.source_record.id] : []),
   ]);
   const support_refs = unique([
-    ...(input.existing?.support_refs ?? []),
+    ...existingSupportRefs,
     ...(input.claim.support_refs ?? []),
     ...source_refs,
   ]);
+  const hasNewSourceEvidence = source_refs.some((ref) => !existingSourceRefs.includes(ref));
+  const hasNewSupportEvidence = support_refs.some((ref) => !existingSupportRefs.includes(ref));
+  const hasNewEvidence = hasNewSourceEvidence || hasNewSupportEvidence;
   return {
     id: input.existing?.id ?? input.id,
     kind: "wiki_claim",
@@ -495,8 +500,16 @@ function buildClaim(input: {
     support_refs,
     confidence_score: input.claim.confidence_score ?? input.existing?.confidence_score ?? 0.7,
     support_count: support_refs.length,
-    last_confirmed_at: support_refs.length > 0 ? input.base.now : null,
-    last_seen_at: input.base.now,
+    last_confirmed_at:
+      support_refs.length === 0
+        ? (input.existing?.last_confirmed_at ?? null)
+        : hasNewSupportEvidence || !input.existing
+          ? input.base.now
+          : (input.existing?.last_confirmed_at ?? input.base.now),
+    last_seen_at:
+      hasNewEvidence || !input.existing
+        ? input.base.now
+        : (input.existing?.last_seen_at ?? input.base.now),
     staleness_state: "current",
     supersedes_ref: input.claim.supersedes_ref ?? input.existing?.supersedes_ref ?? null,
     superseded_by_ref: input.existing?.superseded_by_ref ?? null,

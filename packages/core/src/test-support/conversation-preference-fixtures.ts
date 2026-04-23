@@ -56,6 +56,7 @@ export interface ConversationPreferenceFlowInputFixtureInput {
     content_ref: string;
     runtime: "openclaw" | "hermes";
     message: string;
+    observed_at?: string;
     speaker_ref?: string;
     message_refs: string[];
   };
@@ -92,6 +93,7 @@ export function buildConversationPreferenceFlowInput(
       content_ref: input.source.content_ref,
       runtime: input.source.runtime,
       message: input.source.message,
+      ...(input.source.observed_at ? { observed_at: input.source.observed_at } : {}),
       ...(input.source.speaker_ref ? { speaker_ref: input.source.speaker_ref } : {}),
     },
     ...(input.semantic_profile
