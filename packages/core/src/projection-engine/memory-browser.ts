@@ -98,6 +98,16 @@ function uniqueRefs(...groups: string[][]): string[] {
   return [...new Set(groups.flat())];
 }
 
+function latestObservedAt(records: Array<{ created_at: string; updated_at?: string | null }>): string | null {
+  if (records.length === 0) {
+    return null;
+  }
+
+  return records
+    .map((record) => record.updated_at ?? record.created_at)
+    .reduce((latest, current) => (current > latest ? current : latest));
+}
+
 function text(value: unknown): string {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -246,6 +256,16 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
       continuity_epoch: null,
       generation: null,
       boundary_note: "Cross-subsystem reads may observe mixed state under the current trust model.",
+      observed_layer_updates: {
+        raw: latestObservedAt(sourceFilter.included),
+        runtime: latestObservedAt(runtimeRecords),
+        world: latestObservedAt(worldRecords),
+        canon: latestObservedAt(canonicalFilter.included),
+        wiki: latestObservedAt(wikiRecords),
+        governance: latestObservedAt(governanceRecords),
+        derived: latestObservedAt(derivedRecords),
+        audits: latestObservedAt(auditRecords),
+      },
     },
     authority_model: {
       wiki: "editorial memory; not canonical authority",

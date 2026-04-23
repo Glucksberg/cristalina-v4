@@ -49,6 +49,10 @@ test("memory browser inspects symbolic and vector retrieval artifacts without ch
     consistency: {
       snapshot_strategy: string;
       boundary_note: string;
+      observed_layer_updates: {
+        canon: string | null;
+        derived: string | null;
+      };
     };
     retrieval: {
       symbols: Array<{ id: string; authority: string; target_refs: string[] }>;
@@ -64,6 +68,8 @@ test("memory browser inspects symbolic and vector retrieval artifacts without ch
   assert.equal(snapshot.retrieval.symbols[0]?.authority, "navigation_only");
   assert.equal(snapshot.consistency.snapshot_strategy, "mixed_state_tolerant");
   assert.match(snapshot.consistency.boundary_note, /mixed state/);
+  assert.equal(snapshot.consistency.observed_layer_updates.canon, "2026-04-21T00:00:00.000Z");
+  assert.equal(snapshot.consistency.observed_layer_updates.derived, "2026-04-21T00:00:00.000Z");
   assert.ok(snapshot.retrieval.vector_chunks.some((chunk) => chunk.source_ref === fixture.canonical_record.id));
   assert.ok(snapshot.retrieval.vector_search_runs.some((run) => run.id === exactSearch.search_run.id));
   assert.deepEqual(snapshot.retrieval.results[0]?.suppressed_candidates[0]?.suppression_reasons, ["unsupported_wiki_claim"]);

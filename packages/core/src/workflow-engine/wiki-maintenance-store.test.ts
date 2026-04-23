@@ -131,6 +131,22 @@ test("source_ingested refreshes wiki pages, claim lifecycle metadata, audit, and
     (result.memory_browser.snapshot as { consistency?: { snapshot_strategy?: string } }).consistency?.snapshot_strategy,
     "mixed_state_tolerant",
   );
+  assert.equal(
+    (
+      result.memory_browser.snapshot as {
+        consistency?: { observed_layer_updates?: { raw?: string | null; wiki?: string | null } };
+      }
+    ).consistency?.observed_layer_updates?.wiki,
+    now,
+  );
+  assert.equal(
+    (
+      result.memory_browser.snapshot as {
+        consistency?: { observed_layer_updates?: { raw?: string | null; wiki?: string | null } };
+      }
+    ).consistency?.observed_layer_updates?.raw,
+    now,
+  );
 });
 
 test("source_ingested preserves wiki claim freshness when maintenance reruns without new evidence", async (t) => {
