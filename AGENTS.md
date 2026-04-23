@@ -83,6 +83,7 @@ Rules:
 - if a similar phrase already exists but the current session adds a distinct durable lesson worth preserving, the agent may suggest a new phrase candidate and should explain what is new about it
 - after any commit in this repository, the agent should inspect this section for a phrase matching the current session, show it if it exists, or explicitly say that no phrase is registered for the current session yet
 - after any commit in this repository, the agent should also show the phrases from the 5 most recent sessions in the same message so the user can curate with recent context in view
+- after any commit in this repository, the agent should count the current `AGENTS.md` size in characters with `wc -m < AGENTS.md`, show that number alongside the session phrases, and add exactly one of these status lines: `seu arquivo agents.md ainda esta com tamanho aceitavel` when the count is at or below 32768 characters, or `arquivo agents.md grande demais. pode piorar a performance do agente.` when the count is above 32768 characters. This threshold follows the Codex `project_doc_max_bytes` default of 32 KiB as a practical character-count proxy for this mostly ASCII file.
 - session phrases must be curated by the user; the agent may suggest candidates, but should not add, rewrite, or finalize a session phrase without explicit user approval
 
 Current session phrases:
