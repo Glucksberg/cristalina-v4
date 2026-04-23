@@ -183,6 +183,7 @@ function summarizeRetrievalTraces(results: RetrievalResult[]): ProjectionRetriev
     ...(result.trace_ref ? { trace_ref: result.trace_ref } : {}),
     query_ref: result.query_ref,
     recipe_ref: result.recipe_ref,
+    read_policy_version: result.read_policy_version,
     included_candidate_refs: result.included_candidates.map((candidate) => candidate.id),
     suppressed_candidate_refs: result.suppressed_candidates.map((candidate) => candidate.id),
     suppression_reasons: [
@@ -510,6 +511,7 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     audience: "runtime",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[adapter],
+    snapshot_strategy: "mixed_state_tolerant",
     actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
     owner_identity_ref: input.identity_context?.owner_identity_ref ?? null,
     runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,

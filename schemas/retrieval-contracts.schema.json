@@ -623,6 +623,7 @@
       "required": [
         "query_ref",
         "recipe_ref",
+        "read_policy_version",
         "included_candidates",
         "suppressed_candidates"
       ],
@@ -632,6 +633,10 @@
           "minLength": 1
         },
         "recipe_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read_policy_version": {
           "type": "string",
           "minLength": 1
         },

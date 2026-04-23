@@ -41,6 +41,7 @@ test("OpenClaw projection exposes included and suppressed retrieval candidates a
       trace_ref: "retrieval_trace_symbolic_fixture_001",
       query_ref: "retrieval_query_symbolic_fixture_001",
       recipe_ref: fixture.recipe.id,
+      read_policy_version: fixture.recipe.read_policy_version,
       included_candidate_refs: ["candidate_canon_symbolic_001", "candidate_raw_symbolic_001"],
       suppressed_candidate_refs: ["candidate_wiki_symbolic_001"],
       suppression_reasons: ["unsupported_wiki_claim"],

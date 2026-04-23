@@ -493,6 +493,7 @@ export interface ExternalCandidateBatch {
 export interface RetrievalResult {
   query_ref: string;
   recipe_ref: string;
+  read_policy_version: string;
   included_candidates: RetrievalCandidate[];
   suppressed_candidates: RetrievalCandidate[];
   trace_ref?: string;
@@ -515,6 +516,7 @@ export interface ProjectionRetrievalTrace {
   trace_ref?: string;
   query_ref: string;
   recipe_ref: string;
+  read_policy_version: string;
   included_candidate_refs: string[];
   suppressed_candidate_refs: string[];
   suppression_reasons: RetrievalSuppressionReason[];
@@ -1107,7 +1109,7 @@ export interface ProjectionManifest extends RecordEnvelope {
   continuity_epoch?: string | null;
   generation?: number | null;
   policy_snapshot_ref?: string | null;
-  snapshot_strategy?: ProjectionSnapshotStrategy | null;
+  snapshot_strategy: ProjectionSnapshotStrategy;
   context_refs: string[];
   suppressed_refs?: string[];
   suppressed_records?: Array<{

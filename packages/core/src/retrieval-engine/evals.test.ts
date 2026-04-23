@@ -115,6 +115,7 @@ test("retrieval eval covers stale suppression and projection budget cases", () =
   const result = {
     query_ref: "retrieval_query_eval_stale_budget_001",
     recipe_ref: fixture.recipe.id,
+    read_policy_version: fixture.recipe.read_policy_version,
     included_candidates: [rawCandidate],
     suppressed_candidates: [staleCandidate, budgetCandidate],
   };
@@ -196,18 +197,21 @@ test("retrieval eval compares lexical, vector, and hybrid baselines with the sam
   const lexicalResult = {
     query_ref: evalCase.query_ref,
     recipe_ref: fixture.recipe.id,
+    read_policy_version: fixture.recipe.read_policy_version,
     included_candidates: [{ ...rawCandidate, lexical_score: 1 }],
     suppressed_candidates: [wikiCandidate],
   };
   const vectorResult = {
     query_ref: evalCase.query_ref,
     recipe_ref: fixture.recipe.id,
+    read_policy_version: fixture.recipe.read_policy_version,
     included_candidates: [{ ...canonCandidate, vector_score: 1 }],
     suppressed_candidates: [],
   };
   const hybridResult = {
     query_ref: evalCase.query_ref,
     recipe_ref: fixture.recipe.id,
+    read_policy_version: fixture.recipe.read_policy_version,
     included_candidates: [canonCandidate, rawCandidate],
     suppressed_candidates: [wikiCandidate],
   };

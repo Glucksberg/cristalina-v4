@@ -122,6 +122,7 @@ function summarizeRetrievalTraces(results: RetrievalResult[]): ProjectionRetriev
     ...(result.trace_ref ? { trace_ref: result.trace_ref } : {}),
     query_ref: result.query_ref,
     recipe_ref: result.recipe_ref,
+    read_policy_version: result.read_policy_version,
     included_candidate_refs: result.included_candidates.map((candidate) => candidate.id),
     suppressed_candidate_refs: result.suppressed_candidates.map((candidate) => candidate.id),
     suppression_reasons: [
@@ -464,6 +465,7 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
     audience: "memory_browser",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     compiler_version: MEMORY_BROWSER_PROJECTION_COMPILER_VERSION,
+    snapshot_strategy: "mixed_state_tolerant",
     context_refs: [],
     suppressed_refs: suppressed_records.map((record) => record.id),
     suppressed_records,

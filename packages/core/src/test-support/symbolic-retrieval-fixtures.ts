@@ -389,6 +389,7 @@ export function buildSymbolicRetrievalFixture(): SymbolicRetrievalFixture {
     retrieval_result: {
       query_ref: "retrieval_query_symbolic_fixture_001",
       recipe_ref: recipe.id,
+      read_policy_version: recipe.read_policy_version,
       included_candidates,
       suppressed_candidates,
       trace_ref: "retrieval_trace_symbolic_fixture_001",

@@ -17,6 +17,7 @@
         "audience",
         "read_policy_version",
         "compiler_version",
+        "snapshot_strategy",
         "context_refs",
         "artifact_refs",
         "upstream_refs"
@@ -110,14 +111,10 @@
           ]
         },
         "snapshot_strategy": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": "string",
           "enum": [
             "mixed_state_tolerant",
-            "checkpoint_consistent",
-            null
+            "checkpoint_consistent"
           ]
         },
         "context_refs": {
@@ -185,6 +182,7 @@
             "required": [
               "query_ref",
               "recipe_ref",
+              "read_policy_version",
               "included_candidate_refs",
               "suppressed_candidate_refs",
               "suppression_reasons"
@@ -197,6 +195,9 @@
                 "type": "string"
               },
               "recipe_ref": {
+                "type": "string"
+              },
+              "read_policy_version": {
                 "type": "string"
               },
               "included_candidate_refs": {

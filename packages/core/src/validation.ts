@@ -1014,17 +1014,43 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
       issues.push({ path: "generation", message: "expected non-negative integer or null" });
     }
   }
-  if (value.snapshot_strategy !== undefined && value.snapshot_strategy !== null &&
-    !isEnumValue(value.snapshot_strategy, PROJECTION_SNAPSHOT_STRATEGIES)) {
+  if (typeof value.snapshot_strategy !== "string") {
+    issues.push({
+      path: "snapshot_strategy",
+      message: "projection manifests require snapshot_strategy",
+    });
+  } else if (!isEnumValue(value.snapshot_strategy, PROJECTION_SNAPSHOT_STRATEGIES)) {
     issues.push({
       path: "snapshot_strategy",
       message: `expected one of: ${PROJECTION_SNAPSHOT_STRATEGIES.join(", ")}`,
     });
   }
-  if (typeof value.source_checkpoint_ref === "string" && value.snapshot_strategy === "mixed_state_tolerant") {
+  const hasSourceCheckpointRef = typeof value.source_checkpoint_ref === "string" && value.source_checkpoint_ref.length > 0;
+  const hasContinuityEpoch = typeof value.continuity_epoch === "string" && value.continuity_epoch.length > 0;
+  const hasGeneration = typeof value.generation === "number" && Number.isInteger(value.generation) && value.generation >= 0;
+  if (value.snapshot_strategy === "checkpoint_consistent") {
+    if (!hasSourceCheckpointRef) {
+      issues.push({
+        path: "source_checkpoint_ref",
+        message: "checkpoint_consistent manifests require source_checkpoint_ref",
+      });
+    }
+    if (!hasContinuityEpoch) {
+      issues.push({
+        path: "continuity_epoch",
+        message: "checkpoint_consistent manifests require continuity_epoch",
+      });
+    }
+    if (!hasGeneration) {
+      issues.push({
+        path: "generation",
+        message: "checkpoint_consistent manifests require generation",
+      });
+    }
+  } else if (hasSourceCheckpointRef || hasContinuityEpoch || hasGeneration) {
     issues.push({
       path: "snapshot_strategy",
-      message: "source_checkpoint_ref requires checkpoint_consistent snapshot strategy",
+      message: "source_checkpoint_ref, continuity_epoch, and generation require checkpoint_consistent snapshot strategy",
     });
   }
   if (!isStringArray(value.context_refs) || !hasUniqueEntries(value.context_refs)) {
@@ -1111,6 +1137,7 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
         }
         pushRequiredString(issues, trace, "query_ref", `${tracePath}.query_ref`);
         pushRequiredString(issues, trace, "recipe_ref", `${tracePath}.recipe_ref`);
+        pushRequiredString(issues, trace, "read_policy_version", `${tracePath}.read_policy_version`);
         if (!isStringArray(trace.included_candidate_refs) || !hasUniqueEntries(trace.included_candidate_refs)) {
           issues.push({ path: `${tracePath}.included_candidate_refs`, message: "expected unique string array" });
         }

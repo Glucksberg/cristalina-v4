@@ -160,7 +160,7 @@ export async function createHermesProjectionFixture(
     source_checkpoint_ref: input.source_checkpoint_ref ?? null,
     continuity_epoch: input.continuity_epoch ?? null,
     generation: input.generation ?? null,
-    snapshot_strategy: input.snapshot_strategy ?? null,
+    snapshot_strategy: input.snapshot_strategy ?? "mixed_state_tolerant",
     context_refs: [
       ...(input.actor_identity_ref ? [input.actor_identity_ref] : []),
       input.owner_identity_ref,

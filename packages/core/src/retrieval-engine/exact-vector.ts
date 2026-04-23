@@ -507,6 +507,7 @@ export function executeHybridRetrieval(input: HybridRetrievalInput): RetrievalRe
   return {
     query_ref: input.query_ref,
     recipe_ref: input.recipe.id,
+    read_policy_version: input.recipe.read_policy_version,
     included_candidates,
     suppressed_candidates,
     trace_ref: input.trace_ref,

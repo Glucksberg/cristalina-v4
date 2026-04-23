@@ -1599,6 +1599,15 @@ test("projection manifests require declared context refs and coherent suppressio
         reason_code: "owner_private_runtime_instance_mismatch",
       },
     ],
+    retrieval_traces: [
+      {
+        query_ref: "retrieval_query_invalid_projection_001",
+        recipe_ref: "retrieval_recipe_invalid_projection_001",
+        included_candidate_refs: ["candidate_projection_invalid_001"],
+        suppressed_candidate_refs: [],
+        suppression_reasons: [],
+      },
+    ],
     artifact_refs: ["part_openclaw_world_invalid_001"],
     upstream_refs: ["mem_test_001"],
   });
@@ -1609,8 +1618,41 @@ test("projection manifests require declared context refs and coherent suppressio
   assert.ok(issues.some((issue) => issue.path === "continuity_epoch"));
   assert.ok(issues.some((issue) => issue.path === "generation"));
   assert.ok(issues.some((issue) => issue.path === "snapshot_strategy" && issue.message.includes("checkpoint_consistent")));
+  assert.ok(issues.some((issue) => issue.path === "retrieval_traces[0].read_policy_version"));
   assert.ok(issues.some((issue) => issue.path === "suppressed_refs" && issue.message.includes("foreign_world_claim")));
   assert.ok(issues.some((issue) => issue.path === "suppressed_records" && issue.message.includes("other_world_claim")));
+});
+
+test("projection manifests require complete lineage markers for checkpoint-consistent snapshots", () => {
+  const issues = validateCoreRecord({
+    id: "pmf_invalid_checkpoint_projection_001",
+    kind: "projection_manifest",
+    layer: "derived",
+    authoritative_home: "governance",
+    created_at: "2026-04-23T15:00:00.000Z",
+    updated_at: "2026-04-23T15:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+    provenance: {
+      source_type: "projection_manifest",
+      source_ref: "derived/manifests/pmf_invalid_checkpoint_projection_001.json",
+      evidence_refs: ["mem_test_001"],
+    },
+    adapter: "hermes",
+    projection_profile: "hermes/runtime-bootstrap",
+    audience: "runtime",
+    read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
+    compiler_version: "hermes.runtime.v1",
+    snapshot_strategy: "checkpoint_consistent",
+    context_refs: [],
+    artifact_refs: ["part_hermes_invalid_checkpoint_projection_001"],
+    upstream_refs: ["mem_test_001"],
+  });
+
+  assert.ok(issues.some((issue) => issue.path === "source_checkpoint_ref" && issue.message.includes("checkpoint_consistent")));
+  assert.ok(issues.some((issue) => issue.path === "continuity_epoch" && issue.message.includes("checkpoint_consistent")));
+  assert.ok(issues.some((issue) => issue.path === "generation" && issue.message.includes("checkpoint_consistent")));
 });
 
 test("actor identities reject runtime-private visibility", () => {

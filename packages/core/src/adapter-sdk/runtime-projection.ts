@@ -33,7 +33,7 @@ export interface ProjectionRuntimeSummary {
   source_checkpoint_ref?: string | null;
   continuity_epoch?: string | null;
   generation?: number | null;
-  snapshot_strategy?: ProjectionManifest["snapshot_strategy"];
+  snapshot_strategy: ProjectionManifest["snapshot_strategy"];
   diagnostic_count: number;
   review_count: number;
   pending_review_count: number;
@@ -314,7 +314,7 @@ export async function listProjectionRuntimeViews(
         source_checkpoint_ref: manifest.source_checkpoint_ref ?? null,
         continuity_epoch: manifest.continuity_epoch ?? null,
         generation: manifest.generation ?? null,
-        snapshot_strategy: manifest.snapshot_strategy ?? null,
+        snapshot_strategy: manifest.snapshot_strategy,
         diagnostic_count: diagnostics.filter((record) => diagnosticIds.has(record.id)).length,
         review_count: matchingReviews.length,
         pending_review_count: matchingReviews.filter((record) => record.status === "pending").length,

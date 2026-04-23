@@ -789,6 +789,7 @@ test("runtime projection helper rejects stored projection artifacts that escape 
       audience: "runtime",
       read_policy_version: "projection-read-v2",
       compiler_version: "hermes.runtime.v1",
+      snapshot_strategy: "mixed_state_tolerant",
       context_refs: [],
       artifact_refs: ["part_hermes_escape_test_001"],
       upstream_refs: ["ref_escape_test_001"],

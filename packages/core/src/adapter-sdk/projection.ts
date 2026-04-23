@@ -328,7 +328,7 @@ export interface ProjectionManifestInput {
   continuity_epoch?: string | null;
   generation?: number | null;
   policy_snapshot_ref?: string | null;
-  snapshot_strategy?: ProjectionManifest["snapshot_strategy"];
+  snapshot_strategy: ProjectionManifest["snapshot_strategy"];
   context_refs: string[];
   suppressed_refs?: string[];
   suppressed_records?: Array<{
@@ -377,7 +377,7 @@ export function createProjectionManifest(input: ProjectionManifestInput): Projec
     continuity_epoch: input.continuity_epoch ?? null,
     generation: input.generation ?? null,
     policy_snapshot_ref: input.policy_snapshot_ref ?? null,
-    snapshot_strategy: input.snapshot_strategy ?? null,
+    snapshot_strategy: input.snapshot_strategy,
     context_refs: input.context_refs,
     ...(input.suppressed_refs !== undefined ? { suppressed_refs: input.suppressed_refs } : {}),
     ...(input.suppressed_records !== undefined ? { suppressed_records: input.suppressed_records } : {}),

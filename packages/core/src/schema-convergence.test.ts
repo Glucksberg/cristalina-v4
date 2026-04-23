@@ -229,6 +229,8 @@ test("retrieval contracts schema stays aligned with core retrieval enums", async
   const authenticatedPrincipal = defs.AuthenticatedPrincipal;
   const candidate = defs.RetrievalCandidate;
   const recipe = defs.RetrievalRecipe;
+  const result = defs.RetrievalResult;
+  const trace = defs.RetrievalTrace;
   const suppressionReason = defs.RetrievalSuppressionReason;
 
   assert.deepEqual(expectOneOfLocalDefs(schema), [
@@ -246,6 +248,8 @@ test("retrieval contracts schema stays aligned with core retrieval enums", async
   assert.deepEqual(expectEnum(candidate?.properties?.authority), [...RETRIEVAL_AUTHORITIES]);
   assert.deepEqual(expectEnum(suppressionReason), [...RETRIEVAL_SUPPRESSION_REASONS]);
   assert.deepEqual(expectEnum(recipe?.properties?.external_candidate_policy), [...RETRIEVAL_EXTERNAL_CANDIDATE_POLICIES]);
+  assert.equal((result?.properties?.read_policy_version as { type?: string } | undefined)?.type, "string");
+  assert.equal((trace?.properties?.read_policy_version as { type?: string } | undefined)?.type, "string");
 });
 
 test("vector artifact schema stays aligned with vector object enums", async () => {
@@ -288,9 +292,10 @@ test("projection manifest schema stays aligned with adapter and read-discipline 
   assert.deepEqual((properties.source_checkpoint_ref as { type?: string[] } | undefined)?.type, ["string", "null"]);
   assert.deepEqual((properties.continuity_epoch as { type?: string[] } | undefined)?.type, ["string", "null"]);
   assert.deepEqual((properties.generation as { type?: string[] } | undefined)?.type, ["integer", "null"]);
+  assert.equal((properties.snapshot_strategy as { type?: string } | undefined)?.type, "string");
   assert.deepEqual(
-    (properties.snapshot_strategy as { enum?: Array<string | null> } | undefined)?.enum,
-    ["mixed_state_tolerant", "checkpoint_consistent", null],
+    (properties.snapshot_strategy as { enum?: string[] } | undefined)?.enum,
+    ["mixed_state_tolerant", "checkpoint_consistent"],
   );
   assert.equal((properties.context_refs as { type?: string } | undefined)?.type, "array");
   assert.equal((properties.review_refs as { type?: string } | undefined)?.type, "array");
