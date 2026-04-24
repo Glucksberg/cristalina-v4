@@ -5,6 +5,7 @@ import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as
 import {
   DEFAULT_PROJECTION_READ_POLICY_VERSION,
 } from "../adapter-sdk/projection.js";
+import { assertRuntimeBootstrapProjectionContract } from "../adapter-sdk/projection-contracts.js";
 import {
   appendAuditChange,
   appendValidationLog,
@@ -1437,72 +1438,6 @@ async function resolveStoredProjectionAdapter(
   }
 
   throw new Error(`Projection manifest ${manifestId} does not exist or does not declare a supported bootstrap contract`);
-}
-
-function assertStoredRuntimeBootstrapProjectionContract(input: {
-  rootDir: string;
-  paths: ConversationPreferenceStorePaths;
-  manifest: ProjectionManifest;
-  artifacts: ProjectionArtifact[];
-  adapter: ProjectionAdapterKind;
-  manifest_id: string;
-  artifact_ids: [string, string, string];
-}): void {
-  const expectedMarkdownPath = relativeStorePath(input.rootDir, input.paths.projection_markdown);
-  const expectedArtifactPaths = new Map<string, string>([
-    [input.artifact_ids[0], `${expectedMarkdownPath}#canon`],
-    [input.artifact_ids[1], `${expectedMarkdownPath}#world`],
-    [input.artifact_ids[2], `${expectedMarkdownPath}#wiki`],
-  ]);
-  const mismatches: string[] = [];
-
-  if (input.manifest.id !== input.manifest_id) mismatches.push("manifest.id");
-  if (input.manifest.adapter !== input.adapter) mismatches.push("manifest.adapter");
-  if (input.manifest.projection_profile !== "bootstrap") mismatches.push("manifest.projection_profile");
-  if (input.manifest.audience !== "runtime") mismatches.push("manifest.audience");
-  if (input.manifest.compiler_version !== RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[input.adapter]) {
-    mismatches.push("manifest.compiler_version");
-  }
-  if (input.manifest.read_policy_version !== DEFAULT_PROJECTION_READ_POLICY_VERSION) {
-    mismatches.push("manifest.read_policy_version");
-  }
-  if (input.manifest.snapshot_strategy !== "mixed_state_tolerant") mismatches.push("manifest.snapshot_strategy");
-  if (typeof input.manifest.boundary_note !== "string" || input.manifest.boundary_note.length === 0) {
-    mismatches.push("manifest.boundary_note");
-  }
-  if (!input.manifest.observed_layer_updates) {
-    mismatches.push("manifest.observed_layer_updates");
-  }
-  if (
-    JSON.stringify(input.manifest.artifact_refs) !== JSON.stringify(input.artifact_ids)
-  ) {
-    mismatches.push("manifest.artifact_refs");
-  }
-  if (input.artifacts.length !== input.artifact_ids.length) {
-    mismatches.push("artifacts.length");
-  }
-
-  const artifactIds = new Set(input.artifacts.map((artifact) => artifact.id));
-  for (const artifactId of input.artifact_ids) {
-    if (!artifactIds.has(artifactId)) {
-      mismatches.push(`artifact:${artifactId}:missing`);
-    }
-  }
-
-  for (const artifact of input.artifacts) {
-    const expectedPath = expectedArtifactPaths.get(artifact.id);
-    if (!expectedPath) {
-      mismatches.push(`artifact:${artifact.id}:unexpected`);
-      continue;
-    }
-    if (artifact.adapter !== input.adapter) mismatches.push(`artifact:${artifact.id}:adapter`);
-    if (artifact.artifact_kind !== "layer_fragment") mismatches.push(`artifact:${artifact.id}:artifact_kind`);
-    if (artifact.path !== expectedPath) mismatches.push(`artifact:${artifact.id}:path`);
-  }
-
-  if (mismatches.length > 0) {
-    throw new Error(`Stored runtime bootstrap projection failed contract checks: ${mismatches.join(", ")}`);
-  }
 }
 
 function writeFlowBaselinePaths(paths: ConversationPreferenceStorePaths): string[] {
@@ -3049,14 +2984,16 @@ async function loadExistingFlow(
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.wiki),
   ]);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
-  assertStoredRuntimeBootstrapProjectionContract({
+  assertRuntimeBootstrapProjectionContract({
     rootDir,
-    paths,
+    markdown_relative_path: relativeStorePath(rootDir, paths.projection_markdown),
     manifest: projection_manifest,
     artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
     adapter: projectionAdapterForRuntime(input.source.runtime),
     manifest_id: input.ids.projection_manifest,
     artifact_ids: [input.ids.canon_artifact, input.ids.world_artifact, input.ids.wiki_artifact],
+    compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[projectionAdapterForRuntime(input.source.runtime)],
+    read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
   });
   const validation_issues = [
     source_record,
@@ -3576,14 +3513,16 @@ async function ensureReplayableArtifacts(
     await readFile(paths.projection_markdown, "utf8");
     const projection_artifacts = await readProjectionArtifacts(paths);
     const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
-    assertStoredRuntimeBootstrapProjectionContract({
+    assertRuntimeBootstrapProjectionContract({
       rootDir: resolve(input.rootDir),
-      paths,
+      markdown_relative_path: relativeStorePath(resolve(input.rootDir), paths.projection_markdown),
       manifest: projection_manifest,
       artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
       adapter: projectionAdapterForRuntime(input.source.runtime),
       manifest_id: input.ids.projection_manifest,
       artifact_ids: [input.ids.canon_artifact, input.ids.world_artifact, input.ids.wiki_artifact],
+      compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[projectionAdapterForRuntime(input.source.runtime)],
+      read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     });
     return;
   } catch {
@@ -4148,14 +4087,16 @@ export async function applyConversationPreferenceResolutionToStore(
       if (records.contradiction_resolution.status === "applied") {
         const projection_artifacts = await readProjectionArtifacts(paths);
         const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
-        assertStoredRuntimeBootstrapProjectionContract({
+        assertRuntimeBootstrapProjectionContract({
           rootDir,
-          paths,
+          markdown_relative_path: relativeStorePath(rootDir, paths.projection_markdown),
           manifest: projection_manifest,
           artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
           adapter: projectionAdapterForRuntime(input.source.runtime),
           manifest_id: input.ids.projection_manifest,
           artifact_ids: [input.ids.canon_artifact, input.ids.world_artifact, input.ids.wiki_artifact],
+          compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[projectionAdapterForRuntime(input.source.runtime)],
+          read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
         });
 
         return {
@@ -4436,14 +4377,16 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
   const loaded = await loadAuthoritativeFlow(rootDir, paths);
   const projection_artifacts = await readProjectionArtifacts(paths);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
-  assertStoredRuntimeBootstrapProjectionContract({
+  assertRuntimeBootstrapProjectionContract({
     rootDir,
-    paths,
+    markdown_relative_path: relativeStorePath(rootDir, paths.projection_markdown),
     manifest: projection_manifest,
     artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
     adapter: projectionAdapter,
     manifest_id: queuePacket.projection_manifest_ref,
     artifact_ids: projectionArtifactRefs,
+    compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[projectionAdapter],
+    read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
   });
   const flow: ConversationPreferenceStoreResult = {
     reused: true,
@@ -4634,14 +4577,16 @@ async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
   const loaded = await loadAuthoritativeFlow(rootDir, paths);
   const projection_artifacts = await readProjectionArtifacts(paths);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
-  assertStoredRuntimeBootstrapProjectionContract({
+  assertRuntimeBootstrapProjectionContract({
     rootDir,
-    paths,
+    markdown_relative_path: relativeStorePath(rootDir, paths.projection_markdown),
     manifest: projection_manifest,
     artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
     adapter: projectionAdapter,
     manifest_id: queuePacket.projection_manifest_ref,
     artifact_ids: projectionArtifactRefs,
+    compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[projectionAdapter],
+    read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
   });
 
   return {

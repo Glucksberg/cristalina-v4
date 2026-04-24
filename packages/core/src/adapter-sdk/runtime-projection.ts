@@ -16,7 +16,7 @@ import {
   loadProjectionArtifacts,
   loadProjectionManifests,
 } from "../store/io.js";
-import { resolveProjectionArtifactPath, stripProjectionArtifactFragment } from "./projection-path.js";
+import { resolveProjectionMarkdownPath } from "./projection-contracts.js";
 
 type ProjectionAdapterKind = Exclude<RuntimeKind, "generic">;
 export type ProjectionConsistencyRequirement = "allow_mixed_state" | "require_checkpoint_consistent";
@@ -73,11 +73,6 @@ export interface ProjectionRuntimeRetrievalContext {
   suppression_reasons: RetrievalSuppressionReason[];
   traces: ProjectionRetrievalTrace[];
   diagnostics: Diagnostic[];
-}
-
-interface ProjectionMarkdownResolutionCandidate {
-  artifact: ProjectionArtifact;
-  basePath: string;
 }
 
 function manifestsShareSelectionContext(
@@ -300,41 +295,6 @@ export function summarizeProjectionRuntimeRetrievalContext(input: {
     traces,
     diagnostics: retrievalDiagnostics,
   };
-}
-
-export function resolveProjectionMarkdownPath(input: {
-  rootDir: string;
-  manifest: ProjectionManifest;
-  artifacts: ProjectionArtifact[];
-}): string {
-  const artifactIds = new Set(input.manifest.artifact_refs);
-  const manifestArtifacts = input.artifacts.filter((record) => artifactIds.has(record.id));
-  const markdownCandidates = manifestArtifacts
-    .map((artifact): ProjectionMarkdownResolutionCandidate | undefined => {
-      const basePath = stripProjectionArtifactFragment(artifact.path);
-      if (!basePath.endsWith(".md")) {
-        return undefined;
-      }
-      return {
-        artifact,
-        basePath,
-      };
-    })
-    .filter((candidate): candidate is ProjectionMarkdownResolutionCandidate => candidate !== undefined);
-  const directMarkdownCandidates = markdownCandidates.filter(
-    ({ artifact }) => artifact.artifact_kind.includes("markdown") || !artifact.path.includes("#"),
-  );
-  const selectedCandidates = directMarkdownCandidates.length > 0 ? directMarkdownCandidates : markdownCandidates;
-  const markdownBasePaths = [...new Set(selectedCandidates.map((candidate) => candidate.basePath))];
-
-  if (markdownBasePaths.length === 0) {
-    throw new Error(`Projection manifest ${input.manifest.id} does not reference a markdown artifact`);
-  }
-  if (markdownBasePaths.length > 1) {
-    throw new Error(`Projection manifest ${input.manifest.id} references multiple markdown artifacts`);
-  }
-
-  return resolveProjectionArtifactPath(input.rootDir, markdownBasePaths[0]!);
 }
 
 function assertExplicitProjectionConsistencyRequirement(
