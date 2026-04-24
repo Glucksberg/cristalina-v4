@@ -296,6 +296,7 @@ test("OpenClaw adapter exposes closed owner review items after queue ratificatio
   const view = await loadOpenClawProjectionRuntimeView({
     rootDir,
     manifest_id: first.records.projection_manifest.id,
+    consistency_requirement: "allow_mixed_state",
   });
 
   assert.equal(view.pending_reviews.length, 0);

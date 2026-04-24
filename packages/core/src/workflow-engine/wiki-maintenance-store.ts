@@ -832,8 +832,19 @@ async function canReusePersistedMemoryBrowserProjection(
   );
 
   return (
+    manifest.adapter === (input.memory_browser_adapter ?? input.memory_browser_read_context?.adapter ?? manifest.adapter) &&
+    manifest.projection_profile === "memory_browser" &&
+    manifest.audience === "memory_browser" &&
     manifest.compiler_version === MEMORY_BROWSER_PROJECTION_COMPILER_VERSION &&
-    manifest.read_policy_version === DEFAULT_PROJECTION_READ_POLICY_VERSION
+    manifest.read_policy_version === DEFAULT_PROJECTION_READ_POLICY_VERSION &&
+    manifest.snapshot_strategy === "mixed_state_tolerant" &&
+    typeof manifest.boundary_note === "string" &&
+    manifest.boundary_note.length > 0 &&
+    manifest.observed_layer_updates !== undefined &&
+    manifest.observed_layer_updates !== null &&
+    manifest.artifact_refs.length === 2 &&
+    manifest.artifact_refs.includes(input.ids.browser_json_artifact) &&
+    manifest.artifact_refs.includes(input.ids.browser_html_artifact)
   );
 }
 

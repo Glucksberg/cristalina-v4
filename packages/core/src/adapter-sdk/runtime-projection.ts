@@ -75,6 +75,11 @@ export interface ProjectionRuntimeRetrievalContext {
   diagnostics: Diagnostic[];
 }
 
+interface ProjectionMarkdownResolutionCandidate {
+  artifact: ProjectionArtifact;
+  basePath: string;
+}
+
 function manifestsShareSelectionContext(
   left: Pick<
     ProjectionManifest,
@@ -304,16 +309,45 @@ export function resolveProjectionMarkdownPath(input: {
 }): string {
   const artifactIds = new Set(input.manifest.artifact_refs);
   const manifestArtifacts = input.artifacts.filter((record) => artifactIds.has(record.id));
-  const markdownArtifact = manifestArtifacts.find((record) => {
-    const basePath = stripProjectionArtifactFragment(record.path);
-    return basePath.endsWith(".md");
-  });
+  const markdownCandidates = manifestArtifacts
+    .map((artifact): ProjectionMarkdownResolutionCandidate | undefined => {
+      const basePath = stripProjectionArtifactFragment(artifact.path);
+      if (!basePath.endsWith(".md")) {
+        return undefined;
+      }
+      return {
+        artifact,
+        basePath,
+      };
+    })
+    .filter((candidate): candidate is ProjectionMarkdownResolutionCandidate => candidate !== undefined);
+  const directMarkdownCandidates = markdownCandidates.filter(
+    ({ artifact }) => artifact.artifact_kind.includes("markdown") || !artifact.path.includes("#"),
+  );
+  const selectedCandidates = directMarkdownCandidates.length > 0 ? directMarkdownCandidates : markdownCandidates;
+  const markdownBasePaths = [...new Set(selectedCandidates.map((candidate) => candidate.basePath))];
 
-  if (!markdownArtifact) {
+  if (markdownBasePaths.length === 0) {
     throw new Error(`Projection manifest ${input.manifest.id} does not reference a markdown artifact`);
   }
+  if (markdownBasePaths.length > 1) {
+    throw new Error(`Projection manifest ${input.manifest.id} references multiple markdown artifacts`);
+  }
 
-  return resolveProjectionArtifactPath(input.rootDir, markdownArtifact.path);
+  return resolveProjectionArtifactPath(input.rootDir, markdownBasePaths[0]!);
+}
+
+function assertExplicitProjectionConsistencyRequirement(
+  adapter: ProjectionAdapterKind,
+  requirement: ProjectionConsistencyRequirement | undefined,
+): ProjectionConsistencyRequirement {
+  if (!requirement) {
+    throw new Error(
+      `${adapter} projection loads require an explicit consistency_requirement of allow_mixed_state or require_checkpoint_consistent`,
+    );
+  }
+
+  return requirement;
 }
 
 export async function listProjectionRuntimeViews(
@@ -365,15 +399,19 @@ export async function loadProjectionRuntimeView(input: {
   rootDir: string;
   manifest_id: string;
   adapter: ProjectionAdapterKind;
-  consistency_requirement?: ProjectionConsistencyRequirement;
+  consistency_requirement: ProjectionConsistencyRequirement;
 }): Promise<ProjectionRuntimeView> {
   const storeRoot = resolve(input.rootDir);
+  const consistency_requirement = assertExplicitProjectionConsistencyRequirement(
+    input.adapter,
+    input.consistency_requirement,
+  );
   const manifests = await loadProjectionManifests(storeRoot);
   const manifest = manifests.find((record) => record.id === input.manifest_id && record.adapter === input.adapter);
   if (!manifest) {
     throw new Error(`${input.adapter} projection manifest ${input.manifest_id} does not exist`);
   }
-  assertProjectionConsistencyRequirement(manifest, input.adapter, input.consistency_requirement);
+  assertProjectionConsistencyRequirement(manifest, input.adapter, consistency_requirement);
 
   const [artifacts, diagnostics, reviews] = await Promise.all([
     loadProjectionArtifacts(storeRoot, input.adapter),
@@ -455,6 +493,6 @@ export async function loadLatestProjectionRuntimeView(
     rootDir,
     manifest_id: latest.manifest_id,
     adapter,
-    consistency_requirement: filter?.consistency_requirement,
+    consistency_requirement: filter.consistency_requirement,
   });
 }

@@ -833,6 +833,49 @@ test("wiki maintenance recompiles stale memory-browser read-policy manifests wit
   assert.equal(log.match(/wiki_run_reuse_browser_policy_001/g)?.length ?? 0, 1);
 });
 
+test("wiki maintenance recompiles memory-browser manifests that drift from the mixed-state browser contract", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-reuse-browser-contract-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = {
+    ...baseInput(rootDir, "source_ingested", {
+      run: "wiki_run_reuse_browser_contract_001",
+      source_page: "wiki_page_reuse_browser_contract_source_001",
+      topic_page: "wiki_page_reuse_browser_contract_topic_001",
+      browser_json_artifact: "artifact_reuse_browser_contract_json_001",
+      browser_html_artifact: "artifact_reuse_browser_contract_html_001",
+      browser_manifest: "manifest_reuse_browser_contract_001",
+    }),
+    source_record: sourceRecord("src_reuse_browser_contract_001"),
+    source_summary: "Original source summary.",
+    topic: {
+      title: "Reuse Browser Contract Guard",
+      summary: "Original topic summary.",
+    },
+  } satisfies WikiMaintenanceInput;
+
+  const first = await runWikiMaintenanceToStore(input);
+  await writeCoreRecord(rootDir, {
+    ...first.memory_browser.manifest,
+    projection_profile: "memory_browser_v0",
+    artifact_refs: [input.ids.browser_json_artifact],
+  });
+
+  const replayed = await runWikiMaintenanceToStore(input);
+  const log = await readFile(join(rootDir, "wiki/log.md"), "utf8");
+
+  assert.equal(replayed.reused, false);
+  assert.equal(replayed.run.id, input.ids.run);
+  assert.equal(replayed.memory_browser.manifest.projection_profile, "memory_browser");
+  assert.deepEqual(replayed.memory_browser.manifest.artifact_refs, [
+    input.ids.browser_json_artifact,
+    input.ids.browser_html_artifact,
+  ]);
+  assert.equal(log.match(/wiki_run_reuse_browser_contract_001/g)?.length ?? 0, 1);
+});
+
 test("wiki maintenance serializes concurrent index and log updates", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-wiki-concurrent-"));
   t.after(async () => {

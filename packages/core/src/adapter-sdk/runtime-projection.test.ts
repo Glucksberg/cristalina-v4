@@ -134,6 +134,7 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
     rootDir,
     manifest_id: first.records.projection_manifest.id,
     adapter: "openclaw",
+    consistency_requirement: "allow_mixed_state",
   });
 
   assert.equal(view.pending_reviews.length, 0);
@@ -204,6 +205,7 @@ test("runtime projection helper exposes retrieval context from projection manife
     rootDir,
     manifest_id: projection.manifest.id,
     adapter: "openclaw",
+    consistency_requirement: "allow_mixed_state",
   });
 
   assert.equal(view.retrieval_context.available, true);
@@ -266,6 +268,7 @@ test("runtime projection helper resolves Hermes projection markdown from manifes
     rootDir,
     manifest_id: fixture.manifest.id,
     adapter: "hermes",
+    consistency_requirement: "allow_mixed_state",
   });
 
   assert.equal(direct.markdown, storedMarkdown);
@@ -626,6 +629,21 @@ test("runtime projection helper requires explicit consistency intent and prefers
     /requires an explicit consistency_requirement/,
   );
 
+  await assert.rejects(
+    () =>
+      (loadProjectionRuntimeView as unknown as (input: {
+        rootDir: string;
+        manifest_id: string;
+        adapter: "hermes";
+        consistency_requirement?: unknown;
+      }) => Promise<unknown>)({
+        rootDir,
+        manifest_id: "pmf_hermes_consistency_old",
+        adapter: "hermes",
+      }),
+    /projection loads require an explicit consistency_requirement/,
+  );
+
   const latestAllowed = await loadLatestProjectionRuntimeView(rootDir, "hermes", {
     consistency_requirement: "allow_mixed_state",
     owner_identity_ref: "actor_owner_consistency_shared",
@@ -927,6 +945,7 @@ test("runtime projection helper rejects stored projection artifacts that escape 
         rootDir,
         manifest_id: "pmf_hermes_escape_test_001",
         adapter: "hermes",
+        consistency_requirement: "allow_mixed_state",
       }),
     (error: unknown) =>
       error instanceof ValidationError &&

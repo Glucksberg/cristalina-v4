@@ -773,6 +773,50 @@ test("ratifyDeferredConversationPreferenceProposalToStore remains compatible wit
   assert.equal(ratified.records.owner_ratification_queue?.status, "applied");
 });
 
+test("owner ratification queue rejects stale runtime bootstrap projections that drift from the stored contract", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-owner-queue-bootstrap-contract-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_owner_review_contract_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+
+  const deferred = await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+
+  await writeCoreRecord(rootDir, {
+    ...deferred.records.projection_manifest,
+    compiler_version: "openclaw.runtime_bootstrap.v0",
+  });
+
+  await assert.rejects(
+    () =>
+      ratifyQueuedConversationPreferenceProposalToStore({
+        rootDir,
+        queue_id: queue[0]!.queue_id,
+        now: "2026-04-12T00:05:00.000Z",
+        actor: input.identity_context!.ids.owner_identity!,
+        authenticated_principal: ownerPrincipal(input),
+        owner_actor_ref: input.identity_context!.ids.owner_identity!,
+        validation_scope: "test:conversation-preference:owner-ratification-contract",
+      }),
+    /Stored runtime bootstrap projection failed contract checks|supported bootstrap contract/,
+  );
+});
+
 test("writeConversationPreferenceFlowToStore serializes concurrent canonical writes for the same semantic slot", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -2259,6 +2303,32 @@ test("projection excludes superseded canonical records during recompilation", as
   const projectionMarkdown = await readFile(roundTrip.paths.projection_markdown, "utf8");
   assert.match(projectionMarkdown, /\[canon:mem_test_001\] \(ratified; active\)/);
   assert.doesNotMatch(projectionMarkdown, /\[canon:mem_test_superseded_001\]/);
+});
+
+test("existing flow replay repairs stale runtime bootstrap manifests before reusing the flow", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-replay-bootstrap-contract-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  const first = await writeConversationPreferenceFlowToStore(input);
+
+  await writeCoreRecord(rootDir, {
+    ...first.records.projection_manifest,
+    compiler_version: "openclaw.bootstrap.v0",
+    artifact_refs: [input.ids.canon_artifact, input.ids.world_artifact],
+  });
+
+  const replayed = await writeConversationPreferenceFlowToStore(input);
+
+  assert.equal(replayed.reused, true);
+  assert.equal(replayed.records.projection_manifest.compiler_version, "openclaw.runtime_bootstrap.v1");
+  assert.deepEqual(replayed.records.projection_manifest.artifact_refs, [
+    input.ids.canon_artifact,
+    input.ids.world_artifact,
+    input.ids.wiki_artifact,
+  ]);
 });
 
 test("structured preference signal flow reuses the generic intake framework", async (t) => {

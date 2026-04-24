@@ -17,6 +17,7 @@ export async function listOpenClawProjectionRuntimeViews(rootDir: string): Promi
 export async function loadOpenClawProjectionRuntimeView(input: {
   rootDir: string;
   manifest_id: string;
+  consistency_requirement: ProjectionRuntimeSelectionFilter["consistency_requirement"];
 }): Promise<OpenClawProjectionRuntimeView> {
   return loadProjectionRuntimeView({
     ...input,

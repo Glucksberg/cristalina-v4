@@ -203,6 +203,7 @@ test("Hermes adapter resolves markdown artifacts and closed review state from th
   const view = await loadHermesProjectionRuntimeView({
     rootDir,
     manifest_id: fixture.manifest.id,
+    consistency_requirement: "allow_mixed_state",
   });
 
   const storedMarkdown = await readFile(join(rootDir, fixture.markdownRelativePath), "utf8");

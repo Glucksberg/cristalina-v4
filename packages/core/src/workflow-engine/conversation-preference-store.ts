@@ -3,12 +3,18 @@ import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as relativePosix } from "node:path/posix";
 
 import {
+  DEFAULT_PROJECTION_READ_POLICY_VERSION,
+} from "../adapter-sdk/projection.js";
+import {
   appendAuditChange,
   appendValidationLog,
   type AuditChangeEntry,
   type ValidationLogEntry,
 } from "../audit/log.js";
-import { defaultRuntimeBootstrapProjectionPath } from "../projection-engine/openclaw.js";
+import {
+  defaultRuntimeBootstrapProjectionPath,
+  RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION,
+} from "../projection-engine/openclaw.js";
 import { ValidationError, validateCoreRecord, type ValidationIssue } from "../validation.js";
 import {
   coreRecordPath,
@@ -1416,11 +1422,87 @@ async function resolveStoredProjectionAdapter(
   manifestId: string,
 ): Promise<ProjectionAdapterKind> {
   const manifest = (await loadProjectionManifests(rootDir)).find((record) => record.id === manifestId);
-  if (manifest?.adapter === "openclaw" || manifest?.adapter === "hermes") {
+  if (
+    (manifest?.adapter === "openclaw" || manifest?.adapter === "hermes") &&
+    manifest.projection_profile === "bootstrap" &&
+    manifest.audience === "runtime" &&
+    manifest.read_policy_version === DEFAULT_PROJECTION_READ_POLICY_VERSION &&
+    manifest.compiler_version === RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[manifest.adapter] &&
+    manifest.snapshot_strategy === "mixed_state_tolerant" &&
+    typeof manifest.boundary_note === "string" &&
+    manifest.boundary_note.length > 0 &&
+    manifest.observed_layer_updates
+  ) {
     return manifest.adapter;
   }
 
-  throw new Error(`Projection manifest ${manifestId} does not exist or does not declare a supported adapter`);
+  throw new Error(`Projection manifest ${manifestId} does not exist or does not declare a supported bootstrap contract`);
+}
+
+function assertStoredRuntimeBootstrapProjectionContract(input: {
+  rootDir: string;
+  paths: ConversationPreferenceStorePaths;
+  manifest: ProjectionManifest;
+  artifacts: ProjectionArtifact[];
+  adapter: ProjectionAdapterKind;
+  manifest_id: string;
+  artifact_ids: [string, string, string];
+}): void {
+  const expectedMarkdownPath = relativeStorePath(input.rootDir, input.paths.projection_markdown);
+  const expectedArtifactPaths = new Map<string, string>([
+    [input.artifact_ids[0], `${expectedMarkdownPath}#canon`],
+    [input.artifact_ids[1], `${expectedMarkdownPath}#world`],
+    [input.artifact_ids[2], `${expectedMarkdownPath}#wiki`],
+  ]);
+  const mismatches: string[] = [];
+
+  if (input.manifest.id !== input.manifest_id) mismatches.push("manifest.id");
+  if (input.manifest.adapter !== input.adapter) mismatches.push("manifest.adapter");
+  if (input.manifest.projection_profile !== "bootstrap") mismatches.push("manifest.projection_profile");
+  if (input.manifest.audience !== "runtime") mismatches.push("manifest.audience");
+  if (input.manifest.compiler_version !== RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[input.adapter]) {
+    mismatches.push("manifest.compiler_version");
+  }
+  if (input.manifest.read_policy_version !== DEFAULT_PROJECTION_READ_POLICY_VERSION) {
+    mismatches.push("manifest.read_policy_version");
+  }
+  if (input.manifest.snapshot_strategy !== "mixed_state_tolerant") mismatches.push("manifest.snapshot_strategy");
+  if (typeof input.manifest.boundary_note !== "string" || input.manifest.boundary_note.length === 0) {
+    mismatches.push("manifest.boundary_note");
+  }
+  if (!input.manifest.observed_layer_updates) {
+    mismatches.push("manifest.observed_layer_updates");
+  }
+  if (
+    JSON.stringify(input.manifest.artifact_refs) !== JSON.stringify(input.artifact_ids)
+  ) {
+    mismatches.push("manifest.artifact_refs");
+  }
+  if (input.artifacts.length !== input.artifact_ids.length) {
+    mismatches.push("artifacts.length");
+  }
+
+  const artifactIds = new Set(input.artifacts.map((artifact) => artifact.id));
+  for (const artifactId of input.artifact_ids) {
+    if (!artifactIds.has(artifactId)) {
+      mismatches.push(`artifact:${artifactId}:missing`);
+    }
+  }
+
+  for (const artifact of input.artifacts) {
+    const expectedPath = expectedArtifactPaths.get(artifact.id);
+    if (!expectedPath) {
+      mismatches.push(`artifact:${artifact.id}:unexpected`);
+      continue;
+    }
+    if (artifact.adapter !== input.adapter) mismatches.push(`artifact:${artifact.id}:adapter`);
+    if (artifact.artifact_kind !== "layer_fragment") mismatches.push(`artifact:${artifact.id}:artifact_kind`);
+    if (artifact.path !== expectedPath) mismatches.push(`artifact:${artifact.id}:path`);
+  }
+
+  if (mismatches.length > 0) {
+    throw new Error(`Stored runtime bootstrap projection failed contract checks: ${mismatches.join(", ")}`);
+  }
 }
 
 function writeFlowBaselinePaths(paths: ConversationPreferenceStorePaths): string[] {
@@ -2967,6 +3049,15 @@ async function loadExistingFlow(
     readCoreRecord<ProjectionArtifact>(paths.projection_artifacts.wiki),
   ]);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+  assertStoredRuntimeBootstrapProjectionContract({
+    rootDir,
+    paths,
+    manifest: projection_manifest,
+    artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
+    adapter: projectionAdapterForRuntime(input.source.runtime),
+    manifest_id: input.ids.projection_manifest,
+    artifact_ids: [input.ids.canon_artifact, input.ids.world_artifact, input.ids.wiki_artifact],
+  });
   const validation_issues = [
     source_record,
     intake.observation,
@@ -3483,8 +3574,17 @@ async function ensureReplayableArtifacts(
   try {
     await readFile(paths.wiki_page_markdown, "utf8");
     await readFile(paths.projection_markdown, "utf8");
-    await readProjectionArtifacts(paths);
-    await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+    const projection_artifacts = await readProjectionArtifacts(paths);
+    const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+    assertStoredRuntimeBootstrapProjectionContract({
+      rootDir: resolve(input.rootDir),
+      paths,
+      manifest: projection_manifest,
+      artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
+      adapter: projectionAdapterForRuntime(input.source.runtime),
+      manifest_id: input.ids.projection_manifest,
+      artifact_ids: [input.ids.canon_artifact, input.ids.world_artifact, input.ids.wiki_artifact],
+    });
     return;
   } catch {
     const projection = await buildProjectionFromPersistedFlowSnapshot(resolve(input.rootDir), paths, input, loaded);
@@ -4048,6 +4148,15 @@ export async function applyConversationPreferenceResolutionToStore(
       if (records.contradiction_resolution.status === "applied") {
         const projection_artifacts = await readProjectionArtifacts(paths);
         const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+        assertStoredRuntimeBootstrapProjectionContract({
+          rootDir,
+          paths,
+          manifest: projection_manifest,
+          artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
+          adapter: projectionAdapterForRuntime(input.source.runtime),
+          manifest_id: input.ids.projection_manifest,
+          artifact_ids: [input.ids.canon_artifact, input.ids.world_artifact, input.ids.wiki_artifact],
+        });
 
         return {
           reused: true,
@@ -4327,6 +4436,15 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
   const loaded = await loadAuthoritativeFlow(rootDir, paths);
   const projection_artifacts = await readProjectionArtifacts(paths);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+  assertStoredRuntimeBootstrapProjectionContract({
+    rootDir,
+    paths,
+    manifest: projection_manifest,
+    artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
+    adapter: projectionAdapter,
+    manifest_id: queuePacket.projection_manifest_ref,
+    artifact_ids: projectionArtifactRefs,
+  });
   const flow: ConversationPreferenceStoreResult = {
     reused: true,
     paths,
@@ -4516,6 +4634,15 @@ async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
   const loaded = await loadAuthoritativeFlow(rootDir, paths);
   const projection_artifacts = await readProjectionArtifacts(paths);
   const projection_manifest = await readCoreRecord<ProjectionManifest>(paths.projection_manifest);
+  assertStoredRuntimeBootstrapProjectionContract({
+    rootDir,
+    paths,
+    manifest: projection_manifest,
+    artifacts: projection_artifacts as [ProjectionArtifact, ProjectionArtifact, ProjectionArtifact],
+    adapter: projectionAdapter,
+    manifest_id: queuePacket.projection_manifest_ref,
+    artifact_ids: projectionArtifactRefs,
+  });
 
   return {
     reused: loaded.manual_contradiction_review_queue?.status === "applied",

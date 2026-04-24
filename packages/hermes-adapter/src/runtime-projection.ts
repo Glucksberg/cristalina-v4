@@ -17,6 +17,7 @@ export async function listHermesProjectionRuntimeViews(rootDir: string): Promise
 export async function loadHermesProjectionRuntimeView(input: {
   rootDir: string;
   manifest_id: string;
+  consistency_requirement: ProjectionRuntimeSelectionFilter["consistency_requirement"];
 }): Promise<HermesProjectionRuntimeView> {
   return loadProjectionRuntimeView({
     ...input,
