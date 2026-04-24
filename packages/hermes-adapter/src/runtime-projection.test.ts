@@ -13,11 +13,13 @@ import {
 } from "../../core/dist/test-support/conversation-preference-fixtures.js";
 import {
   compileOpenClawBootstrapProjection,
-  initializeStore,
   listProjectionRuntimeViews,
-  writeCoreRecord,
   type Diagnostic,
 } from "../../core/dist/index.js";
+import {
+  initializeStore,
+  writeCoreRecord,
+} from "../../core/dist/testing.js";
 import {
   buildSymbolicRetrievalFixture,
 } from "../../core/dist/test-support/symbolic-retrieval-fixtures.js";
@@ -28,6 +30,8 @@ import {
   loadLatestHermesProjectionRuntimeView,
 } from "./runtime-projection.js";
 import {
+  expireHermesQueuedConversationPreferenceManualContradictionReview,
+  listHermesConversationPreferenceManualContradictionReviewQueue,
   ratifyHermesQueuedConversationPreference,
   writeHermesConversationPreferenceToStore,
   writeHermesProjectionFeedbackToStore,
@@ -56,6 +60,66 @@ function buildHermesWriteInput(
   };
 }
 
+function buildHermesManualReviewInput(
+  rootDir: string,
+  suffix: string,
+  statement: string,
+): HermesConversationPreferenceWriteInput {
+  return buildHermesWriteInput({
+    rootDir,
+    now: "2026-04-16T04:00:00.000Z",
+    actor: "system:hermes-manual-review-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-manual-review-test",
+      system_scope: "hermes-manual-review-test",
+    },
+    statement,
+    validation_scope: `test:hermes-adapter:manual-review:${suffix}`,
+    ids: {
+      agent_identity: "actor_agent_hermes_manual_shared",
+      owner_identity: "actor_owner_hermes_manual_shared",
+      runtime_instance: "runtime_hermes_manual_shared",
+      runtime_session: "session_hermes_manual_shared",
+      conversation_thread: "thread_hermes_manual_shared",
+      source: `src_hermes_manual_${suffix}`,
+      observation: `obs_hermes_manual_${suffix}`,
+      episode: `ep_hermes_manual_${suffix}`,
+      subject_entity: `ent_subject_hermes_manual_${suffix}`,
+      preference_entity: `ent_preference_hermes_manual_${suffix}`,
+      preference_relation: `rel_preference_hermes_manual_${suffix}`,
+      world_claim: `wcl_hermes_manual_${suffix}`,
+      contradiction: `contra_hermes_manual_${suffix}`,
+      contradiction_resolution: `cres_hermes_manual_${suffix}`,
+      wiki_page: `wpg_hermes_manual_${suffix}`,
+      wiki_claim: `wclm_hermes_manual_${suffix}`,
+      proposal: `prop_hermes_manual_${suffix}`,
+      disposition: `disp_hermes_manual_${suffix}`,
+      ratification: `rat_hermes_manual_${suffix}`,
+      diagnostic: `diag_hermes_manual_${suffix}`,
+      canonical: `mem_hermes_manual_${suffix}`,
+      canon_artifact: `part_hermes_canon_manual_${suffix}`,
+      world_artifact: `part_hermes_world_manual_${suffix}`,
+      wiki_artifact: `part_hermes_wiki_manual_${suffix}`,
+      projection_manifest: `pmf_hermes_manual_${suffix}`,
+    },
+    labels: {
+      agent: "Cristalina Test Agent",
+      owner: "Test Owner",
+      session_objective: "Resolve manual contradiction through the Hermes adapter",
+      session_summary: "Hermes manual review adapter session",
+      thread_summary: "Hermes manual review thread",
+    },
+    source: {
+      source_ref: `runtime/hermes-manual-review#${suffix}`,
+      content_ref: `raw/sources/hermes-manual-review-${suffix}.json`,
+      runtime: "hermes",
+      message: statement,
+      message_refs: [`msg_hermes_manual_${suffix}`],
+    },
+  });
+}
+
 test("Hermes adapter lists and loads pending projection reviews", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-"));
   t.after(async () => {
@@ -72,7 +136,7 @@ test("Hermes adapter lists and loads pending projection reviews", async (t) => {
     markdown_heading: "Hermes Runtime Memory",
     diagnostic_message: "Hermes adapter test review is pending owner authority.",
     provenance_source_ref: "tests/hermes-adapter/runtime-projection",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "2026-04-16.group-interaction",
     owner_identity_ref: "actor_owner_hermes_adapter_test_001",
     runtime_instance_ref: "runtime_hermes_adapter_test_001",
@@ -191,7 +255,7 @@ test("Hermes adapter resolves markdown artifacts and closed review state from th
     markdown_heading: "Hermes Runtime Memory",
     diagnostic_message: "Hermes adapter test review is pending owner authority.",
     provenance_source_ref: "tests/hermes-adapter/runtime-projection",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "2026-04-16.group-interaction",
     owner_identity_ref: "actor_owner_hermes_adapter_test_001",
     runtime_instance_ref: "runtime_hermes_adapter_test_001",
@@ -213,6 +277,58 @@ test("Hermes adapter resolves markdown artifacts and closed review state from th
   assert.equal(view.closed_reviews[0]!.status, "answered");
   assert.equal(view.diagnostics[0]!.id, "diag_hermes_adapter_test_001");
   assert.match(view.markdown, /\(owner_ratification; answered\)/);
+});
+
+test("Hermes adapter can expire manual contradiction reviews through adapter writeback", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-manual-review-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await writeHermesConversationPreferenceToStore(
+    buildHermesManualReviewInput(
+      rootDir,
+      "001",
+      "The user prefers concise answers unless they explicitly ask for depth.",
+    ),
+  );
+  const second = await writeHermesConversationPreferenceToStore(
+    buildHermesManualReviewInput(
+      rootDir,
+      "002",
+      "The user now prefers exhaustive answers by default.",
+    ),
+  );
+
+  assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+  assert.equal(second.records.manual_contradiction_review_queue?.status, "pending");
+
+  const queue = await listHermesConversationPreferenceManualContradictionReviewQueue(rootDir);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0]!.runtime, "hermes");
+
+  const expired = await expireHermesQueuedConversationPreferenceManualContradictionReview({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-16T04:05:00.000Z",
+    actor: "system:hermes-manual-review-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-manual-review-test",
+      system_scope: "hermes-manual-review-test",
+    },
+    validation_scope: "test:hermes-adapter:manual-review:expire",
+  });
+
+  assert.equal(expired.records.contradiction_resolution.status, "rejected");
+  assert.equal(expired.records.manual_contradiction_review_queue?.status, "expired");
+  assert.equal((await listHermesConversationPreferenceManualContradictionReviewQueue(rootDir)).length, 0);
+
+  const latest = await loadLatestHermesProjectionRuntimeView(rootDir, {
+    consistency_requirement: "allow_mixed_state",
+  });
+  assert.ok(latest);
+  assert.match(latest!.markdown, /\(contradiction_manual_review; expired\)/);
 });
 
 test("Hermes adapter forwards authenticated principals through write-through ingress", async (t) => {

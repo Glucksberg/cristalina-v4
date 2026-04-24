@@ -1,18 +1,33 @@
 import {
+  applyQueuedConversationPreferenceManualContradictionReviewToStore,
   expireQueuedConversationPreferenceProposalToStore,
+  expireQueuedConversationPreferenceManualContradictionReviewToStore,
+  listConversationPreferenceManualContradictionReviewQueue,
+  listConversationPreferenceOwnerRatificationQueue,
   ratifyQueuedConversationPreferenceProposalToStore,
   rejectQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
   writePreferenceFeedbackFlowToStore,
   type AuthenticatedPrincipal,
+  type ConversationPreferenceManualContradictionReviewQueueEntry,
+  type ConversationPreferenceOwnerRatificationQueueEntry,
   type ConversationPreferenceQueuedExpirationInput,
+  type ConversationPreferenceQueuedManualContradictionExpirationInput,
+  type ConversationPreferenceQueuedManualContradictionReviewInput,
   type ConversationPreferenceQueuedRatificationInput,
   type ConversationPreferenceQueuedRejectionInput,
+  type ConversationPreferenceResolutionStoreResult,
   type ConversationPreferenceStoreInput,
   type ConversationPreferenceStoreResult,
 } from "../../core/dist/index.js";
 
+const HERMES_RUNTIME = "hermes";
+
 export type HermesAuthenticatedPrincipal = AuthenticatedPrincipal;
+export type HermesConversationPreferenceOwnerRatificationQueueEntry =
+  ConversationPreferenceOwnerRatificationQueueEntry;
+export type HermesConversationPreferenceManualContradictionReviewQueueEntry =
+  ConversationPreferenceManualContradictionReviewQueueEntry;
 
 export interface HermesConversationPreferenceWriteInput
   extends Omit<ConversationPreferenceStoreInput, "intake_kind" | "source" | "authenticated_principal"> {
@@ -27,17 +42,33 @@ export interface HermesProjectionFeedbackWriteInput
 }
 
 export interface HermesQueuedRatificationInput
-  extends Omit<ConversationPreferenceQueuedRatificationInput, "authenticated_principal"> {
+  extends Omit<ConversationPreferenceQueuedRatificationInput, "authenticated_principal" | "expected_runtime"> {
   authenticated_principal: HermesAuthenticatedPrincipal;
 }
 
 export interface HermesQueuedRejectionInput
-  extends Omit<ConversationPreferenceQueuedRejectionInput, "authenticated_principal"> {
+  extends Omit<ConversationPreferenceQueuedRejectionInput, "authenticated_principal" | "expected_runtime"> {
   authenticated_principal: HermesAuthenticatedPrincipal;
 }
 
 export interface HermesQueuedExpirationInput
-  extends Omit<ConversationPreferenceQueuedExpirationInput, "authenticated_principal"> {
+  extends Omit<ConversationPreferenceQueuedExpirationInput, "authenticated_principal" | "expected_runtime"> {
+  authenticated_principal: HermesAuthenticatedPrincipal;
+}
+
+export interface HermesQueuedManualContradictionReviewInput
+  extends Omit<
+    ConversationPreferenceQueuedManualContradictionReviewInput,
+    "authenticated_principal" | "expected_runtime"
+  > {
+  authenticated_principal: HermesAuthenticatedPrincipal;
+}
+
+export interface HermesQueuedManualContradictionExpirationInput
+  extends Omit<
+    ConversationPreferenceQueuedManualContradictionExpirationInput,
+    "authenticated_principal" | "expected_runtime"
+  > {
   authenticated_principal: HermesAuthenticatedPrincipal;
 }
 
@@ -58,7 +89,7 @@ export async function writeHermesConversationPreferenceToStore(
     authenticated_principal,
     source: {
       ...input.source,
-      runtime: "hermes",
+      runtime: HERMES_RUNTIME,
     },
   });
 }
@@ -72,9 +103,23 @@ export async function writeHermesProjectionFeedbackToStore(
     authenticated_principal,
     source: {
       ...input.source,
-      runtime: "hermes",
+      runtime: HERMES_RUNTIME,
     },
   });
+}
+
+export async function listHermesConversationPreferenceOwnerRatificationQueue(
+  rootDir: string,
+): Promise<HermesConversationPreferenceOwnerRatificationQueueEntry[]> {
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  return queue.filter((entry) => entry.runtime === HERMES_RUNTIME);
+}
+
+export async function listHermesConversationPreferenceManualContradictionReviewQueue(
+  rootDir: string,
+): Promise<HermesConversationPreferenceManualContradictionReviewQueueEntry[]> {
+  const queue = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  return queue.filter((entry) => entry.runtime === HERMES_RUNTIME);
 }
 
 export async function ratifyHermesQueuedConversationPreference(
@@ -83,6 +128,7 @@ export async function ratifyHermesQueuedConversationPreference(
   return ratifyQueuedConversationPreferenceProposalToStore({
     ...input,
     authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: HERMES_RUNTIME,
   });
 }
 
@@ -92,6 +138,7 @@ export async function rejectHermesQueuedConversationPreference(
   return rejectQueuedConversationPreferenceProposalToStore({
     ...input,
     authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: HERMES_RUNTIME,
   });
 }
 
@@ -101,5 +148,26 @@ export async function expireHermesQueuedConversationPreference(
   return expireQueuedConversationPreferenceProposalToStore({
     ...input,
     authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: HERMES_RUNTIME,
+  });
+}
+
+export async function applyHermesQueuedConversationPreferenceManualContradictionReview(
+  input: HermesQueuedManualContradictionReviewInput,
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  return applyQueuedConversationPreferenceManualContradictionReviewToStore({
+    ...input,
+    authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: HERMES_RUNTIME,
+  });
+}
+
+export async function expireHermesQueuedConversationPreferenceManualContradictionReview(
+  input: HermesQueuedManualContradictionExpirationInput,
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  return expireQueuedConversationPreferenceManualContradictionReviewToStore({
+    ...input,
+    authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: HERMES_RUNTIME,
   });
 }

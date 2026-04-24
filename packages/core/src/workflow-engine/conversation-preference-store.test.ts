@@ -956,6 +956,19 @@ test("writeConversationPreferenceFlowToStore rejects reuse when raw source paylo
   });
 
   const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_queued_runtime_boundary_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
   await writeConversationPreferenceFlowToStore(input);
 
   await assert.rejects(
@@ -1732,17 +1745,29 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   assert.equal(applied.records.contradiction_resolution.applied_at, "2026-04-12T01:05:00.000Z");
   assert.equal(applied.records.existing_world_claim.temporal_state?.temporal_status, "historical");
   assert.equal(applied.records.existing_world_claim.temporal_state?.valid_to, "2026-04-12T01:00:00.000Z");
-  assert.equal(applied.records.canonical_record, undefined);
+  assert.equal(applied.records.ratification_record.decision, "approved");
+  assert.equal(applied.records.intake.proposal.operation, "revise");
+  assert.equal(applied.records.canonical_record?.id, "mem_test_apply_002");
+  assert.equal(applied.records.canonical_record?.governance_state, "ratified");
+  assert.equal(applied.records.canonical_record?.supersedes_ref, "mem_test_001");
+  const canonicalRecords = await loadCanonicalRecords(rootDir);
+  const oldCanonical = canonicalRecords.find((record) => record.id === "mem_test_001");
+  assert.equal(oldCanonical?.governance_state, "superseded");
+  assert.equal(oldCanonical?.temporal_state?.temporal_status, "historical");
+  assert.equal(oldCanonical?.superseded_by_ref, "mem_test_apply_002");
 
   const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
   assert.match(projectionMarkdown, /Compiled at: 2026-04-12T01:05:00.000Z/);
   assert.match(projectionMarkdown, /\[contradiction:contra_test_apply_002\] \(resolved\)/);
   assert.match(projectionMarkdown, /\[contradiction-resolution:cres_test_apply_002\] \(applied\) coexist_temporally/);
+  assert.doesNotMatch(projectionMarkdown, /\[canon:mem_test_001\] \(ratified; active\)/);
+  assert.match(projectionMarkdown, /\[canon:mem_test_apply_002\] \(ratified; active\)/);
   assert.match(projectionMarkdown, /\[world:wcl_test_001\] \(disputed; historical\)/);
   assert.match(projectionMarkdown, /\[world:wcl_test_apply_002\] \(inferred; active\)/);
 
   const reloaded = await readConversationPreferenceFlowResult(secondInput);
   assert.equal(reloaded?.records.contradiction_resolution?.status, "applied");
+  assert.equal(reloaded?.records.canonical_record?.id, "mem_test_apply_002");
   const projectionManifestSource = await readFile(applied.paths.projection_manifest, "utf8");
   assert.match(projectionManifestSource, /"created_at": "2026-04-12T01:00:00.000Z"/);
   assert.match(projectionManifestSource, /"updated_at": "2026-04-12T01:05:00.000Z"/);
@@ -1965,6 +1990,94 @@ test("manual contradiction review queue lists pending reviews and can apply an e
 
   const queueAfter = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
   assert.deepEqual(queueAfter, []);
+});
+
+test("queued conversation preference actions reject mismatched adapter runtime expectations", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-queued-runtime-boundary-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildInput(rootDir);
+  input.statement = "The owner prefers strategic summaries on Fridays.";
+  input.source.message = "A participant says the owner prefers strategic summaries on Fridays.";
+  input.source.speaker_ref = "actor_external_person_queued_runtime_boundary_001";
+  input.semantic_profile = {
+    subject_entity_kind: "owner",
+    subject_authority_role: "owner",
+    subject_label: "Test Owner",
+    wiki_title: "Owner Interaction Preferences",
+    wiki_path: "wiki/pages/owner-interaction-preferences.md",
+    preference_topic_label: "Owner Interaction Preferences",
+    relation_type: "expressed_preference",
+    proposal_reason: "Participant reported an owner preference that requires owner ratification.",
+  };
+  await writeConversationPreferenceFlowToStore(input);
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  assert.equal(queue[0]!.runtime, "openclaw");
+
+  await assert.rejects(
+    () =>
+      ratifyQueuedConversationPreferenceProposalToStore({
+        rootDir,
+        queue_id: queue[0]!.queue_id,
+        now: "2026-04-12T00:06:00.000Z",
+        actor: input.identity_context!.ids.owner_identity!,
+        authenticated_principal: ownerPrincipal(input),
+        owner_actor_ref: input.identity_context!.ids.owner_identity!,
+        validation_scope: "test:conversation-preference:queued-runtime-boundary",
+        expected_runtime: "hermes",
+      }),
+    /belongs to runtime openclaw and cannot be handled as hermes/,
+  );
+});
+
+test("manual contradiction review promotes a winning candidate into canon", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput = cloneInputWithSuffix(
+    rootDir,
+    "manual_supersede_existing",
+    "The user now prefers exhaustive answers by default.",
+  );
+  secondInput.now = firstInput.now;
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+
+  const queue = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  assert.equal(queue.length, 1);
+
+  const applied = await applyQueuedConversationPreferenceManualContradictionReviewToStore({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-12T00:07:00.000Z",
+    actor: "system:manual-contradiction-review",
+    authenticated_principal: systemPrincipal("system:manual-contradiction-review"),
+    strategy: "supersede_existing",
+    validation_scope: "test:conversation-preference:manual-contradiction-review-canon",
+  });
+
+  assert.equal(applied.records.contradiction_resolution.status, "applied");
+  assert.equal(applied.records.ratification_record.decision, "approved");
+  assert.equal(applied.records.intake.proposal.operation, "revise");
+  assert.equal(applied.records.canonical_record?.id, secondInput.ids.canonical);
+  assert.equal(applied.records.canonical_record?.supersedes_ref, firstInput.ids.canonical);
+
+  const canonicalRecords = await loadCanonicalRecords(rootDir);
+  const oldCanonical = canonicalRecords.find((record) => record.id === firstInput.ids.canonical);
+  assert.equal(oldCanonical?.governance_state, "superseded");
+  assert.equal(oldCanonical?.superseded_by_ref, secondInput.ids.canonical);
+
+  const projectionMarkdown = await readFile(applied.paths.projection_markdown, "utf8");
+  assert.doesNotMatch(projectionMarkdown, new RegExp(`\\[canon:${firstInput.ids.canonical}\\] \\(ratified; active\\)`));
+  assert.match(projectionMarkdown, new RegExp(`\\[canon:${secondInput.ids.canonical}\\] \\(ratified; active\\)`));
 });
 
 test("manual contradiction review queue rejects calls without an authenticated owner or system principal", async (t) => {

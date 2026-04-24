@@ -23,6 +23,8 @@ export type ProjectionConsistencyRequirement = "allow_mixed_state" | "require_ch
 
 export interface ProjectionRuntimeSummary {
   manifest_id: string;
+  projection_profile: string;
+  audience: string;
   compiled_at: string;
   read_policy_version: string;
   compiler_version: string;
@@ -73,6 +75,25 @@ export interface ProjectionRuntimeRetrievalContext {
   suppression_reasons: RetrievalSuppressionReason[];
   traces: ProjectionRetrievalTrace[];
   diagnostics: Diagnostic[];
+}
+
+function isRuntimeBootstrapProjectionManifest(
+  manifest: Pick<ProjectionManifest, "projection_profile" | "audience">,
+): boolean {
+  return manifest.projection_profile === "bootstrap" && manifest.audience === "runtime";
+}
+
+function assertRuntimeBootstrapProjectionManifest(
+  manifest: Pick<ProjectionManifest, "id" | "projection_profile" | "audience">,
+  adapter: ProjectionAdapterKind,
+): void {
+  if (isRuntimeBootstrapProjectionManifest(manifest)) {
+    return;
+  }
+
+  throw new Error(
+    `${adapter} projection manifest ${manifest.id} does not declare a runtime bootstrap projection contract; expected projection_profile=bootstrap and audience=runtime`,
+  );
 }
 
 function manifestsShareSelectionContext(
@@ -325,6 +346,7 @@ export async function listProjectionRuntimeViews(
   return manifests
     .filter((manifest) =>
       manifest.adapter === adapter &&
+      isRuntimeBootstrapProjectionManifest(manifest) &&
       matchesProjectionRuntimeFilter(manifest, filter) &&
       matchesProjectionConsistencyRequirement(manifest, filter?.consistency_requirement)
     )
@@ -336,6 +358,8 @@ export async function listProjectionRuntimeViews(
 
       return {
         manifest_id: manifest.id,
+        projection_profile: manifest.projection_profile,
+        audience: manifest.audience,
         compiled_at: manifest.updated_at ?? manifest.created_at,
         read_policy_version: manifest.read_policy_version,
         compiler_version: manifest.compiler_version,
@@ -371,6 +395,7 @@ export async function loadProjectionRuntimeView(input: {
   if (!manifest) {
     throw new Error(`${input.adapter} projection manifest ${input.manifest_id} does not exist`);
   }
+  assertRuntimeBootstrapProjectionManifest(manifest, input.adapter);
   assertProjectionConsistencyRequirement(manifest, input.adapter, consistency_requirement);
 
   const [artifacts, diagnostics, reviews] = await Promise.all([

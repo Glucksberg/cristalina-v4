@@ -6,11 +6,12 @@ import test from "node:test";
 
 import {
   compileOpenClawBootstrapProjection,
-  initializeStore,
-  listConversationPreferenceOwnerRatificationQueue,
-  writeCoreRecord,
   type Diagnostic,
 } from "../../core/dist/index.js";
+import {
+  initializeStore,
+  writeCoreRecord,
+} from "../../core/dist/testing.js";
 import {
   buildSymbolicRetrievalFixture,
 } from "../../core/dist/test-support/symbolic-retrieval-fixtures.js";
@@ -25,7 +26,10 @@ import {
   loadOpenClawProjectionRuntimeView,
 } from "./runtime-projection.js";
 import {
+  applyOpenClawQueuedConversationPreferenceManualContradictionReview,
   expireOpenClawQueuedConversationPreference,
+  listOpenClawConversationPreferenceManualContradictionReviewQueue,
+  listOpenClawConversationPreferenceOwnerRatificationQueue,
   ratifyOpenClawQueuedConversationPreference,
   writeOpenClawConversationPreferenceToStore,
   type OpenClawAuthenticatedPrincipal,
@@ -51,6 +55,66 @@ function buildOpenClawWriteInput(
     authenticated_principal: input.authenticated_principal,
     source,
   };
+}
+
+function buildOpenClawManualReviewInput(
+  rootDir: string,
+  suffix: string,
+  statement: string,
+): OpenClawConversationPreferenceWriteInput {
+  return buildOpenClawWriteInput({
+    rootDir,
+    now: "2026-04-16T04:00:00.000Z",
+    actor: "system:openclaw-manual-review-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:openclaw-manual-review-test",
+      system_scope: "openclaw-manual-review-test",
+    },
+    statement,
+    validation_scope: `test:openclaw-adapter:manual-review:${suffix}`,
+    ids: {
+      agent_identity: "actor_agent_openclaw_manual_shared",
+      owner_identity: "actor_owner_openclaw_manual_shared",
+      runtime_instance: "runtime_openclaw_manual_shared",
+      runtime_session: "session_openclaw_manual_shared",
+      conversation_thread: "thread_openclaw_manual_shared",
+      source: `src_openclaw_manual_${suffix}`,
+      observation: `obs_openclaw_manual_${suffix}`,
+      episode: `ep_openclaw_manual_${suffix}`,
+      subject_entity: `ent_subject_openclaw_manual_${suffix}`,
+      preference_entity: `ent_preference_openclaw_manual_${suffix}`,
+      preference_relation: `rel_preference_openclaw_manual_${suffix}`,
+      world_claim: `wcl_openclaw_manual_${suffix}`,
+      contradiction: `contra_openclaw_manual_${suffix}`,
+      contradiction_resolution: `cres_openclaw_manual_${suffix}`,
+      wiki_page: `wpg_openclaw_manual_${suffix}`,
+      wiki_claim: `wclm_openclaw_manual_${suffix}`,
+      proposal: `prop_openclaw_manual_${suffix}`,
+      disposition: `disp_openclaw_manual_${suffix}`,
+      ratification: `rat_openclaw_manual_${suffix}`,
+      diagnostic: `diag_openclaw_manual_${suffix}`,
+      canonical: `mem_openclaw_manual_${suffix}`,
+      canon_artifact: `part_openclaw_canon_manual_${suffix}`,
+      world_artifact: `part_openclaw_world_manual_${suffix}`,
+      wiki_artifact: `part_openclaw_wiki_manual_${suffix}`,
+      projection_manifest: `pmf_openclaw_manual_${suffix}`,
+    },
+    labels: {
+      agent: "Cristalina Test Agent",
+      owner: "Test Owner",
+      session_objective: "Resolve manual contradiction through the OpenClaw adapter",
+      session_summary: "OpenClaw manual review adapter session",
+      thread_summary: "OpenClaw manual review thread",
+    },
+    source: {
+      source_ref: `runtime/openclaw-manual-review#${suffix}`,
+      content_ref: `raw/sources/openclaw-manual-review-${suffix}.json`,
+      runtime: "openclaw",
+      message: statement,
+      message_refs: [`msg_openclaw_manual_${suffix}`],
+    },
+  });
 }
 
 test("OpenClaw adapter exposes pending owner review items from the latest projection", async (t) => {
@@ -279,7 +343,7 @@ test("OpenClaw adapter exposes closed owner review items after queue ratificatio
     },
   });
   const first = await writeOpenClawConversationPreferenceToStore(input);
-  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  const queue = await listOpenClawConversationPreferenceOwnerRatificationQueue(rootDir);
   await ratifyOpenClawQueuedConversationPreference({
     rootDir,
     queue_id: queue[0]!.queue_id,
@@ -304,6 +368,59 @@ test("OpenClaw adapter exposes closed owner review items after queue ratificatio
   assert.equal(view.closed_reviews[0]!.status, "applied");
   assert.match(view.markdown, /## Review Trace/);
   assert.match(view.markdown, /\(owner_ratification; applied\)/);
+});
+
+test("OpenClaw adapter can close manual contradiction reviews through adapter writeback", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-openclaw-adapter-manual-review-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  await writeOpenClawConversationPreferenceToStore(
+    buildOpenClawManualReviewInput(
+      rootDir,
+      "001",
+      "The user prefers concise answers unless they explicitly ask for depth.",
+    ),
+  );
+  const second = await writeOpenClawConversationPreferenceToStore(
+    buildOpenClawManualReviewInput(
+      rootDir,
+      "002",
+      "The user now prefers exhaustive answers by default.",
+    ),
+  );
+
+  assert.equal(second.records.contradiction_resolution?.strategy, "manual_review");
+  assert.equal(second.records.manual_contradiction_review_queue?.status, "pending");
+
+  const queue = await listOpenClawConversationPreferenceManualContradictionReviewQueue(rootDir);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0]!.runtime, "openclaw");
+
+  const applied = await applyOpenClawQueuedConversationPreferenceManualContradictionReview({
+    rootDir,
+    queue_id: queue[0]!.queue_id,
+    now: "2026-04-16T04:05:00.000Z",
+    actor: "system:openclaw-manual-review-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:openclaw-manual-review-test",
+      system_scope: "openclaw-manual-review-test",
+    },
+    strategy: "supersede_existing",
+    validation_scope: "test:openclaw-adapter:manual-review:apply",
+  });
+
+  assert.equal(applied.records.contradiction_resolution.status, "applied");
+  assert.equal(applied.records.manual_contradiction_review_queue?.status, "applied");
+  assert.equal((await listOpenClawConversationPreferenceManualContradictionReviewQueue(rootDir)).length, 0);
+
+  const latest = await loadLatestOpenClawProjectionRuntimeView(rootDir, {
+    consistency_requirement: "allow_mixed_state",
+  });
+  assert.ok(latest);
+  assert.match(latest!.markdown, /\(contradiction_manual_review; applied\)/);
 });
 
 test("OpenClaw adapter requires authenticated owner authority for owner-scoped claims and allows explicit system expiration", async (t) => {
@@ -377,7 +494,7 @@ test("OpenClaw adapter requires authenticated owner authority for owner-scoped c
   assert.equal(result.records.intake.proposal.promotion_requirement, "owner_ratification_required");
   assert.equal(result.records.ratification_record.decision, "deferred");
 
-  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  const queue = await listOpenClawConversationPreferenceOwnerRatificationQueue(rootDir);
   const expired = await expireOpenClawQueuedConversationPreference({
     rootDir,
     queue_id: queue[0]!.queue_id,

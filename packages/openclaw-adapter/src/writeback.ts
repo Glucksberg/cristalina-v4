@@ -1,18 +1,33 @@
 import {
+  applyQueuedConversationPreferenceManualContradictionReviewToStore,
   expireQueuedConversationPreferenceProposalToStore,
+  expireQueuedConversationPreferenceManualContradictionReviewToStore,
+  listConversationPreferenceManualContradictionReviewQueue,
+  listConversationPreferenceOwnerRatificationQueue,
   ratifyQueuedConversationPreferenceProposalToStore,
   rejectQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
   writePreferenceFeedbackFlowToStore,
   type AuthenticatedPrincipal,
+  type ConversationPreferenceManualContradictionReviewQueueEntry,
+  type ConversationPreferenceOwnerRatificationQueueEntry,
   type ConversationPreferenceQueuedExpirationInput,
+  type ConversationPreferenceQueuedManualContradictionExpirationInput,
+  type ConversationPreferenceQueuedManualContradictionReviewInput,
   type ConversationPreferenceQueuedRatificationInput,
   type ConversationPreferenceQueuedRejectionInput,
+  type ConversationPreferenceResolutionStoreResult,
   type ConversationPreferenceStoreInput,
   type ConversationPreferenceStoreResult,
 } from "../../core/dist/index.js";
 
+const OPENCLAW_RUNTIME = "openclaw";
+
 export type OpenClawAuthenticatedPrincipal = AuthenticatedPrincipal;
+export type OpenClawConversationPreferenceOwnerRatificationQueueEntry =
+  ConversationPreferenceOwnerRatificationQueueEntry;
+export type OpenClawConversationPreferenceManualContradictionReviewQueueEntry =
+  ConversationPreferenceManualContradictionReviewQueueEntry;
 
 export interface OpenClawConversationPreferenceWriteInput
   extends Omit<ConversationPreferenceStoreInput, "intake_kind" | "source" | "authenticated_principal"> {
@@ -27,17 +42,33 @@ export interface OpenClawProjectionFeedbackWriteInput
 }
 
 export interface OpenClawQueuedRatificationInput
-  extends Omit<ConversationPreferenceQueuedRatificationInput, "authenticated_principal"> {
+  extends Omit<ConversationPreferenceQueuedRatificationInput, "authenticated_principal" | "expected_runtime"> {
   authenticated_principal: OpenClawAuthenticatedPrincipal;
 }
 
 export interface OpenClawQueuedRejectionInput
-  extends Omit<ConversationPreferenceQueuedRejectionInput, "authenticated_principal"> {
+  extends Omit<ConversationPreferenceQueuedRejectionInput, "authenticated_principal" | "expected_runtime"> {
   authenticated_principal: OpenClawAuthenticatedPrincipal;
 }
 
 export interface OpenClawQueuedExpirationInput
-  extends Omit<ConversationPreferenceQueuedExpirationInput, "authenticated_principal"> {
+  extends Omit<ConversationPreferenceQueuedExpirationInput, "authenticated_principal" | "expected_runtime"> {
+  authenticated_principal: OpenClawAuthenticatedPrincipal;
+}
+
+export interface OpenClawQueuedManualContradictionReviewInput
+  extends Omit<
+    ConversationPreferenceQueuedManualContradictionReviewInput,
+    "authenticated_principal" | "expected_runtime"
+  > {
+  authenticated_principal: OpenClawAuthenticatedPrincipal;
+}
+
+export interface OpenClawQueuedManualContradictionExpirationInput
+  extends Omit<
+    ConversationPreferenceQueuedManualContradictionExpirationInput,
+    "authenticated_principal" | "expected_runtime"
+  > {
   authenticated_principal: OpenClawAuthenticatedPrincipal;
 }
 
@@ -58,7 +89,7 @@ export async function writeOpenClawConversationPreferenceToStore(
     authenticated_principal,
     source: {
       ...input.source,
-      runtime: "openclaw",
+      runtime: OPENCLAW_RUNTIME,
     },
   });
 }
@@ -72,9 +103,23 @@ export async function writeOpenClawProjectionFeedbackToStore(
     authenticated_principal,
     source: {
       ...input.source,
-      runtime: "openclaw",
+      runtime: OPENCLAW_RUNTIME,
     },
   });
+}
+
+export async function listOpenClawConversationPreferenceOwnerRatificationQueue(
+  rootDir: string,
+): Promise<OpenClawConversationPreferenceOwnerRatificationQueueEntry[]> {
+  const queue = await listConversationPreferenceOwnerRatificationQueue(rootDir);
+  return queue.filter((entry) => entry.runtime === OPENCLAW_RUNTIME);
+}
+
+export async function listOpenClawConversationPreferenceManualContradictionReviewQueue(
+  rootDir: string,
+): Promise<OpenClawConversationPreferenceManualContradictionReviewQueueEntry[]> {
+  const queue = await listConversationPreferenceManualContradictionReviewQueue(rootDir);
+  return queue.filter((entry) => entry.runtime === OPENCLAW_RUNTIME);
 }
 
 export async function ratifyOpenClawQueuedConversationPreference(
@@ -83,6 +128,7 @@ export async function ratifyOpenClawQueuedConversationPreference(
   return ratifyQueuedConversationPreferenceProposalToStore({
     ...input,
     authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: OPENCLAW_RUNTIME,
   });
 }
 
@@ -92,6 +138,7 @@ export async function rejectOpenClawQueuedConversationPreference(
   return rejectQueuedConversationPreferenceProposalToStore({
     ...input,
     authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: OPENCLAW_RUNTIME,
   });
 }
 
@@ -101,5 +148,26 @@ export async function expireOpenClawQueuedConversationPreference(
   return expireQueuedConversationPreferenceProposalToStore({
     ...input,
     authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: OPENCLAW_RUNTIME,
+  });
+}
+
+export async function applyOpenClawQueuedConversationPreferenceManualContradictionReview(
+  input: OpenClawQueuedManualContradictionReviewInput,
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  return applyQueuedConversationPreferenceManualContradictionReviewToStore({
+    ...input,
+    authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: OPENCLAW_RUNTIME,
+  });
+}
+
+export async function expireOpenClawQueuedConversationPreferenceManualContradictionReview(
+  input: OpenClawQueuedManualContradictionExpirationInput,
+): Promise<ConversationPreferenceResolutionStoreResult> {
+  return expireQueuedConversationPreferenceManualContradictionReviewToStore({
+    ...input,
+    authenticated_principal: requireAuthenticatedPrincipal(input.authenticated_principal),
+    expected_runtime: OPENCLAW_RUNTIME,
   });
 }

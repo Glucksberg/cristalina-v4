@@ -9,7 +9,7 @@ import {
   loadLatestProjectionRuntimeView,
   loadProjectionRuntimeView,
 } from "./runtime-projection.js";
-import { createProjectionManifest } from "./projection.js";
+import { createProjectionArtifact, createProjectionManifest } from "./projection.js";
 import {
   listConversationPreferenceOwnerRatificationQueue,
   ratifyQueuedConversationPreferenceProposalToStore,
@@ -221,6 +221,116 @@ test("runtime projection helper exposes retrieval context from projection manife
   assert.match(view.markdown, /## Retrieval/);
 });
 
+test("runtime projection helper excludes non-bootstrap manifests for the same adapter context", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-profile-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const now = "2026-04-23T16:00:00.000Z";
+  const identityContext = {
+    owner_identity_ref: "actor_owner_runtime_profile_001",
+    runtime_instance_ref: "runtime_runtime_profile_001",
+    runtime_session_ref: "session_runtime_profile_001",
+    conversation_thread_ref: "thread_runtime_profile_001",
+  };
+  const bootstrapPath = "derived/openclaw/pmf_openclaw_runtime_profile_bootstrap/bootstrap-memory.md";
+  const bootstrapProjection = compileOpenClawBootstrapProjection({
+    now,
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+    projection_path: bootstrapPath,
+    canonical_records: [],
+    world_claims: [],
+    wiki_pages: [],
+    wiki_claims: [],
+    identity_context: identityContext,
+    ids: {
+      canon_artifact: "part_openclaw_runtime_profile_bootstrap_canon",
+      world_artifact: "part_openclaw_runtime_profile_bootstrap_world",
+      wiki_artifact: "part_openclaw_runtime_profile_bootstrap_wiki",
+      manifest: "pmf_openclaw_runtime_profile_bootstrap",
+    },
+  });
+
+  await initializeStore(rootDir, now);
+  await mkdir(join(rootDir, "derived/openclaw/pmf_openclaw_runtime_profile_bootstrap"), { recursive: true });
+  await writeFile(join(rootDir, bootstrapPath), bootstrapProjection.markdown, "utf8");
+  await Promise.all([
+    ...bootstrapProjection.artifacts.map((artifact) => writeCoreRecord(rootDir, artifact)),
+    writeCoreRecord(rootDir, bootstrapProjection.manifest),
+  ]);
+
+  const sessionPackPath = "derived/openclaw/session-packs/session_runtime_profile_001/session-pack.md";
+  const sessionPackArtifact = createProjectionArtifact({
+    id: "part_openclaw_runtime_profile_session_pack",
+    adapter: "openclaw",
+    artifact_kind: "session_resume_markdown",
+    path: sessionPackPath,
+    source_layer: "runtime",
+    authoritative_home: "runtime",
+    upstream_refs: ["chkpt_runtime_profile_001"],
+    now: "2026-04-23T16:01:00.000Z",
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+  });
+  const sessionPackManifest = createProjectionManifest({
+    id: "pmf_openclaw_runtime_profile_session_pack",
+    adapter: "openclaw",
+    projection_profile: "session_resume_v2",
+    audience: "runtime_resume",
+    read_policy_version: "projection-read-v2",
+    compiler_version: "session_resume_v2.compiler.v1",
+    owner_identity_ref: identityContext.owner_identity_ref,
+    runtime_instance_ref: identityContext.runtime_instance_ref,
+    runtime_session_ref: identityContext.runtime_session_ref,
+    conversation_thread_ref: identityContext.conversation_thread_ref,
+    source_checkpoint_ref: "chkpt_runtime_profile_001",
+    continuity_epoch: "epoch_runtime_profile_001",
+    generation: 2,
+    snapshot_strategy: "checkpoint_consistent",
+    context_refs: [
+      identityContext.owner_identity_ref,
+      identityContext.runtime_instance_ref,
+      identityContext.runtime_session_ref,
+      identityContext.conversation_thread_ref,
+    ],
+    artifact_refs: [sessionPackArtifact.id],
+    upstream_refs: ["chkpt_runtime_profile_001"],
+    now: "2026-04-23T16:01:00.000Z",
+    visibility_state: {
+      privacy_scope: "shareable",
+    },
+  });
+  await mkdir(join(rootDir, "derived/openclaw/session-packs/session_runtime_profile_001"), { recursive: true });
+  await writeFile(join(rootDir, sessionPackPath), "# Session Resume Pack\n", "utf8");
+  await Promise.all([
+    writeCoreRecord(rootDir, sessionPackArtifact),
+    writeCoreRecord(rootDir, sessionPackManifest),
+  ]);
+
+  const latest = await loadLatestProjectionRuntimeView(rootDir, "openclaw", {
+    consistency_requirement: "allow_mixed_state",
+    ...identityContext,
+  });
+
+  assert.ok(latest);
+  assert.equal(latest!.manifest.id, bootstrapProjection.manifest.id);
+  assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw", identityContext)).length, 1);
+  await assert.rejects(
+    () =>
+      loadProjectionRuntimeView({
+        rootDir,
+        manifest_id: sessionPackManifest.id,
+        adapter: "openclaw",
+        consistency_requirement: "allow_mixed_state",
+      }),
+    /does not declare a runtime bootstrap projection contract/,
+  );
+});
+
 test("runtime projection helper resolves Hermes projection markdown from manifest artifacts", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-runtime-projection-"));
   t.after(async () => {
@@ -237,7 +347,7 @@ test("runtime projection helper resolves Hermes projection markdown from manifes
     markdown_heading: "Hermes Runtime Memory",
     diagnostic_message: "Hermes runtime projection helper test review is pending owner authority.",
     provenance_source_ref: "tests/core/runtime-projection",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "2026-04-17.group-interaction",
     owner_identity_ref: "actor_owner_hermes_core_runtime_projection_test_001",
     runtime_instance_ref: "runtime_hermes_core_runtime_projection_test_001",
@@ -434,7 +544,7 @@ test("runtime projection helper requires identity context when one thread has pr
     markdown_heading: "Hermes Runtime Memory A",
     diagnostic_message: "Identity ambiguity fixture A.",
     provenance_source_ref: "tests/runtime-projection/identity-ambiguity-a",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     actor_identity_ref: "actor_agent_identity_ambiguity_a",
     owner_identity_ref: "actor_owner_identity_ambiguity_shared",
@@ -455,7 +565,7 @@ test("runtime projection helper requires identity context when one thread has pr
     markdown_heading: "Hermes Runtime Memory B",
     diagnostic_message: "Identity ambiguity fixture B.",
     provenance_source_ref: "tests/runtime-projection/identity-ambiguity-b",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     actor_identity_ref: "actor_agent_identity_ambiguity_b",
     owner_identity_ref: "actor_owner_identity_ambiguity_shared",
@@ -501,7 +611,7 @@ test("runtime projection helper prefers higher generation within the same contin
     markdown_heading: "Hermes Runtime Memory Generation 1",
     diagnostic_message: "Generation 1 fixture.",
     provenance_source_ref: "tests/runtime-projection/generation-001",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_generation_shared",
     runtime_instance_ref: "runtime_generation_shared",
@@ -526,7 +636,7 @@ test("runtime projection helper prefers higher generation within the same contin
     markdown_heading: "Hermes Runtime Memory Generation 2",
     diagnostic_message: "Generation 2 fixture.",
     provenance_source_ref: "tests/runtime-projection/generation-002",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_generation_shared",
     runtime_instance_ref: "runtime_generation_shared",
@@ -583,7 +693,7 @@ test("runtime projection helper requires explicit consistency intent and prefers
     markdown_heading: "Hermes Runtime Memory Consistent",
     diagnostic_message: "Checkpoint-consistent fixture.",
     provenance_source_ref: "tests/runtime-projection/consistency-old",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_consistency_shared",
     runtime_instance_ref: "runtime_consistency_shared",
@@ -608,7 +718,7 @@ test("runtime projection helper requires explicit consistency intent and prefers
     markdown_heading: "Hermes Runtime Memory Mixed",
     diagnostic_message: "Mixed-state tolerant fixture.",
     provenance_source_ref: "tests/runtime-projection/consistency-new",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_consistency_shared",
     runtime_instance_ref: "runtime_consistency_shared",
@@ -681,7 +791,7 @@ test("runtime projection helper requires explicit consistency intent and prefers
     markdown_heading: "Hermes Runtime Memory Mixed Only",
     diagnostic_message: "Only mixed-state fixture.",
     provenance_source_ref: "tests/runtime-projection/consistency-only-mixed",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_consistency_only_mixed",
     runtime_instance_ref: "runtime_consistency_only_mixed",
@@ -731,7 +841,7 @@ test("runtime projection helper can require a compiler version for the selected 
     markdown_heading: "Hermes Runtime Memory Compiler Old",
     diagnostic_message: "Older compiler fixture.",
     provenance_source_ref: "tests/runtime-projection/compiler-old",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_compiler_shared",
     runtime_instance_ref: "runtime_compiler_shared",
@@ -752,7 +862,7 @@ test("runtime projection helper can require a compiler version for the selected 
     markdown_heading: "Hermes Runtime Memory Compiler New",
     diagnostic_message: "Newer compiler fixture.",
     provenance_source_ref: "tests/runtime-projection/compiler-new",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_compiler_shared",
     runtime_instance_ref: "runtime_compiler_shared",
@@ -814,7 +924,7 @@ test("runtime projection helper can require a read policy version for the select
     markdown_heading: "Hermes Runtime Memory Policy Old",
     diagnostic_message: "Older policy fixture.",
     provenance_source_ref: "tests/runtime-projection/policy-old",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v1",
     owner_identity_ref: "actor_owner_policy_shared",
     runtime_instance_ref: "runtime_policy_shared",
@@ -835,7 +945,7 @@ test("runtime projection helper can require a read policy version for the select
     markdown_heading: "Hermes Runtime Memory Policy New",
     diagnostic_message: "Newer policy fixture.",
     provenance_source_ref: "tests/runtime-projection/policy-new",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     read_policy_version: "projection-read-v2",
     owner_identity_ref: "actor_owner_policy_shared",
     runtime_instance_ref: "runtime_policy_shared",
@@ -924,7 +1034,7 @@ test("runtime projection helper rejects stored projection artifacts that escape 
     createProjectionManifest({
       id: "pmf_hermes_escape_test_001",
       adapter: "hermes",
-      projection_profile: "hermes/runtime-bootstrap",
+      projection_profile: "bootstrap",
       audience: "runtime",
       read_policy_version: "projection-read-v2",
       compiler_version: "hermes.runtime.v1",

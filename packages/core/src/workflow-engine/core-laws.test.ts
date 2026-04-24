@@ -1644,7 +1644,7 @@ test("projection manifests require complete lineage markers for checkpoint-consi
       evidence_refs: ["mem_test_001"],
     },
     adapter: "hermes",
-    projection_profile: "hermes/runtime-bootstrap",
+    projection_profile: "bootstrap",
     audience: "runtime",
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     compiler_version: "hermes.runtime.v1",
