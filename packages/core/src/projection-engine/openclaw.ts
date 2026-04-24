@@ -1,4 +1,5 @@
 import {
+  DEFAULT_MIXED_STATE_BOUNDARY_NOTE,
   DEFAULT_PROJECTION_READ_POLICY_VERSION,
   filterProjectionRecords,
   partitionProjectionClaimsForRuntime,
@@ -54,6 +55,16 @@ export function defaultHermesBootstrapProjectionPath(manifestId: string): string
 
 function uniqueRefs(...groups: string[][]): string[] {
   return [...new Set(groups.flat())];
+}
+
+function latestObservedAt(records: Array<{ created_at: string; updated_at?: string | null }>): string | null {
+  if (records.length === 0) {
+    return null;
+  }
+
+  return records
+    .map((record) => record.updated_at ?? record.created_at)
+    .reduce((latest, current) => (current > latest ? current : latest));
 }
 
 function renderCanonSection(records: CanonicalMemoryObject[]): string[] {
@@ -512,6 +523,33 @@ export function compileOpenClawBootstrapProjection(input: OpenClawBootstrapCompi
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     compiler_version: RUNTIME_BOOTSTRAP_PROJECTION_COMPILER_VERSION[adapter],
     snapshot_strategy: "mixed_state_tolerant",
+    boundary_note: DEFAULT_MIXED_STATE_BOUNDARY_NOTE,
+    observed_layer_updates: {
+      raw: null,
+      runtime: latestObservedAt([
+        ...(actorIdentityFilter?.included ?? []),
+        ...(ownerIdentityFilter?.included ?? []),
+        ...(runtimeInstanceFilter?.included ?? []),
+        ...(runtimeSessionFilter?.included ?? []),
+        ...(conversationThreadFilter?.included ?? []),
+      ]),
+      world: latestObservedAt([
+        ...episodes,
+        ...entities,
+        ...relations,
+        ...world_claims,
+        ...contradictions,
+        ...contradiction_resolutions,
+      ]),
+      canon: latestObservedAt(canonical_records),
+      wiki: latestObservedAt([
+        ...wiki_pages,
+        ...wiki_claims,
+      ]),
+      governance: latestObservedAt(curation_packets),
+      derived: null,
+      audits: latestObservedAt(diagnostics),
+    },
     actor_identity_ref: input.identity_context?.actor_identity_ref ?? null,
     owner_identity_ref: input.identity_context?.owner_identity_ref ?? null,
     runtime_instance_ref: input.identity_context?.runtime_instance_ref ?? null,

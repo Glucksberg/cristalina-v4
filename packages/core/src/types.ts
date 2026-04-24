@@ -1128,6 +1128,8 @@ export interface ProjectionManifest extends RecordEnvelope {
   generation?: number | null;
   policy_snapshot_ref?: string | null;
   snapshot_strategy: ProjectionSnapshotStrategy;
+  boundary_note?: string | null;
+  observed_layer_updates?: MixedStateObservedLayerUpdates | null;
   context_refs: string[];
   suppressed_refs?: string[];
   suppressed_records?: Array<{

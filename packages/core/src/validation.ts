@@ -1059,6 +1059,8 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
   const hasSourceCheckpointRef = typeof value.source_checkpoint_ref === "string" && value.source_checkpoint_ref.length > 0;
   const hasContinuityEpoch = typeof value.continuity_epoch === "string" && value.continuity_epoch.length > 0;
   const hasGeneration = typeof value.generation === "number" && Number.isInteger(value.generation) && value.generation >= 0;
+  const hasBoundaryNote = typeof value.boundary_note === "string" && value.boundary_note.length > 0;
+  const hasObservedLayerUpdates = isRecord(value.observed_layer_updates);
   if (value.snapshot_strategy === "checkpoint_consistent") {
     if (!hasSourceCheckpointRef) {
       issues.push({
@@ -1078,11 +1080,48 @@ function validateProjectionManifest(value: unknown): ValidationIssue[] {
         message: "checkpoint_consistent manifests require generation",
       });
     }
-  } else if (hasSourceCheckpointRef || hasContinuityEpoch || hasGeneration) {
-    issues.push({
-      path: "snapshot_strategy",
-      message: "source_checkpoint_ref, continuity_epoch, and generation require checkpoint_consistent snapshot strategy",
-    });
+    if (value.boundary_note !== undefined && value.boundary_note !== null) {
+      issues.push({
+        path: "boundary_note",
+        message: "checkpoint_consistent manifests cannot carry mixed-state boundary_note",
+      });
+    }
+    if (value.observed_layer_updates !== undefined && value.observed_layer_updates !== null) {
+      issues.push({
+        path: "observed_layer_updates",
+        message: "checkpoint_consistent manifests cannot carry mixed-state observed_layer_updates",
+      });
+    }
+  } else {
+    if (hasSourceCheckpointRef || hasContinuityEpoch || hasGeneration) {
+      issues.push({
+        path: "snapshot_strategy",
+        message: "source_checkpoint_ref, continuity_epoch, and generation require checkpoint_consistent snapshot strategy",
+      });
+    }
+    if (!hasBoundaryNote) {
+      issues.push({
+        path: "boundary_note",
+        message: "mixed_state_tolerant manifests require boundary_note",
+      });
+    }
+    if (!hasObservedLayerUpdates) {
+      issues.push({
+        path: "observed_layer_updates",
+        message: "mixed_state_tolerant manifests require observed_layer_updates",
+      });
+    } else {
+      const observedLayerUpdates = value.observed_layer_updates as Record<string, unknown>;
+      for (const key of ["raw", "runtime", "world", "canon", "wiki", "governance", "derived", "audits"] as const) {
+        const observedAt = observedLayerUpdates[key];
+        if (observedAt !== null && typeof observedAt !== "string") {
+          issues.push({
+            path: `observed_layer_updates.${key}`,
+            message: "expected string or null",
+          });
+        }
+      }
+    }
   }
   if (!isStringArray(value.context_refs) || !hasUniqueEntries(value.context_refs)) {
     issues.push({ path: "context_refs", message: "expected unique string array" });

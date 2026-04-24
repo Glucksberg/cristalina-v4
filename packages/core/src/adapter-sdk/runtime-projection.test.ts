@@ -110,6 +110,8 @@ test("runtime projection helper lists and loads OpenClaw projections from real f
   });
   assert.ok(latest);
   assert.equal(latest!.manifest.id, first.records.projection_manifest.id);
+  assert.match(latest!.manifest.boundary_note ?? "", /mixed state/);
+  assert.equal(latest!.manifest.observed_layer_updates?.runtime, "2026-04-17T02:00:00.000Z");
   assert.equal(latest!.pending_reviews.length, 1);
   assert.equal(latest!.closed_reviews.length, 0);
   assert.match(latest!.markdown, /## Review Queue/);

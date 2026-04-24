@@ -1,5 +1,6 @@
 import type {
   EpistemicState,
+  MixedStateObservedLayerUpdates,
   ProjectionArtifact,
   ProjectionManifest,
   Provenance,
@@ -10,6 +11,20 @@ import type {
 import { isStoreRelativeProjectionArtifactPath } from "./projection-path.js";
 
 export const DEFAULT_PROJECTION_READ_POLICY_VERSION = "projection-read-v2";
+export const DEFAULT_MIXED_STATE_BOUNDARY_NOTE = "Cross-subsystem reads may observe mixed state under the current trust model.";
+
+export function defaultMixedStateObservedLayerUpdates(): MixedStateObservedLayerUpdates {
+  return {
+    raw: null,
+    runtime: null,
+    world: null,
+    canon: null,
+    wiki: null,
+    governance: null,
+    derived: null,
+    audits: null,
+  };
+}
 
 export interface ProjectionReadContext {
   adapter: Exclude<RuntimeKind, "generic">;
@@ -329,6 +344,8 @@ export interface ProjectionManifestInput {
   generation?: number | null;
   policy_snapshot_ref?: string | null;
   snapshot_strategy: ProjectionManifest["snapshot_strategy"];
+  boundary_note?: string | null;
+  observed_layer_updates?: MixedStateObservedLayerUpdates | null;
   context_refs: string[];
   suppressed_refs?: string[];
   suppressed_records?: Array<{
@@ -350,6 +367,13 @@ export interface ProjectionManifestInput {
 }
 
 export function createProjectionManifest(input: ProjectionManifestInput): ProjectionManifest {
+  const boundary_note = input.snapshot_strategy === "mixed_state_tolerant"
+    ? input.boundary_note ?? DEFAULT_MIXED_STATE_BOUNDARY_NOTE
+    : null;
+  const observed_layer_updates = input.snapshot_strategy === "mixed_state_tolerant"
+    ? input.observed_layer_updates ?? defaultMixedStateObservedLayerUpdates()
+    : null;
+
   return {
     id: input.id,
     kind: "projection_manifest",
@@ -378,6 +402,8 @@ export function createProjectionManifest(input: ProjectionManifestInput): Projec
     generation: input.generation ?? null,
     policy_snapshot_ref: input.policy_snapshot_ref ?? null,
     snapshot_strategy: input.snapshot_strategy,
+    boundary_note,
+    observed_layer_updates,
     context_refs: input.context_refs,
     ...(input.suppressed_refs !== undefined ? { suppressed_refs: input.suppressed_refs } : {}),
     ...(input.suppressed_records !== undefined ? { suppressed_records: input.suppressed_records } : {}),

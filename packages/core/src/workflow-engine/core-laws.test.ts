@@ -1590,6 +1590,8 @@ test("projection manifests require declared context refs and coherent suppressio
     continuity_epoch: 12,
     generation: -1,
     snapshot_strategy: "mixed_state_tolerant",
+    boundary_note: null,
+    observed_layer_updates: null,
     context_refs: ["runtime_test_001"],
     suppressed_refs: ["foreign_world_claim"],
     suppressed_records: [
@@ -1618,6 +1620,8 @@ test("projection manifests require declared context refs and coherent suppressio
   assert.ok(issues.some((issue) => issue.path === "continuity_epoch"));
   assert.ok(issues.some((issue) => issue.path === "generation"));
   assert.ok(issues.some((issue) => issue.path === "snapshot_strategy" && issue.message.includes("checkpoint_consistent")));
+  assert.ok(issues.some((issue) => issue.path === "boundary_note" && issue.message.includes("mixed_state_tolerant")));
+  assert.ok(issues.some((issue) => issue.path === "observed_layer_updates" && issue.message.includes("mixed_state_tolerant")));
   assert.ok(issues.some((issue) => issue.path === "retrieval_traces[0].read_policy_version"));
   assert.ok(issues.some((issue) => issue.path === "suppressed_refs" && issue.message.includes("foreign_world_claim")));
   assert.ok(issues.some((issue) => issue.path === "suppressed_records" && issue.message.includes("other_world_claim")));
@@ -1645,6 +1649,17 @@ test("projection manifests require complete lineage markers for checkpoint-consi
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     compiler_version: "hermes.runtime.v1",
     snapshot_strategy: "checkpoint_consistent",
+    boundary_note: "should not be present",
+    observed_layer_updates: {
+      raw: null,
+      runtime: null,
+      world: null,
+      canon: null,
+      wiki: null,
+      governance: null,
+      derived: null,
+      audits: null,
+    },
     context_refs: [],
     artifact_refs: ["part_hermes_invalid_checkpoint_projection_001"],
     upstream_refs: ["mem_test_001"],
@@ -1653,6 +1668,8 @@ test("projection manifests require complete lineage markers for checkpoint-consi
   assert.ok(issues.some((issue) => issue.path === "source_checkpoint_ref" && issue.message.includes("checkpoint_consistent")));
   assert.ok(issues.some((issue) => issue.path === "continuity_epoch" && issue.message.includes("checkpoint_consistent")));
   assert.ok(issues.some((issue) => issue.path === "generation" && issue.message.includes("checkpoint_consistent")));
+  assert.ok(issues.some((issue) => issue.path === "boundary_note" && issue.message.includes("checkpoint_consistent")));
+  assert.ok(issues.some((issue) => issue.path === "observed_layer_updates" && issue.message.includes("checkpoint_consistent")));
 });
 
 test("actor identities reject runtime-private visibility", () => {

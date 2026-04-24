@@ -1,6 +1,7 @@
 import {
   createProjectionArtifact,
   createProjectionManifest,
+  DEFAULT_MIXED_STATE_BOUNDARY_NOTE,
   DEFAULT_PROJECTION_READ_POLICY_VERSION,
   filterProjectionRecords,
   type ProjectionReadContext,
@@ -328,7 +329,7 @@ export function compileMemoryBrowserProjection(input: MemoryBrowserProjectionInp
       source_checkpoint_ref: null,
       continuity_epoch: null,
       generation: null,
-      boundary_note: "Cross-subsystem reads may observe mixed state under the current trust model.",
+      boundary_note: DEFAULT_MIXED_STATE_BOUNDARY_NOTE,
       observed_layer_updates: {
         raw: latestObservedAt(sourceFilter.included),
         runtime: latestObservedAt(runtimeRecords),
@@ -566,6 +567,8 @@ ${renderList("Diagnostics", auditRecords.map((record) => ({ id: record.id, label
     read_policy_version: DEFAULT_PROJECTION_READ_POLICY_VERSION,
     compiler_version: MEMORY_BROWSER_PROJECTION_COMPILER_VERSION,
     snapshot_strategy: "mixed_state_tolerant",
+    boundary_note: snapshot.consistency.boundary_note,
+    observed_layer_updates: snapshot.consistency.observed_layer_updates,
     context_refs: [],
     suppressed_refs: suppressed_records.map((record) => record.id),
     suppressed_records,

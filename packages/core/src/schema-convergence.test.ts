@@ -297,6 +297,8 @@ test("projection manifest schema stays aligned with adapter and read-discipline 
     (properties.snapshot_strategy as { enum?: string[] } | undefined)?.enum,
     ["mixed_state_tolerant", "checkpoint_consistent"],
   );
+  assert.deepEqual((properties.boundary_note as { type?: string[] } | undefined)?.type, ["string", "null"]);
+  assert.deepEqual((properties.observed_layer_updates as { type?: string[] } | undefined)?.type, ["object", "null"]);
   assert.equal((properties.context_refs as { type?: string } | undefined)?.type, "array");
   assert.equal((properties.review_refs as { type?: string } | undefined)?.type, "array");
   assert.equal((properties.retrieval_trace_refs as { type?: string } | undefined)?.type, "array");

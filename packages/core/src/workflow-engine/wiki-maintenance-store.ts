@@ -54,6 +54,7 @@ import type {
   SourceRecord,
   VisibilityState,
   WikiClaim,
+  WikiMaintenanceBoundaryReceipt,
   WikiGraphEdge,
   WikiMaintenanceEvent,
   WikiMaintenanceRun,
@@ -799,6 +800,12 @@ async function loadPersistedMemoryBrowserProjection(
       `Persisted wiki maintenance run ${input.ids.run} has memory browser snapshot strategy ${consistency.snapshot_strategy} but manifest declares ${manifest.snapshot_strategy}`,
     );
   }
+  if (manifest.boundary_note !== consistency.boundary_note) {
+    throw new Error(`Persisted wiki maintenance run ${input.ids.run} has mismatched memory browser boundary_note`);
+  }
+  if (JSON.stringify(manifest.observed_layer_updates ?? null) !== JSON.stringify(consistency.observed_layer_updates)) {
+    throw new Error(`Persisted wiki maintenance run ${input.ids.run} has mismatched memory browser observed_layer_updates`);
+  }
 
   return {
     snapshot,
@@ -828,6 +835,24 @@ async function canReusePersistedMemoryBrowserProjection(
     manifest.compiler_version === MEMORY_BROWSER_PROJECTION_COMPILER_VERSION &&
     manifest.read_policy_version === DEFAULT_PROJECTION_READ_POLICY_VERSION
   );
+}
+
+function readProjectionManifestMixedStateBoundary(manifest: ProjectionManifest): WikiMaintenanceBoundaryReceipt {
+  if (manifest.snapshot_strategy !== "mixed_state_tolerant") {
+    throw new Error(`Projection manifest ${manifest.id} must declare snapshot_strategy=mixed_state_tolerant`);
+  }
+  if (typeof manifest.boundary_note !== "string" || manifest.boundary_note.length === 0) {
+    throw new Error(`Projection manifest ${manifest.id} is missing boundary_note`);
+  }
+  if (!manifest.observed_layer_updates) {
+    throw new Error(`Projection manifest ${manifest.id} is missing observed_layer_updates`);
+  }
+
+  return {
+    snapshot_strategy: "mixed_state_tolerant",
+    boundary_note: manifest.boundary_note,
+    observed_layer_updates: manifest.observed_layer_updates,
+  };
 }
 
 function buildMemoryBrowserFiles(rootDir: string, projection: MemoryBrowserProjectionResult): MaterializedFile[] {
@@ -1191,7 +1216,7 @@ async function runWikiMaintenanceToStoreLocked(input: WikiMaintenanceInput): Pro
         wiki_maintenance_runs: [pendingRun],
         diagnostics,
       });
-  const memory_browser_boundary = readMemoryBrowserProjectionConsistency(memory_browser.snapshot);
+  const memory_browser_boundary = readProjectionManifestMixedStateBoundary(memory_browser.manifest);
   const run: WikiMaintenanceRun = {
     ...pendingRun,
     memory_browser_boundary,
