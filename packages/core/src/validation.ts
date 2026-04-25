@@ -635,6 +635,12 @@ function validateCanonicalMemoryObject(value: unknown): ValidationIssue[] {
   if (value.superseded_by_ref !== undefined && value.superseded_by_ref !== null && typeof value.superseded_by_ref !== "string") {
     issues.push({ path: "superseded_by_ref", message: "expected string or null" });
   }
+  if (value.actor_identity_ref !== undefined && value.actor_identity_ref !== null && typeof value.actor_identity_ref !== "string") {
+    issues.push({ path: "actor_identity_ref", message: "expected string or null" });
+  }
+  if (value.owner_identity_ref !== undefined && value.owner_identity_ref !== null && typeof value.owner_identity_ref !== "string") {
+    issues.push({ path: "owner_identity_ref", message: "expected string or null" });
+  }
   return issues;
 }
 

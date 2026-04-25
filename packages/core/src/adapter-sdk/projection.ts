@@ -1,5 +1,6 @@
 import type {
   EpistemicState,
+  Layer,
   MixedStateObservedLayerUpdates,
   ProjectionArtifact,
   ProjectionManifest,
@@ -39,8 +40,11 @@ export interface ProjectionReadContext {
 export interface ProjectionReadableRecord {
   id: string;
   kind: string;
+  layer?: Layer;
   visibility_state: VisibilityState;
   provenance: Provenance;
+  actor_identity_ref?: string | null;
+  owner_identity_ref?: string | null;
   runtime_instance_ref?: string | null;
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
@@ -79,18 +83,31 @@ function resolveRecordRuntimeContext(record: ProjectionReadableRecord): {
   runtime_session_ref?: string | null;
   conversation_thread_ref?: string | null;
 } {
+  const provenanceRuntimeContext =
+    record.layer === "canon"
+      ? {
+          runtime_instance_ref: null,
+          runtime_session_ref: null,
+          conversation_thread_ref: null,
+        }
+      : {
+          runtime_instance_ref: record.provenance.runtime_ref ?? null,
+          runtime_session_ref: record.provenance.session_ref ?? null,
+          conversation_thread_ref: record.provenance.thread_ref ?? null,
+        };
+
   return {
     runtime_instance_ref:
       record.runtime_instance_ref ??
-      record.provenance.runtime_ref ??
+      provenanceRuntimeContext.runtime_instance_ref ??
       (record.kind === "runtime_instance" ? record.id : null),
     runtime_session_ref:
       record.runtime_session_ref ??
-      record.provenance.session_ref ??
+      provenanceRuntimeContext.runtime_session_ref ??
       (record.kind === "runtime_session" ? record.id : null),
     conversation_thread_ref:
       record.conversation_thread_ref ??
-      record.provenance.thread_ref ??
+      provenanceRuntimeContext.conversation_thread_ref ??
       (record.kind === "conversation_thread" ? record.id : null),
   };
 }
@@ -100,6 +117,14 @@ function resolveOwnerPrivateBindings(record: ProjectionReadableRecord): string[]
 
   if (typeof record.provenance.actor_ref === "string" && record.provenance.actor_ref.length > 0) {
     refs.add(record.provenance.actor_ref);
+  }
+
+  if (typeof record.actor_identity_ref === "string" && record.actor_identity_ref.length > 0) {
+    refs.add(record.actor_identity_ref);
+  }
+
+  if (typeof record.owner_identity_ref === "string" && record.owner_identity_ref.length > 0) {
+    refs.add(record.owner_identity_ref);
   }
 
   if (record.kind === "actor_identity") {

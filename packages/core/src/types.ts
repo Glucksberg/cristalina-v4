@@ -909,6 +909,8 @@ export interface CanonicalMemoryObject extends ClaimEnvelope {
   layer: "canon";
   authoritative_home: "canon";
   governance_state: GovernanceState;
+  actor_identity_ref?: string | null;
+  owner_identity_ref?: string | null;
   // Present when this record was created as the successor of another canonical record.
   supersedes_ref?: string | null;
   // Present when this record was replaced by a successor; null is intentional for retirement without replacement.

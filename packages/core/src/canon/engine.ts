@@ -78,6 +78,11 @@ function payloadTemporalState(payload: Record<string, unknown>, now: string): Te
   };
 }
 
+function payloadStringRef(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 function closeTemporalState(record: CanonicalMemoryObject, validTo: string): TemporalState {
   return {
     temporal_status: "historical",
@@ -144,6 +149,8 @@ export function applyApprovedCanonicalCreate(input: {
     },
     statement,
     semantic_slot,
+    actor_identity_ref: payloadStringRef(input.proposal.candidate_payload, "actor_identity_ref"),
+    owner_identity_ref: payloadStringRef(input.proposal.candidate_payload, "owner_identity_ref"),
     epistemic_state:
       input.proposal.candidate_payload.epistemic_state === "observed" ||
       input.proposal.candidate_payload.epistemic_state === "inferred" ||

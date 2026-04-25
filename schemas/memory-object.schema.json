@@ -61,6 +61,18 @@
             "archived"
           ]
         },
+        "actor_identity_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_identity_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "temporal_state": {
           "type": "object",
           "required": [

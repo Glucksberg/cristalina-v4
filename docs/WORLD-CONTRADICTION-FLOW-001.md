@@ -88,16 +88,26 @@ Updated objects:
 - `Contradiction`
 - `ContradictionResolution`
 
+Created objects when the resolved candidate should enter canon:
+
+- canonical follow-up `Proposal`
+- canonical follow-up `RatificationRecord`
+- optional canonical follow-up `Diagnostic`
+- canonical successor record
+
 Legal effect:
 
 - the losing world claim is closed historically
 - the contradiction becomes `resolved`
 - the resolution becomes `applied`
+- the original conflict-blocked proposal and ratification remain preserved as the original governance record
+- any later canonical promotion is represented by separate follow-up governance records
 
 Important constraint:
 
 - the losing claim is not deleted
 - the world model preserves the previous active interval explicitly
+- resolution application must not overwrite the original proposal or ratification that documented the conflict block
 
 ### Step 5. Compile projection
 

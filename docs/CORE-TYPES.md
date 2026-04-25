@@ -389,6 +389,13 @@ Minimum fields:
 - `visibility_state`
 - `provenance`
 
+Canonical records may also carry:
+
+- `actor_identity_ref`
+- `owner_identity_ref`
+
+These refs bind owner-private canonical memory to durable identities for projection read policy. They do not replace provenance; `provenance.runtime_ref`, `provenance.session_ref`, and `provenance.thread_ref` remain evidence lineage for where the claim came from.
+
 ### 4.11 `RuntimeMemoryBlock`
 
 Represents pinned or attachable runtime memory that remains available to the running agent.

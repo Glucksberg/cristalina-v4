@@ -188,8 +188,18 @@ export interface ConversationPreferenceStoreRecords {
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
+  canonical_followup?: ConversationPreferenceCanonicalFollowupRecords;
   projection_artifacts: ProjectionArtifact[];
   projection_manifest: ProjectionManifest;
+}
+
+export interface ConversationPreferenceCanonicalFollowupRecords {
+  proposal: Proposal;
+  ratification_record: RatificationRecord;
+  diagnostic?: Diagnostic;
+  owner_ratification_queue?: CurationPacket;
+  canonical_record?: CanonicalMemoryObject;
+  updated_canonical_records: CanonicalMemoryObject[];
 }
 
 export interface ConversationPreferenceStoreResult {
@@ -344,6 +354,7 @@ interface LoadedAuthoritativeFlow {
   ratification_record: RatificationRecord;
   diagnostic?: Diagnostic;
   canonical_record?: CanonicalMemoryObject;
+  canonical_followup?: ConversationPreferenceCanonicalFollowupRecords;
 }
 
 interface PreservedProjectionTimestamps {
@@ -356,13 +367,15 @@ interface MaterializedFile {
   content: string;
 }
 
-interface ResolutionCanonicalFollowup {
-  proposal: Proposal;
-  ratification_record: RatificationRecord;
-  diagnostic?: Diagnostic;
-  owner_ratification_queue?: CurationPacket;
-  canonical_record?: CanonicalMemoryObject;
-  updated_canonical_records: CanonicalMemoryObject[];
+interface ResolutionCanonicalFollowupPaths {
+  proposal: string;
+  ratification_record: string;
+  diagnostic: string;
+  owner_ratification_queue: string;
+}
+
+interface ResolutionCanonicalFollowup extends ConversationPreferenceCanonicalFollowupRecords {
+  paths: ResolutionCanonicalFollowupPaths;
 }
 
 interface RegisteredIntakeWorkflowPlan<Result> {
@@ -453,6 +466,57 @@ function ownerRatificationQueueId(proposalId: string): string {
 
 function manualContradictionReviewQueueId(resolutionId: string): string {
   return `cur_manual_contradiction_${resolutionId}`;
+}
+
+function canonicalFollowupProposalId(resolutionId: string): string {
+  return `prop_${resolutionId}_canonical_followup`;
+}
+
+function canonicalFollowupRatificationId(resolutionId: string): string {
+  return `rat_${resolutionId}_canonical_followup`;
+}
+
+function canonicalFollowupDiagnosticId(resolutionId: string): string {
+  return `diag_${resolutionId}_canonical_followup`;
+}
+
+function canonicalFollowupPaths(rootDir: string, resolutionId: string): ResolutionCanonicalFollowupPaths {
+  const proposalId = canonicalFollowupProposalId(resolutionId);
+  return {
+    proposal: coreRecordPath(
+      rootDir,
+      {
+        id: proposalId,
+        kind: "proposal",
+        layer: "governance",
+      } as Proposal,
+    ),
+    ratification_record: coreRecordPath(
+      rootDir,
+      {
+        id: canonicalFollowupRatificationId(resolutionId),
+        kind: "ratification",
+        layer: "governance",
+      } as RatificationRecord,
+    ),
+    diagnostic: coreRecordPath(
+      rootDir,
+      {
+        id: canonicalFollowupDiagnosticId(resolutionId),
+        kind: "diagnostic",
+        layer: "audits",
+        authoritative_home: "governance",
+      } as Diagnostic,
+    ),
+    owner_ratification_queue: coreRecordPath(
+      rootDir,
+      {
+        id: ownerRatificationQueueId(proposalId),
+        kind: "curation_packet",
+        layer: "governance",
+      } as CurationPacket,
+    ),
+  };
 }
 
 function resolveStorePath(rootDir: string, relativePath: string): string {
@@ -874,6 +938,7 @@ function findCanonicalTargetForResolution(input: {
 
 function buildResolutionCanonicalProposal(input: {
   now: string;
+  proposal_id: string;
   base_proposal: Proposal;
   contradiction: Contradiction;
   resolution: ContradictionResolution;
@@ -898,6 +963,8 @@ function buildResolutionCanonicalProposal(input: {
 
   return {
     ...input.base_proposal,
+    id: input.proposal_id,
+    created_at: input.now,
     updated_at: input.now,
     operation: input.target_record ? "revise" : "create",
     candidate_kind: input.target_record?.kind ?? input.base_proposal.candidate_kind,
@@ -936,11 +1003,21 @@ function buildResolutionCanonicalProposal(input: {
     evidence_refs,
     reason: `${input.base_proposal.reason} Canonical follow-up after contradiction resolution ${input.resolution.id}.`,
     governance_state: "proposed",
+    upstream_refs: [
+      ...new Set([
+        ...(input.base_proposal.upstream_refs ?? []),
+        input.base_proposal.id,
+        input.contradiction.id,
+        input.resolution.id,
+        input.candidate_claim.id,
+      ]),
+    ],
   };
 }
 
 function buildResolvedConflictDiagnostic(input: {
   now: string;
+  diagnostic_id: string;
   proposal: Proposal;
   ratification_record: RatificationRecord;
   canonical_record: CanonicalMemoryObject;
@@ -954,6 +1031,8 @@ function buildResolvedConflictDiagnostic(input: {
 
   return {
     ...input.diagnostic,
+    id: input.diagnostic_id,
+    created_at: input.now,
     updated_at: input.now,
     visibility_state: input.proposal.visibility_state,
     provenance: {
@@ -969,6 +1048,17 @@ function buildResolvedConflictDiagnostic(input: {
         ]),
       ],
     },
+    upstream_refs: [
+      ...new Set([
+        ...(input.diagnostic.upstream_refs ?? []),
+        input.diagnostic.id,
+        input.proposal.id,
+        input.ratification_record.id,
+        input.canonical_record.id,
+        input.contradiction.id,
+        input.resolution.id,
+      ]),
+    ],
     code: "proposal_conflict_resolved",
     severity: "info",
     message: `Proposal ${input.proposal.id} was promoted after contradiction resolution ${input.resolution.id}.`,
@@ -995,8 +1085,6 @@ async function buildResolutionCanonicalFollowup(input: {
   applied: ReturnType<typeof applyAcceptedContradictionResolution>;
   existing_diagnostic?: Diagnostic;
   canonical_id: string;
-  ratification_id: string;
-  diagnostic_id?: string;
 }): Promise<ResolutionCanonicalFollowup | undefined> {
   if (!resolutionWinnerIsCandidate({
     resolution: input.applied.resolution,
@@ -1021,22 +1109,24 @@ async function buildResolutionCanonicalFollowup(input: {
     return undefined;
   }
 
-  await assertCanonicalCreateIdAvailable({
-    rootDir: input.rootDir,
-    proposal: { ...input.intake.proposal, operation: "create" },
-    canonical_id: input.canonical_id,
-  });
   if (targetRecord?.id === input.canonical_id) {
     throw new Error("Canonical resolution follow-up requires a successor canonical id distinct from the target record");
   }
 
+  const paths = canonicalFollowupPaths(input.rootDir, input.applied.resolution.id);
   const proposal = buildResolutionCanonicalProposal({
     now: input.now,
+    proposal_id: canonicalFollowupProposalId(input.applied.resolution.id),
     base_proposal: input.intake.proposal,
     contradiction: input.applied.contradiction,
     resolution: input.applied.resolution,
     candidate_claim: input.applied.candidate_claim,
     target_record: targetRecord,
+  });
+  await assertCanonicalCreateIdAvailable({
+    rootDir: input.rootDir,
+    proposal: { ...proposal, operation: "create" },
+    canonical_id: input.canonical_id,
   });
   const effectiveWorldClaims = mergeRecordsById(worldClaims, [
     input.applied.existing_claim,
@@ -1055,8 +1145,8 @@ async function buildResolutionCanonicalFollowup(input: {
     now: input.now,
     actor: input.actor,
     authenticated_principal: input.authenticated_principal,
-    ratification_id: input.ratification_id,
-    diagnostic_id: input.diagnostic_id,
+    ratification_id: canonicalFollowupRatificationId(input.applied.resolution.id),
+    diagnostic_id: canonicalFollowupDiagnosticId(input.applied.resolution.id),
     canonical_id: input.canonical_id,
   });
 
@@ -1081,6 +1171,7 @@ async function buildResolutionCanonicalFollowup(input: {
     (canonicalWorkflow.created_record
       ? buildResolvedConflictDiagnostic({
           now: input.now,
+          diagnostic_id: canonicalFollowupDiagnosticId(input.applied.resolution.id),
           proposal,
           ratification_record: canonicalWorkflow.ratification_record,
           canonical_record: canonicalWorkflow.created_record,
@@ -1091,6 +1182,7 @@ async function buildResolutionCanonicalFollowup(input: {
       : undefined);
 
   return {
+    paths,
     proposal,
     ratification_record: canonicalWorkflow.ratification_record,
     diagnostic,
@@ -1801,7 +1893,7 @@ function writeFlowOwnedPaths(paths: ConversationPreferenceStorePaths): string[] 
   ];
 }
 
-async function detectPartiallyMaterializedWriteFlow(paths: ConversationPreferenceStorePaths): Promise<boolean> {
+async function detectPartiallyMaterializedWriteFlow(rootDir: string, paths: ConversationPreferenceStorePaths): Promise<boolean> {
   const baselinePaths = writeFlowBaselinePaths(paths);
   const baselinePresence = await Promise.all(baselinePaths.map((filePath) => pathExists(filePath)));
   const hasAnyBaselineState = baselinePresence.some(Boolean);
@@ -1844,6 +1936,15 @@ async function detectPartiallyMaterializedWriteFlow(paths: ConversationPreferenc
     }
     if (contradictionResolution.strategy !== "manual_review" && manualReviewQueueExists) {
       return true;
+    }
+
+    const followupPaths = canonicalFollowupPaths(rootDir, contradictionResolution.id);
+    const [followupProposalExists, followupRatificationExists] = await Promise.all([
+      pathExists(followupPaths.proposal),
+      pathExists(followupPaths.ratification_record),
+    ]);
+    if (followupProposalExists || followupRatificationExists) {
+      return false;
     }
   } else if (manualReviewQueueExists) {
     return true;
@@ -1890,7 +1991,7 @@ async function recoverOrResetWriteFlow(
     }
   }
 
-  if (await detectPartiallyMaterializedWriteFlow(paths)) {
+  if (await detectPartiallyMaterializedWriteFlow(rootDir, paths)) {
     await resetPartiallyMaterializedWriteFlow(paths);
   }
 }
@@ -2457,7 +2558,7 @@ function buildResolutionApplicationFiles(input: {
     },
     ...(input.canonical_followup
       ? [{
-          path: input.paths.proposal,
+          path: input.canonical_followup.paths.proposal,
           content: serializeCoreRecordContent(input.canonical_followup.proposal),
         }]
       : []),
@@ -2469,19 +2570,19 @@ function buildResolutionApplicationFiles(input: {
       : []),
     ...(input.canonical_followup?.owner_ratification_queue
       ? [{
-          path: input.paths.owner_ratification_queue!,
+          path: input.canonical_followup.paths.owner_ratification_queue,
           content: serializeCoreRecordContent(input.canonical_followup.owner_ratification_queue),
         }]
       : []),
     ...(input.canonical_followup
       ? [{
-          path: input.paths.ratification_record,
+          path: input.canonical_followup.paths.ratification_record,
           content: serializeCoreRecordContent(input.canonical_followup.ratification_record),
         }]
       : []),
-    ...(input.canonical_followup?.diagnostic && input.paths.diagnostic_record
+    ...(input.canonical_followup?.diagnostic
       ? [{
-          path: input.paths.diagnostic_record,
+          path: input.canonical_followup.paths.diagnostic,
           content: serializeCoreRecordContent(input.canonical_followup.diagnostic),
         }]
       : []),
@@ -3315,6 +3416,17 @@ async function loadExistingFlow(
     }
   }
 
+  if (input.ids.contradiction_resolution) {
+    const followupPaths = canonicalFollowupPaths(rootDir, input.ids.contradiction_resolution);
+    const followupPresence = await Promise.all([
+      pathExists(followupPaths.proposal),
+      pathExists(followupPaths.ratification_record),
+    ]);
+    if (followupPresence.some(Boolean) && !followupPresence.every(Boolean)) {
+      throw new Error("Existing conversation preference flow has partially materialized canonical follow-up governance");
+    }
+  }
+
   if (!hasAnyAuthoritativeState) {
     return undefined;
   }
@@ -3324,15 +3436,18 @@ async function loadExistingFlow(
   }
 
   const loaded = await loadAuthoritativeFlow(rootDir, paths);
+  const hasApprovedCanonicalState =
+    loaded.ratification_record.decision === "approved" ||
+    loaded.canonical_followup?.ratification_record.decision === "approved";
   if (
-    loaded.ratification_record.decision === "approved" &&
+    hasApprovedCanonicalState &&
     !(await pathExists(paths.canonical_record))
   ) {
     throw new Error("Existing conversation preference flow is missing approved canonical state");
   }
 
   if (
-    loaded.ratification_record.decision !== "approved" &&
+    !hasApprovedCanonicalState &&
     await pathExists(paths.canonical_record)
   ) {
     throw new Error("Existing conversation preference flow contains canonical state after rejected governance");
@@ -3347,10 +3462,24 @@ async function loadExistingFlow(
   }
 
   if (
+    loaded.canonical_followup &&
+    loaded.canonical_followup.ratification_record.decision !== "approved" &&
+    !loaded.canonical_followup.diagnostic
+  ) {
+    throw new Error("Existing conversation preference flow is missing canonical follow-up diagnostic state");
+  }
+
+  if (
     loaded.intake.proposal.promotion_requirement === "owner_ratification_required" &&
     !loaded.owner_ratification_queue
   ) {
     throw new Error("Existing conversation preference flow is missing owner ratification queue state");
+  }
+  if (
+    loaded.canonical_followup?.proposal.promotion_requirement === "owner_ratification_required" &&
+    !loaded.canonical_followup.owner_ratification_queue
+  ) {
+    throw new Error("Existing conversation preference flow is missing canonical follow-up owner ratification queue state");
   }
   if (
     loaded.contradiction_resolution?.strategy === "manual_review" &&
@@ -3393,12 +3522,23 @@ async function loadExistingFlow(
     paths.projection_artifacts.wiki,
   ];
 
-  if (loaded.ratification_record.decision === "approved") {
+  if (hasApprovedCanonicalState) {
     requiredPaths.push(paths.canonical_record);
   }
 
   if (loaded.ratification_record.decision !== "approved" && paths.diagnostic_record) {
     requiredPaths.push(paths.diagnostic_record);
+  }
+
+  if (loaded.canonical_followup && loaded.contradiction_resolution) {
+    const followupPaths = canonicalFollowupPaths(rootDir, loaded.contradiction_resolution.id);
+    requiredPaths.push(followupPaths.proposal, followupPaths.ratification_record);
+    if (loaded.canonical_followup.diagnostic) {
+      requiredPaths.push(followupPaths.diagnostic);
+    }
+    if (loaded.canonical_followup.owner_ratification_queue) {
+      requiredPaths.push(followupPaths.owner_ratification_queue);
+    }
   }
 
   if (!(await Promise.all(requiredPaths.map((filePath) => pathExists(filePath)))).every(Boolean)) {
@@ -3445,6 +3585,16 @@ async function loadExistingFlow(
     ratification_record,
     ...(diagnostic ? [diagnostic] : []),
     ...(canonical_record ? [canonical_record] : []),
+    ...(loaded.canonical_followup
+      ? [
+          loaded.canonical_followup.proposal,
+          loaded.canonical_followup.ratification_record,
+          ...(loaded.canonical_followup.diagnostic ? [loaded.canonical_followup.diagnostic] : []),
+          ...(loaded.canonical_followup.owner_ratification_queue ? [loaded.canonical_followup.owner_ratification_queue] : []),
+          ...(loaded.canonical_followup.canonical_record ? [loaded.canonical_followup.canonical_record] : []),
+          ...loaded.canonical_followup.updated_canonical_records,
+        ]
+      : []),
     ...(loaded.contradiction ? [loaded.contradiction] : []),
     ...(loaded.contradiction_resolution ? [loaded.contradiction_resolution] : []),
     ...projection_artifacts,
@@ -3464,6 +3614,7 @@ async function loadExistingFlow(
       ratification_record,
       diagnostic,
       canonical_record,
+      canonical_followup: loaded.canonical_followup,
       projection_artifacts,
       projection_manifest,
     },
@@ -3497,6 +3648,41 @@ async function readConversationPreferenceFlowResultInternal(
       ignore_authenticated_principal: options?.ignore_authenticated_principal,
     },
   );
+}
+
+async function loadResolutionCanonicalFollowup(
+  rootDir: string,
+  resolution: ContradictionResolution | undefined,
+  canonical_record?: CanonicalMemoryObject,
+): Promise<ConversationPreferenceCanonicalFollowupRecords | undefined> {
+  if (!resolution) {
+    return undefined;
+  }
+
+  const paths = canonicalFollowupPaths(rootDir, resolution.id);
+  if (!(await pathExists(paths.proposal))) {
+    return undefined;
+  }
+
+  const [proposal, ratification_record] = await Promise.all([
+    readCoreRecord<Proposal>(paths.proposal),
+    readCoreRecord<RatificationRecord>(paths.ratification_record),
+  ]);
+  const [diagnostic, owner_ratification_queue] = await Promise.all([
+    pathExists(paths.diagnostic).then((exists) => exists ? readCoreRecord<Diagnostic>(paths.diagnostic) : undefined),
+    pathExists(paths.owner_ratification_queue).then((exists) =>
+      exists ? readCoreRecord<CurationPacket>(paths.owner_ratification_queue) : undefined,
+    ),
+  ]);
+
+  return {
+    proposal,
+    ratification_record,
+    diagnostic,
+    owner_ratification_queue,
+    canonical_record: ratification_record.decision === "approved" ? canonical_record : undefined,
+    updated_canonical_records: [],
+  };
 }
 
 async function loadAuthoritativeFlow(
@@ -3550,6 +3736,11 @@ async function loadAuthoritativeFlow(
           } as CurationPacket,
         )
       : undefined);
+  const canonical_record =
+    await pathExists(paths.canonical_record)
+      ? await readCoreRecord<CanonicalMemoryObject>(paths.canonical_record)
+      : undefined;
+  const canonical_followup = await loadResolutionCanonicalFollowup(rootDir, contradiction_resolution, canonical_record);
 
   return {
     source_record: await readCoreRecord<SourceRecord>(paths.source_record),
@@ -3569,10 +3760,8 @@ async function loadAuthoritativeFlow(
       paths.diagnostic_record && (await pathExists(paths.diagnostic_record))
         ? await readCoreRecord<Diagnostic>(paths.diagnostic_record)
         : undefined,
-    canonical_record:
-      await pathExists(paths.canonical_record)
-        ? await readCoreRecord<CanonicalMemoryObject>(paths.canonical_record)
-        : undefined,
+    canonical_record,
+    canonical_followup,
   };
 }
 
@@ -3876,9 +4065,10 @@ async function buildProjectionFromPersistedFlowSnapshot(
 ) {
   const projectionAdapter = projectionAdapterForRuntime(input.source.runtime);
   const preserved_timestamps = await loadPreservedProjectionTimestamps(paths);
+  const governanceTimestampRecord = loaded.canonical_followup?.ratification_record ?? loaded.ratification_record;
   return executeRuntimeBootstrapWorkflow({
     adapter: projectionAdapter,
-    now: loaded.ratification_record.updated_at ?? loaded.ratification_record.created_at,
+    now: governanceTimestampRecord.updated_at ?? governanceTimestampRecord.created_at,
     projection_path: relativeStorePath(rootDir, paths.projection_markdown),
     visibility_state: loaded.canonical_record?.visibility_state ?? loaded.intake.world_claim.visibility_state,
     canonical_records: loaded.canonical_record ? [loaded.canonical_record] : [],
@@ -3891,10 +4081,14 @@ async function buildProjectionFromPersistedFlowSnapshot(
     curation_packets: [
       ...(loaded.owner_ratification_queue ? [loaded.owner_ratification_queue] : []),
       ...(loaded.manual_contradiction_review_queue ? [loaded.manual_contradiction_review_queue] : []),
+      ...(loaded.canonical_followup?.owner_ratification_queue ? [loaded.canonical_followup.owner_ratification_queue] : []),
     ],
     wiki_pages: [loaded.intake.wiki_page],
     wiki_claims: [loaded.intake.wiki_claim],
-    diagnostics: loaded.diagnostic ? [loaded.diagnostic] : [],
+    diagnostics: [
+      ...(loaded.diagnostic ? [loaded.diagnostic] : []),
+      ...(loaded.canonical_followup?.diagnostic ? [loaded.canonical_followup.diagnostic] : []),
+    ],
     runtime_identity: {
       actor_identity: loaded.intake.agent_identity,
       owner_identity: loaded.intake.owner_identity,
@@ -4580,12 +4774,9 @@ export async function applyConversationPreferenceResolutionToStore(
         applied,
         existing_diagnostic: records.diagnostic,
         canonical_id: input.ids.canonical,
-        ratification_id: input.ids.ratification,
-        diagnostic_id: input.ids.diagnostic,
       });
       const intake = {
         ...records.intake,
-        proposal: canonical_followup?.proposal ?? records.intake.proposal,
         world_claim: applied.candidate_claim,
       };
 
@@ -4664,10 +4855,11 @@ export async function applyConversationPreferenceResolutionToStore(
           contradiction: applied.contradiction,
           contradiction_resolution: applied.resolution,
           manual_contradiction_review_queue: records.manual_contradiction_review_queue,
-          owner_ratification_queue: canonical_followup?.owner_ratification_queue ?? records.owner_ratification_queue,
-          ratification_record: canonical_followup?.ratification_record ?? records.ratification_record,
-          diagnostic: canonical_followup?.diagnostic ?? records.diagnostic,
+          owner_ratification_queue: records.owner_ratification_queue,
+          ratification_record: records.ratification_record,
+          diagnostic: records.diagnostic,
           canonical_record: canonical_followup?.canonical_record ?? records.canonical_record,
+          canonical_followup,
           existing_world_claim: applied.existing_claim,
           candidate_world_claim: applied.candidate_claim,
           projection_artifacts: projection.artifacts,
@@ -4873,6 +5065,7 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
       ratification_record: loaded.ratification_record,
       diagnostic: loaded.diagnostic,
       canonical_record: loaded.canonical_record,
+      canonical_followup: loaded.canonical_followup,
       projection_artifacts,
       projection_manifest,
     },
@@ -4898,6 +5091,15 @@ async function loadConversationPreferenceFlowFromOwnerRatificationQueue(
       loaded.ratification_record,
       ...(loaded.diagnostic ? [loaded.diagnostic] : []),
       ...(loaded.canonical_record ? [loaded.canonical_record] : []),
+      ...(loaded.canonical_followup
+        ? [
+            loaded.canonical_followup.proposal,
+            loaded.canonical_followup.ratification_record,
+            ...(loaded.canonical_followup.diagnostic ? [loaded.canonical_followup.diagnostic] : []),
+            ...(loaded.canonical_followup.owner_ratification_queue ? [loaded.canonical_followup.owner_ratification_queue] : []),
+            ...(loaded.canonical_followup.canonical_record ? [loaded.canonical_followup.canonical_record] : []),
+          ]
+        : []),
       ...(loaded.contradiction ? [loaded.contradiction] : []),
       ...(loaded.contradiction_resolution ? [loaded.contradiction_resolution] : []),
       ...projection_artifacts,
@@ -5074,6 +5276,7 @@ async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
       ratification_record: loaded.ratification_record,
       diagnostic: loaded.diagnostic,
       canonical_record: loaded.canonical_record,
+      canonical_followup: loaded.canonical_followup,
       projection_artifacts,
       projection_manifest,
     },
@@ -5099,6 +5302,15 @@ async function loadConversationPreferenceFlowFromManualContradictionReviewQueue(
       loaded.ratification_record,
       ...(loaded.diagnostic ? [loaded.diagnostic] : []),
       ...(loaded.canonical_record ? [loaded.canonical_record] : []),
+      ...(loaded.canonical_followup
+        ? [
+            loaded.canonical_followup.proposal,
+            loaded.canonical_followup.ratification_record,
+            ...(loaded.canonical_followup.diagnostic ? [loaded.canonical_followup.diagnostic] : []),
+            ...(loaded.canonical_followup.owner_ratification_queue ? [loaded.canonical_followup.owner_ratification_queue] : []),
+            ...(loaded.canonical_followup.canonical_record ? [loaded.canonical_followup.canonical_record] : []),
+          ]
+        : []),
       ...(loaded.contradiction ? [loaded.contradiction] : []),
       ...(loaded.contradiction_resolution ? [loaded.contradiction_resolution] : []),
       ...projection_artifacts,
@@ -5421,12 +5633,9 @@ async function applyManualContradictionReviewToExistingFlow(
     applied,
     existing_diagnostic: existingFlow.records.diagnostic,
     canonical_id: basename(existingFlow.paths.canonical_record, ".json"),
-    ratification_id: existingFlow.records.ratification_record.id,
-    diagnostic_id: existingFlow.records.diagnostic?.id,
   });
   const intake = {
     ...existingFlow.records.intake,
-    proposal: canonical_followup?.proposal ?? existingFlow.records.intake.proposal,
     world_claim: applied.candidate_claim,
   };
 
@@ -5511,11 +5720,12 @@ async function applyManualContradictionReviewToExistingFlow(
       intake,
       contradiction: applied.contradiction,
       contradiction_resolution: applied.resolution,
-      owner_ratification_queue: canonical_followup?.owner_ratification_queue ?? existingFlow.records.owner_ratification_queue,
+      owner_ratification_queue: existingFlow.records.owner_ratification_queue,
       manual_contradiction_review_queue: updatedQueue,
-      ratification_record: canonical_followup?.ratification_record ?? existingFlow.records.ratification_record,
-      diagnostic: canonical_followup?.diagnostic ?? existingFlow.records.diagnostic,
+      ratification_record: existingFlow.records.ratification_record,
+      diagnostic: existingFlow.records.diagnostic,
       canonical_record: canonical_followup?.canonical_record ?? existingFlow.records.canonical_record,
+      canonical_followup,
       existing_world_claim: applied.existing_claim,
       candidate_world_claim: applied.candidate_claim,
       projection_artifacts: projection.artifacts,

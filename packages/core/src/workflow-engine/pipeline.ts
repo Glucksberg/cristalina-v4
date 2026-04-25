@@ -750,6 +750,8 @@ export function buildPreferenceSignalIntake(input: ConversationPreferenceIntakeI
     target_ref: null,
     candidate_payload: {
       kind: "preference",
+      actor_identity_ref: runtimeIdentity.agent_identity?.id ?? null,
+      owner_identity_ref: runtimeIdentity.owner_identity?.id ?? null,
       statement: input.statement,
       semantic_slot: semanticSlot,
       temporal_state: {

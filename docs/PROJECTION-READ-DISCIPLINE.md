@@ -77,6 +77,8 @@ If an `owner_private` record is unscoped, it may enter projection only when iden
 
 If an unscoped `owner_private` record lacks identity binding, it must be suppressed rather than treated as broadly readable.
 
+For canonical records, `provenance.runtime_ref`, `provenance.session_ref`, and `provenance.thread_ref` are evidence lineage, not projection read scope. Owner-private canonical records should be admitted by explicit actor or owner identity binding, so ratified owner memory can appear across runtimes for the same owner without inheriting the runtime that first produced the evidence.
+
 This is a compatibility rule for the current executable baseline, not a statement that group participants should have isolated hidden memories.
 
 ### 4.3 Historical and disputed claims

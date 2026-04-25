@@ -1549,6 +1549,54 @@ test("writeConversationPreferenceFlowToStore does not leak unscoped owner-privat
   assert.doesNotMatch(projectionMarkdown, /\[wiki:wpg_structured_scope_001\]/);
 });
 
+test("writeConversationPreferenceFlowToStore projects owner-bound canon across runtimes without runtime provenance scoping", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  const first = await writeConversationPreferenceFlowToStore(firstInput);
+  assert.equal(first.records.canonical_record?.owner_identity_ref, firstInput.identity_context?.ids.owner_identity);
+
+  const secondInput = cloneInputWithSuffix(
+    rootDir,
+    "hermes_owner_scope_002",
+    "The user prefers morning planning summaries.",
+  );
+  secondInput.source.runtime = "hermes";
+  secondInput.source.message = "The user says they prefer morning planning summaries.";
+  secondInput.identity_context = {
+    ...secondInput.identity_context!,
+    runtime: "hermes",
+    ids: {
+      ...secondInput.identity_context!.ids,
+      agent_identity: "actor_agent_hermes_owner_scope_002",
+      owner_identity: firstInput.identity_context!.ids.owner_identity!,
+      runtime_instance: "runtime_hermes_owner_scope_002",
+      runtime_session: "session_hermes_owner_scope_002",
+      conversation_thread: "thread_hermes_owner_scope_002",
+    },
+    agent_label: "Hermes Test Agent",
+    message_refs: ["msg_hermes_owner_scope_002"],
+    thread_summary: "Hermes thread summary",
+  };
+  secondInput.ids.canon_artifact = "part_hermes_canon_owner_scope_002";
+  secondInput.ids.world_artifact = "part_hermes_world_owner_scope_002";
+  secondInput.ids.wiki_artifact = "part_hermes_wiki_owner_scope_002";
+  secondInput.ids.projection_manifest = "pmf_hermes_owner_scope_002";
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  const projectionMarkdown = await readFile(second.paths.projection_markdown, "utf8");
+
+  assert.match(projectionMarkdown, /\[canon:mem_test_001\] \(ratified; active\)/);
+  assert.match(projectionMarkdown, new RegExp(`\\[canon:${secondInput.ids.canonical}\\] \\(ratified; active\\)`));
+  assert.equal(
+    second.records.projection_manifest.suppressed_records?.some((record) => record.id === firstInput.ids.canonical) ?? false,
+    false,
+  );
+});
+
 test("writeConversationPreferenceFlowToStore keeps projection markdown isolated per manifest", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   t.after(async () => {
@@ -1815,11 +1863,20 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   assert.equal(applied.records.contradiction_resolution.applied_at, "2026-04-12T01:05:00.000Z");
   assert.equal(applied.records.existing_world_claim.temporal_state?.temporal_status, "historical");
   assert.equal(applied.records.existing_world_claim.temporal_state?.valid_to, "2026-04-12T01:00:00.000Z");
-  assert.equal(applied.records.ratification_record.decision, "approved");
-  assert.equal(applied.records.intake.proposal.operation, "revise");
+  assert.equal(applied.records.ratification_record.decision, "rejected");
+  assert.equal(applied.records.intake.proposal.operation, "create");
+  assert.equal(applied.records.canonical_followup?.proposal.id, "prop_cres_test_apply_002_canonical_followup");
+  assert.equal(applied.records.canonical_followup?.proposal.operation, "revise");
+  assert.equal(applied.records.canonical_followup?.ratification_record.id, "rat_cres_test_apply_002_canonical_followup");
+  assert.equal(applied.records.canonical_followup?.ratification_record.decision, "approved");
   assert.equal(applied.records.canonical_record?.id, "mem_test_apply_002");
   assert.equal(applied.records.canonical_record?.governance_state, "ratified");
   assert.equal(applied.records.canonical_record?.supersedes_ref, "mem_test_001");
+
+  const originalProposal = JSON.parse(await readFile(applied.paths.proposal, "utf8")) as { operation?: string };
+  const originalRatification = JSON.parse(await readFile(applied.paths.ratification_record, "utf8")) as { decision?: string };
+  assert.equal(originalProposal.operation, "create");
+  assert.equal(originalRatification.decision, "rejected");
   const canonicalRecords = await loadCanonicalRecords(rootDir);
   const oldCanonical = canonicalRecords.find((record) => record.id === "mem_test_001");
   assert.equal(oldCanonical?.governance_state, "superseded");
@@ -1837,6 +1894,8 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
 
   const reloaded = await readConversationPreferenceFlowResult(secondInput);
   assert.equal(reloaded?.records.contradiction_resolution?.status, "applied");
+  assert.equal(reloaded?.records.ratification_record.decision, "rejected");
+  assert.equal(reloaded?.records.canonical_followup?.ratification_record.decision, "approved");
   assert.equal(reloaded?.records.canonical_record?.id, "mem_test_apply_002");
   const projectionManifestSource = await readFile(applied.paths.projection_manifest, "utf8");
   assert.match(projectionManifestSource, /"created_at": "2026-04-12T01:00:00.000Z"/);
@@ -2176,8 +2235,10 @@ test("manual contradiction review promotes a winning candidate into canon", asyn
   });
 
   assert.equal(applied.records.contradiction_resolution.status, "applied");
-  assert.equal(applied.records.ratification_record.decision, "approved");
-  assert.equal(applied.records.intake.proposal.operation, "revise");
+  assert.equal(applied.records.ratification_record.decision, "rejected");
+  assert.equal(applied.records.intake.proposal.operation, "create");
+  assert.equal(applied.records.canonical_followup?.proposal.operation, "revise");
+  assert.equal(applied.records.canonical_followup?.ratification_record.decision, "approved");
   assert.equal(applied.records.canonical_record?.id, secondInput.ids.canonical);
   assert.equal(applied.records.canonical_record?.supersedes_ref, firstInput.ids.canonical);
 
