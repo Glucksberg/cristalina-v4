@@ -4111,6 +4111,12 @@ async function buildExpectedIntakeForStore(
     };
   }
 
+  if (!input.ids.contradiction || !input.ids.contradiction_resolution) {
+    throw new Error(
+      `Contradicting world claim ${previewIntake.world_claim.id} against ${conflicting_world_claim.id} requires ids.contradiction and ids.contradiction_resolution`,
+    );
+  }
+
   return {
     intake: {
       ...previewIntake,
@@ -4488,6 +4494,12 @@ export async function applyConversationPreferenceResolutionToStore(
       if (records.contradiction_resolution.strategy === "manual_review") {
         throw new Error("Manual-review contradiction resolutions require explicit review before application");
       }
+
+      assertAuthorizedManualContradictionReview({
+        actor: input.actor,
+        authenticated_principal,
+        owner_identity_ref: records.intake.owner_identity?.id ?? records.intake.runtime_instance?.owner_identity_ref ?? null,
+      });
 
       const existing_world_claim = await readCoreRecord<WorldClaim>(
         coreRecordPath(

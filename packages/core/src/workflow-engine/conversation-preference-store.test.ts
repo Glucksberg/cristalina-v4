@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadCanonicalRecords, writeCoreRecord } from "../store/io.js";
+import { loadCanonicalRecords, loadWorldClaims, writeCoreRecord } from "../store/io.js";
 import {
   applyConversationPreferenceResolutionToStore,
   type AuthenticatedConversationPreferenceStoreInput,
@@ -1620,6 +1620,35 @@ test("writeConversationPreferenceFlowToStore records contradictions against exis
   assert.doesNotMatch(projectionMarkdown, /\[canon:mem_test_002\]/);
 });
 
+test("writeConversationPreferenceFlowToStore rejects conflicting world claims without contradiction ids", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const firstInput = buildInput(rootDir);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput = cloneInputWithSuffix(
+    rootDir,
+    "missing_contradiction_ids_002",
+    "The user now prefers exhaustive answers by default.",
+  );
+  secondInput.now = "2026-04-12T01:00:00.000Z";
+  secondInput.source.message = "The user now says they prefer exhaustive answers by default.";
+  delete secondInput.ids.contradiction;
+  delete secondInput.ids.contradiction_resolution;
+
+  await assert.rejects(
+    () => writeConversationPreferenceFlowToStore(secondInput),
+    /requires ids\.contradiction and ids\.contradiction_resolution/,
+  );
+
+  const worldClaims = await loadWorldClaims(rootDir);
+  assert.equal(worldClaims.length, 1);
+  assert.equal(worldClaims[0]?.id, firstInput.ids.world_claim);
+});
+
 test("readConversationPreferenceFlowResult rejects recovery journals that escape the store root", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
   const outsidePath = join(tmpdir(), "cristalina-core-recovery-escape.txt");
@@ -1779,6 +1808,47 @@ test("applyConversationPreferenceResolutionToStore persists applied resolution a
   });
   assert.equal(appliedAgain.reused, true);
   assert.equal(appliedAgain.records.contradiction_resolution.status, "applied");
+});
+
+test("applyConversationPreferenceResolutionToStore rejects participant authority for direct contradiction resolution", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const participantActor = "actor_participant_resolution_apply_001";
+  const firstInput = buildInput(rootDir);
+  firstInput.actor = participantActor;
+  firstInput.authenticated_principal = participantPrincipal(participantActor);
+  await writeConversationPreferenceFlowToStore(firstInput);
+
+  const secondInput = cloneInputWithSuffix(
+    rootDir,
+    "participant_resolution_apply_002",
+    "The user now prefers exhaustive answers by default.",
+  );
+  secondInput.now = "2026-04-12T01:00:00.000Z";
+  secondInput.actor = participantActor;
+  secondInput.authenticated_principal = participantPrincipal(participantActor);
+  secondInput.source.message = "The participant says the user now prefers exhaustive answers by default.";
+
+  const second = await writeConversationPreferenceFlowToStore(secondInput);
+  assert.equal(second.records.contradiction_resolution?.strategy, "coexist_temporally");
+
+  await assert.rejects(
+    () =>
+      applyConversationPreferenceResolutionToStore({
+        ...secondInput,
+        now: "2026-04-12T01:05:00.000Z",
+        validation_scope: "test:conversation-preference:resolution-application-auth",
+      }),
+    /Manual contradiction review requires authenticated system principal or owner actor_owner_test_001/,
+  );
+
+  const worldClaims = await loadWorldClaims(rootDir);
+  const existingClaim = worldClaims.find((record) => record.id === firstInput.ids.world_claim);
+  assert.equal(existingClaim?.epistemic_state, "inferred");
+  assert.equal(existingClaim?.temporal_state?.temporal_status, "active");
 });
 
 test("applyConversationPreferenceResolutionToStore supports supersede_candidate resolutions", async (t) => {
