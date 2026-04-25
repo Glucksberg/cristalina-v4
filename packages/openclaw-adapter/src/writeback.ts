@@ -8,6 +8,7 @@ import {
   rejectQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
   writePreferenceFeedbackFlowToStore,
+  writeNonCanonicalIntakeToStore,
   type AuthenticatedPrincipal,
   type ConversationPreferenceManualContradictionReviewQueueEntry,
   type ConversationPreferenceOwnerRatificationQueueEntry,
@@ -19,6 +20,8 @@ import {
   type ConversationPreferenceResolutionStoreResult,
   type ConversationPreferenceStoreInput,
   type ConversationPreferenceStoreResult,
+  type NonCanonicalIntakeInput,
+  type NonCanonicalIntakeResult,
 } from "@cristalina-v4/core";
 
 const OPENCLAW_RUNTIME = "openclaw";
@@ -72,6 +75,12 @@ export interface OpenClawQueuedManualContradictionExpirationInput
   authenticated_principal: OpenClawAuthenticatedPrincipal;
 }
 
+export interface OpenClawNonCanonicalIntakeInput
+  extends Omit<NonCanonicalIntakeInput, "source" | "authenticated_principal"> {
+  authenticated_principal: OpenClawAuthenticatedPrincipal;
+  source: Omit<NonCanonicalIntakeInput["source"], "runtime">;
+}
+
 function requireAuthenticatedPrincipal(principal: OpenClawAuthenticatedPrincipal | undefined): OpenClawAuthenticatedPrincipal {
   if (!principal) {
     throw new Error("OpenClaw adapter writeback requires an authenticated_principal");
@@ -99,6 +108,20 @@ export async function writeOpenClawProjectionFeedbackToStore(
 ): Promise<ConversationPreferenceStoreResult> {
   const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
   return writePreferenceFeedbackFlowToStore({
+    ...input,
+    authenticated_principal,
+    source: {
+      ...input.source,
+      runtime: OPENCLAW_RUNTIME,
+    },
+  });
+}
+
+export async function writeOpenClawNonCanonicalIntakeToStore(
+  input: OpenClawNonCanonicalIntakeInput,
+): Promise<NonCanonicalIntakeResult> {
+  const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
+  return writeNonCanonicalIntakeToStore({
     ...input,
     authenticated_principal,
     source: {

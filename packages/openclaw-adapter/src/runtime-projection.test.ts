@@ -31,9 +31,12 @@ import {
   listOpenClawConversationPreferenceManualContradictionReviewQueue,
   listOpenClawConversationPreferenceOwnerRatificationQueue,
   ratifyOpenClawQueuedConversationPreference,
+  writeOpenClawNonCanonicalIntakeToStore,
   writeOpenClawConversationPreferenceToStore,
+  writeOpenClawProjectionFeedbackToStore,
   type OpenClawAuthenticatedPrincipal,
   type OpenClawConversationPreferenceWriteInput,
+  type OpenClawNonCanonicalIntakeInput,
 } from "./writeback.js";
 
 function buildOpenClawWriteInput(
@@ -115,6 +118,57 @@ function buildOpenClawManualReviewInput(
       message_refs: [`msg_openclaw_manual_${suffix}`],
     },
   });
+}
+
+function buildOpenClawNonCanonicalInput(
+  rootDir: string,
+  mode: OpenClawNonCanonicalIntakeInput["mode"],
+  suffix: string,
+): OpenClawNonCanonicalIntakeInput {
+  const actor = "system:openclaw-noncanonical-test";
+  return {
+    rootDir,
+    now: "2026-04-21T01:00:00.000Z",
+    actor,
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: actor,
+      system_scope: "openclaw-noncanonical-test",
+    },
+    mode,
+    ids: {
+      source: `src_openclaw_noncanonical_${mode}_${suffix}`,
+      runtime_instance: `runtime_openclaw_noncanonical_${suffix}`,
+      runtime_session: `session_openclaw_noncanonical_${suffix}`,
+      conversation_thread: `thread_openclaw_noncanonical_${suffix}`,
+      observation: `obs_openclaw_noncanonical_${mode}_${suffix}`,
+      disposition: `disp_openclaw_noncanonical_${mode}_${suffix}`,
+      diagnostic: `diag_openclaw_noncanonical_${mode}_${suffix}`,
+    },
+    source: {
+      source_ref: `runtime/openclaw-noncanonical#${mode}-${suffix}`,
+      content_ref: `raw/sources/openclaw-noncanonical-${mode}-${suffix}.json`,
+      source_type: "openclaw_adapter_noncanonical_fixture",
+      payload: {
+        note: `OpenClaw ${mode} adapter fixture`,
+      },
+      runtime_ref: `runtime_openclaw_noncanonical_${suffix}`,
+      session_ref: `session_openclaw_noncanonical_${suffix}`,
+      thread_ref: `thread_openclaw_noncanonical_${suffix}`,
+      agent_identity_ref: "actor_agent_openclaw_noncanonical_001",
+      owner_identity_ref: "actor_owner_openclaw_noncanonical_001",
+      session_objective: "Exercise non-canonical OpenClaw adapter write-through",
+      session_summary: "OpenClaw non-canonical adapter session",
+      thread_summary: "OpenClaw non-canonical adapter thread",
+      message_refs: [`msg_openclaw_noncanonical_${mode}_${suffix}`],
+    },
+    diagnostic: {
+      code: "openclaw_adapter_noncanonical_fixture",
+      severity: "info",
+      message: `OpenClaw ${mode} adapter fixture diagnostic`,
+    },
+    validation_scope: `test:openclaw-adapter:noncanonical:${mode}`,
+  };
 }
 
 test("OpenClaw adapter exposes pending owner review items from the latest projection", async (t) => {
@@ -510,4 +564,97 @@ test("OpenClaw adapter requires authenticated owner authority for owner-scoped c
 
   assert.equal(expired.records.ratification_record.decision, "expired");
   assert.equal(expired.records.owner_ratification_queue?.status, "expired");
+});
+
+test("OpenClaw adapter writes projection feedback through the runtime-neutral intake profile", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-openclaw-adapter-feedback-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const result = await writeOpenClawProjectionFeedbackToStore(buildOpenClawWriteInput({
+    rootDir,
+    now: "2026-04-16T04:00:00.000Z",
+    actor: "system:openclaw-adapter-feedback-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:openclaw-adapter-feedback-test",
+      system_scope: "openclaw-adapter-feedback-test",
+    },
+    statement: "OpenClaw projection feedback says the owner prefers compact memory summaries.",
+    validation_scope: "test:openclaw-adapter:projection-feedback",
+    ids: {
+      agent_identity: "actor_agent_openclaw_feedback_test_001",
+      owner_identity: "actor_owner_openclaw_feedback_test_001",
+      runtime_instance: "runtime_openclaw_feedback_test_001",
+      runtime_session: "session_openclaw_feedback_test_001",
+      conversation_thread: "thread_openclaw_feedback_test_001",
+      source: "src_openclaw_feedback_test_001",
+      observation: "obs_openclaw_feedback_test_001",
+      episode: "ep_openclaw_feedback_test_001",
+      subject_entity: "ent_subject_openclaw_feedback_test_001",
+      preference_entity: "ent_preference_openclaw_feedback_test_001",
+      preference_relation: "rel_preference_openclaw_feedback_test_001",
+      world_claim: "wcl_openclaw_feedback_test_001",
+      contradiction: "contra_openclaw_feedback_test_001",
+      contradiction_resolution: "cres_openclaw_feedback_test_001",
+      wiki_page: "wpg_openclaw_feedback_test_001",
+      wiki_claim: "wclm_openclaw_feedback_test_001",
+      proposal: "prop_openclaw_feedback_test_001",
+      disposition: "disp_openclaw_feedback_test_001",
+      ratification: "rat_openclaw_feedback_test_001",
+      diagnostic: "diag_openclaw_feedback_test_001",
+      canonical: "mem_openclaw_feedback_test_001",
+      canon_artifact: "part_openclaw_feedback_canon_001",
+      world_artifact: "part_openclaw_feedback_world_001",
+      wiki_artifact: "part_openclaw_feedback_wiki_001",
+      projection_manifest: "pmf_openclaw_feedback_test_001",
+    },
+    labels: {
+      agent: "Cristalina Test Agent",
+      owner: "Test Owner",
+      session_objective: "Write OpenClaw projection feedback",
+      session_summary: "OpenClaw projection feedback session",
+      thread_summary: "OpenClaw projection feedback thread",
+    },
+    source: {
+      source_ref: "runtime/openclaw-feedback-test#projection-feedback-001",
+      content_ref: "raw/sources/openclaw-feedback-test-001.json",
+      runtime: "openclaw",
+      message: "OpenClaw projection feedback says the owner prefers compact memory summaries.",
+      speaker_ref: "actor_agent_openclaw_feedback_test_001",
+      message_refs: ["msg_openclaw_feedback_test_001"],
+    },
+  }));
+
+  assert.equal(result.records.source_record.intake_profile_ref, "preference_signal/projection_feedback");
+  assert.equal(result.records.intake.runtime_instance?.runtime, "openclaw");
+  assert.equal(result.records.projection_manifest.adapter, "openclaw");
+  assert.equal((await listOpenClawProjectionRuntimeViews(rootDir)).length, 1);
+});
+
+test("OpenClaw adapter writes non-canonical intake through core runtime law", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-openclaw-adapter-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const evidence = await writeOpenClawNonCanonicalIntakeToStore(
+    buildOpenClawNonCanonicalInput(rootDir, "evidence_only", "001"),
+  );
+  const runtime = await writeOpenClawNonCanonicalIntakeToStore(
+    buildOpenClawNonCanonicalInput(rootDir, "runtime_only", "002"),
+  );
+  const diagnostic = await writeOpenClawNonCanonicalIntakeToStore(
+    buildOpenClawNonCanonicalInput(rootDir, "diagnostic_only", "003"),
+  );
+
+  assert.deepEqual(evidence.records.disposition_record.outcomes, ["evidence_only"]);
+  assert.equal(evidence.records.observation, undefined);
+  assert.deepEqual(runtime.records.disposition_record.outcomes, ["runtime_only"]);
+  assert.equal(runtime.records.runtime_instance?.runtime, "openclaw");
+  assert.equal(runtime.records.observation?.runtime_instance_ref, "runtime_openclaw_noncanonical_002");
+  assert.deepEqual(diagnostic.records.disposition_record.outcomes, ["diagnostic_only"]);
+  assert.equal(diagnostic.records.diagnostic?.code, "openclaw_adapter_noncanonical_fixture");
+  assert.equal((await listOpenClawProjectionRuntimeViews(rootDir)).length, 0);
 });
