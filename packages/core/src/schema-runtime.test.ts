@@ -285,6 +285,50 @@ test("reference validation requires full record identity for stored references",
   assert.ok(invalid.some((issue) => issue.path === "target_ref.layer"));
 });
 
+test("source record validation keeps content refs inside raw evidence roots", () => {
+  function sourceRecord(content_ref: string) {
+    return {
+      id: `src_contract_${content_ref.replace(/[^A-Za-z0-9._-]+/g, "_") || "empty"}`,
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: "2026-04-22T00:00:00.000Z",
+      visibility_state: {
+        privacy_scope: "project_private",
+      },
+      provenance: {
+        source_type: "test",
+        source_ref: "source-content-ref-contract",
+      },
+      content_ref,
+    };
+  }
+
+  for (const content_ref of [
+    "raw/sources/conversation-turn-001.json",
+    "raw/imports/customer-001.json",
+    "raw/attachments/customer-note.pdf",
+  ]) {
+    assert.deepEqual(validateCoreRecord(sourceRecord(content_ref)), []);
+  }
+
+  for (const content_ref of [
+    "wiki/index.md",
+    "/raw/sources/source-001.json",
+    "raw/sources",
+    "raw/sources/../sources/source-001.json",
+    "raw/sources/../../canon/preferences/mem.json",
+    "raw/sources//source-001.json",
+    " raw/sources/source-001.json ",
+  ]) {
+    const issues = validateCoreRecord(sourceRecord(content_ref));
+    assert.ok(
+      issues.some((issue) => issue.path === "content_ref"),
+      `expected content_ref issue for ${JSON.stringify(content_ref)}`,
+    );
+  }
+});
+
 test("working memory checkpoint validation preserves runtime authority boundaries", () => {
   const valid = validateCoreRecord({
     id: "working_memory_checkpoint_contract_001",

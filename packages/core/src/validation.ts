@@ -23,6 +23,7 @@ import type {
   VectorArtifact,
   WorldClaim,
 } from "./types.js";
+import { isAbsolute as isPosixAbsolute, normalize as normalizePosix, relative as relativePosix } from "node:path/posix";
 import { isStoreRelativeWikiPagePath } from "./wiki/path.js";
 import {
   ACTOR_KINDS,
@@ -92,6 +93,16 @@ export class ValidationError extends Error {
 
 const SAFE_RECORD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const WINDOWS_RESERVED_PATH_SEGMENT_PATTERN = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+const LEGAL_SOURCE_CONTENT_PREFIXES = [
+  "raw/sources/",
+  "raw/imports/",
+  "raw/attachments/",
+] as const;
+const LEGAL_SOURCE_CONTENT_ROOTS = [
+  "raw/sources",
+  "raw/imports",
+  "raw/attachments",
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -169,6 +180,47 @@ function pushStringArray(issues: ValidationIssue[], record: Record<string, unkno
 function pushOptionalTimestamp(issues: ValidationIssue[], record: Record<string, unknown>, key: string, path = key): void {
   if (record[key] !== undefined && record[key] !== null && !isIsoTimestamp(record[key])) {
     issues.push({ path, message: "expected ISO-like timestamp or null" });
+  }
+}
+
+function pushLegalSourceContentRef(
+  issues: ValidationIssue[],
+  record: Record<string, unknown>,
+  key: string,
+  path = key,
+): void {
+  const value = record[key];
+  if (typeof value !== "string" || value === "") {
+    issues.push({ path, message: "expected non-empty string" });
+    return;
+  }
+
+  const trimmed = value.trim();
+  const normalized = normalizePosix(trimmed);
+  const isWithinAllowedRoot = LEGAL_SOURCE_CONTENT_ROOTS.some((root) => {
+    const relativePath = relativePosix(root, normalized);
+    return (
+      relativePath !== "" &&
+      relativePath !== "." &&
+      relativePath !== ".." &&
+      !relativePath.startsWith("../") &&
+      !isPosixAbsolute(relativePath)
+    );
+  });
+
+  if (
+    value !== trimmed ||
+    value !== normalized ||
+    normalized === "." ||
+    normalized === ".." ||
+    isPosixAbsolute(normalized) ||
+    !isWithinAllowedRoot ||
+    !LEGAL_SOURCE_CONTENT_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+  ) {
+    issues.push({
+      path,
+      message: "source content_ref must stay within raw/sources, raw/imports, or raw/attachments",
+    });
   }
 }
 
@@ -414,7 +466,7 @@ function validateSourceRecord(value: unknown): ValidationIssue[] {
   if (value.kind !== "source_record") issues.push({ path: "kind", message: 'expected "source_record"' });
   if (value.layer !== "raw") issues.push({ path: "layer", message: 'expected "raw"' });
   if (value.authoritative_home !== "raw") issues.push({ path: "authoritative_home", message: 'expected "raw"' });
-  pushRequiredString(issues, value, "content_ref");
+  pushLegalSourceContentRef(issues, value, "content_ref");
   pushOptionalTimestamp(issues, value, "observed_at");
   return issues;
 }

@@ -241,6 +241,9 @@ Minimum fields:
 - `visibility_state`
 - `provenance`
 
+`content_ref` must be a normalized store-relative raw evidence path under
+`raw/sources/`, `raw/imports/`, or `raw/attachments/`.
+
 ### 4.2 `Observation`
 
 Represents something seen, read, heard, inferred, or produced during runtime activity.

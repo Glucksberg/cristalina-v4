@@ -78,6 +78,17 @@ function expectOneOfLocalDefs(schema: JsonSchema): string[] {
   return refs;
 }
 
+function expectPatternMatch(pattern: string | undefined, accepted: string[], rejected: string[]): void {
+  assert.equal(typeof pattern, "string");
+  const regex = new RegExp(pattern!);
+  for (const value of accepted) {
+    assert.equal(regex.test(value), true, `${pattern} should accept ${JSON.stringify(value)}`);
+  }
+  for (const value of rejected) {
+    assert.equal(regex.test(value), false, `${pattern} should reject ${JSON.stringify(value)}`);
+  }
+}
+
 test("object envelope schema enums stay aligned with runtime validation enums", async () => {
   const schema = await readSchema("../../schemas/object-envelope.schema.json");
   const properties = schema.properties ?? {};
@@ -199,8 +210,29 @@ test("registered intake profile schema captures generic runner contract", async 
 test("non-canonical intake schema stays aligned with executable disposition modes", async () => {
   const schema = await readSchema("../../schemas/non-canonical-intake.schema.json");
   const properties = schema.properties ?? {};
+  const source = properties.source as { properties?: Record<string, unknown> } | undefined;
+  const contentRef = source?.properties?.content_ref as { pattern?: string } | undefined;
 
   assert.deepEqual(expectEnum(properties.mode), [...NON_CANONICAL_INTAKE_MODES]);
+  assert.ok(contentRef?.pattern?.includes("raw/(sources|imports|attachments)/"));
+  assert.ok(contentRef?.pattern?.includes("\\.\\."));
+  expectPatternMatch(
+    contentRef?.pattern,
+    [
+      "raw/sources/source-001.json",
+      "raw/imports/customer-001.json",
+      "raw/attachments/customer-note.pdf",
+    ],
+    [
+      "wiki/index.md",
+      "raw/sources",
+      "raw/sources/.",
+      "raw/sources/..",
+      "raw/sources/../source-001.json",
+      "raw/sources/./source-001.json",
+      "raw/sources//source-001.json",
+    ],
+  );
 });
 
 test("wiki maintenance run schema stays aligned with executable wiki events", async () => {
