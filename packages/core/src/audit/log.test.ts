@@ -5,7 +5,8 @@ import test from "node:test";
 import { tmpdir } from "node:os";
 
 import { STORAGE_LAYOUT } from "../storage.js";
-import { appendAuditChange, appendValidationLog } from "./log.js";
+import type { CoreRecord } from "../types.js";
+import { appendAuditChange, appendValidationLog, writeSnapshotManifest, writeSnapshotRecordCopies } from "./log.js";
 
 function parseJsonLines(source: string): Array<{ entry_id?: string }> {
   return source
@@ -13,6 +14,25 @@ function parseJsonLines(source: string): Array<{ entry_id?: string }> {
     .split("\n")
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line) as { entry_id?: string });
+}
+
+function buildSnapshotRecord(): CoreRecord {
+  return {
+    id: "obs_snapshot_001",
+    kind: "observation",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: "2026-04-20T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "test",
+      source_ref: "snapshot-test",
+    },
+    summary: "Snapshot fixture observation.",
+    epistemic_state: "observed",
+  };
 }
 
 test("appendAuditChange preserves all concurrent entries", async (t) => {
@@ -96,5 +116,63 @@ test("appendValidationLog preserves all concurrent entries", async (t) => {
   assert.deepEqual(
     new Set(entries.map((entry) => entry.entry_id)),
     new Set(Array.from({ length: 8 }, (_, index) => `validation-entry-${index}`)),
+  );
+});
+
+test("snapshot writes stay under audit snapshot storage", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-audit-snapshot-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const snapshotId = "snap-safe_001";
+  const record = buildSnapshotRecord();
+  const entries = await writeSnapshotRecordCopies(rootDir, snapshotId, [record]);
+  const manifestPath = await writeSnapshotManifest(rootDir, {
+    snapshot_id: snapshotId,
+    created_at: "2026-04-20T00:00:00.000Z",
+    reason: "Snapshot containment test.",
+    record_refs: [record.id],
+    record_entries: entries,
+  });
+
+  assert.equal(manifestPath, join(rootDir, STORAGE_LAYOUT.audits.snapshots, `${snapshotId}.json`));
+  assert.equal(
+    entries[0]?.path,
+    join(rootDir, STORAGE_LAYOUT.audits.snapshots, snapshotId, "records", "0001-obs_snapshot_001.json"),
+  );
+  assert.deepEqual(JSON.parse(await readFile(entries[0]!.path, "utf8")), record);
+});
+
+test("snapshot writes reject ids that are not safe path segments", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-audit-snapshot-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const record = buildSnapshotRecord();
+  await assert.rejects(
+    () =>
+      writeSnapshotManifest(rootDir, {
+        snapshot_id: "../../../cristalina-snapshot-escape",
+        created_at: "2026-04-20T00:00:00.000Z",
+        reason: "Invalid snapshot id.",
+        record_refs: [],
+      }),
+    /Snapshot id must be a safe path segment/,
+  );
+  await assert.rejects(
+    () => writeSnapshotRecordCopies(rootDir, "../../../cristalina-snapshot-escape", [record]),
+    /Snapshot id must be a safe path segment/,
+  );
+  await assert.rejects(
+    () =>
+      writeSnapshotManifest(rootDir, {
+        snapshot_id: "snap/nested",
+        created_at: "2026-04-20T00:00:00.000Z",
+        reason: "Invalid snapshot id.",
+        record_refs: [],
+      }),
+    /Snapshot id must be a safe path segment/,
   );
 });

@@ -375,9 +375,12 @@ The layout must be recoverable and rebuildable from upstream records.
 
 The layout should distinguish:
 
-- metadata records under `derived/vector/*/*.json`
+- metadata records under `derived/vector/*/*.json`, selected by declared vector artifact `kind`
 - sidecar blobs under deterministic paths referenced by metadata
 - index manifests as the only legal entrypoint for loading an index
+
+JSON vector sidecars, such as fixture embedding arrays, do not become metadata
+records just because their extension is `.json`.
 
 ---
 

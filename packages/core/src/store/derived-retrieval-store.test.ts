@@ -173,6 +173,7 @@ test("derived retrieval store writes chunk and embedding sidecars without replac
   assert.deepEqual(JSON.parse(await readFile(metadataPath, "utf8")), run.embeddings[0]);
   assert.equal(await readVectorChunkText(rootDir, run.chunks[0]), run.chunk_texts[run.chunks[0].id]);
   assert.deepEqual(await readEmbeddingVector(rootDir, run.embeddings[0]), run.embedding_vectors[run.embeddings[0].id]);
+  assert.deepEqual((await loadVectorArtifacts(rootDir)).map((artifact) => artifact.id), [run.embeddings[0].id]);
 
   await assert.rejects(
     () => writeVectorChunkText(rootDir, run.chunks[0], "drifted text"),

@@ -390,16 +390,23 @@ async function acquireNonCanonicalIntakeLock(rootDir: string, stableId: string):
   }
 }
 
-async function withNonCanonicalIntakeLock<T>(
+async function withNonCanonicalIntakeLocks<T>(
   rootDir: string,
-  stableId: string,
+  stableIds: string[],
   fn: () => Promise<T>,
 ): Promise<T> {
-  const release = await acquireNonCanonicalIntakeLock(rootDir, stableId);
+  const sortedStableIds = [...new Set(stableIds)].sort();
+  const releases: Array<() => Promise<void>> = [];
+
   try {
+    for (const stableId of sortedStableIds) {
+      releases.push(await acquireNonCanonicalIntakeLock(rootDir, stableId));
+    }
     return await fn();
   } finally {
-    await release();
+    for (const release of releases.reverse()) {
+      await release();
+    }
   }
 }
 
@@ -734,17 +741,21 @@ export async function writeNonCanonicalIntakeToStore(
 ): Promise<NonCanonicalIntakeResult> {
   const rootDir = resolve(input.rootDir);
   assertAuthenticatedPrincipal(input);
+  const content_ref = normalizeLegalRawContentRef(input.source.content_ref);
   await initializeStore(rootDir, input.now);
-  return withNonCanonicalIntakeLock(rootDir, input.ids.disposition, () =>
-    writeNonCanonicalIntakeToStoreLocked(rootDir, input),
+  return withNonCanonicalIntakeLocks(
+    rootDir,
+    [input.ids.disposition, `content_ref:${content_ref}`],
+    () => writeNonCanonicalIntakeToStoreLocked(rootDir, input, content_ref),
   );
 }
 
 async function writeNonCanonicalIntakeToStoreLocked(
   rootDir: string,
   input: NonCanonicalIntakeInput,
+  normalizedContentRef?: string,
 ): Promise<NonCanonicalIntakeResult> {
-  const content_ref = normalizeLegalRawContentRef(input.source.content_ref);
+  const content_ref = normalizedContentRef ?? normalizeLegalRawContentRef(input.source.content_ref);
   const attachment_refs = [...new Set(input.source.attachment_refs?.map(normalizeAttachmentRef) ?? [])];
   const source_record = buildSourceRecord(input, content_ref, attachment_refs);
   await assertSourceContentRefAvailable(rootDir, source_record);

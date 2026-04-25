@@ -84,6 +84,11 @@ Expected contents:
 - attachments
 - source manifests
 
+Raw evidence payloads and `source_record` manifests may both live below
+`raw/sources/`. Loaders must recognize source manifests by their declared
+`kind`, not by treating every JSON payload in the directory as an authoritative
+record.
+
 This layer should be append-heavy and authority-light.
 
 It is evidence, not memory law.
@@ -215,6 +220,8 @@ Symbol and vector metadata are derived/navigation surfaces, not a new authority 
 Symbol anchors live under `derived/symbols/`.
 
 Vector metadata lives under `derived/vector/`, while larger text/vector/index sidecar blobs remain referenced by schema-validated metadata records.
+Vector loaders must select metadata records by declared vector artifact `kind`
+because fixture vector sidecars may also be JSON.
 
 ### 4.8 `audits/`
 
@@ -230,6 +237,9 @@ Expected contents:
 - session resume receipts
 - rollback manifests
 - snapshot manifests
+
+Snapshot ids are single safe path segments. Snapshot manifests and record-copy
+directories must stay under `audits/snapshots/`.
 
 ---
 

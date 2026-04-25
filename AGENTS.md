@@ -89,6 +89,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-24: Store replay only stays trustworthy when loaders select records by declared kind instead of file shape, sidecar blobs remain downstream of metadata, and raw evidence ownership is serialized by content ref as well as workflow id.
 - 2026-04-24: Conflict intake only stays legal when detected world contradictions cannot materialize without explicit contradiction records, and resolution application reauthenticates owner or system authority before mutating world truth.
 - 2026-04-24: Projection boundaries only stay enforceable when direct manifest loads, flow-local replay, queue recovery, and reuse gates obey the same explicit consistency contract instead of treating derived artifacts as implicitly safe.
 - 2026-04-23: Memory replay only stays correct when retries, duplicate deliveries, and recovery runs converge on the same durable state instead of producing semantically new events.

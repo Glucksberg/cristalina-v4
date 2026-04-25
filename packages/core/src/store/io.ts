@@ -54,6 +54,22 @@ const CANONICAL_CLAIM_KIND_SET = new Set(
   CANONICAL_CLAIM_KINDS,
 );
 
+const SOURCE_RECORD_KIND_SET = new Set(["source_record"]);
+
+const VECTOR_ARTIFACT_KIND_SET = new Set([
+  "vector_corpus",
+  "vector_chunk",
+  "embedding_model_manifest",
+  "embedding_record",
+  "embedding_batch_run",
+  "vector_index_manifest",
+  "vector_search_run",
+  "retrieval_audit",
+  "retrieval_eval_run",
+  "vector_maintenance_run",
+  "vector_export_jsonl_row",
+]);
+
 function isCanonicalMemoryRecord(record: CoreRecord): record is CanonicalMemoryObject {
   return (
     record.layer === "canon" &&
@@ -178,6 +194,15 @@ function resolveWithinRoot(rootDir: string, relativePath: string): string {
 
 function sha256(value: string): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function hasStringKind(value: unknown): value is { kind: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    typeof value.kind === "string"
+  );
 }
 
 function recordFilePath(rootDir: string, record: CoreRecord): string {
@@ -367,22 +392,19 @@ export async function writeEmbeddingVector(rootDir: string, embedding: Embedding
 }
 
 export async function readCoreRecord<T extends CoreRecord = CoreRecord>(filePath: string): Promise<T> {
-  const source = await readFile(filePath, "utf8");
-  const parsed = JSON.parse(source) as unknown;
+  const parsed = await readJsonFile(filePath);
   assertCoreRecord(parsed);
   return parsed as T;
 }
 
 export async function readSymbolAnchor(filePath: string): Promise<SymbolAnchor> {
-  const source = await readFile(filePath, "utf8");
-  const parsed = JSON.parse(source) as unknown;
+  const parsed = await readJsonFile(filePath);
   assertSymbolAnchor(parsed);
   return parsed;
 }
 
 export async function readVectorArtifact<T extends VectorArtifact = VectorArtifact>(filePath: string): Promise<T> {
-  const source = await readFile(filePath, "utf8");
-  const parsed = JSON.parse(source) as unknown;
+  const parsed = await readJsonFile(filePath);
   assertVectorArtifact(parsed);
   return parsed as T;
 }
@@ -427,6 +449,11 @@ export function vectorArtifactPath(rootDir: string, artifact: VectorArtifact): s
   return vectorArtifactFilePath(rootDir, artifact);
 }
 
+async function readJsonFile(filePath: string): Promise<unknown> {
+  const source = await readFile(filePath, "utf8");
+  return JSON.parse(source) as unknown;
+}
+
 async function collectJsonFiles(rootDir: string, relativeDir: string): Promise<string[]> {
   const absoluteDir = resolveWithinRoot(rootDir, relativeDir);
   const entries = await readdir(absoluteDir, { withFileTypes: true }).catch((error) => {
@@ -451,6 +478,25 @@ async function loadLayerRecords(rootDir: string, relativeDir: string): Promise<C
   return Promise.all(files.map((file) => readCoreRecord<CoreRecord>(join(rootDir, file))));
 }
 
+async function loadLayerRecordsByKind(
+  rootDir: string,
+  relativeDir: string,
+  allowedKinds: ReadonlySet<string>,
+): Promise<CoreRecord[]> {
+  const files = await collectJsonFiles(rootDir, relativeDir);
+  const records = await Promise.all(
+    files.map(async (file) => {
+      const parsed = await readJsonFile(join(rootDir, file));
+      if (!hasStringKind(parsed) || !allowedKinds.has(parsed.kind)) {
+        return undefined;
+      }
+      assertCoreRecord(parsed);
+      return parsed as CoreRecord;
+    }),
+  );
+  return records.filter((record): record is CoreRecord => record !== undefined);
+}
+
 async function loadSymbolAnchorRecords(rootDir: string, relativeDir: string): Promise<SymbolAnchor[]> {
   const files = await collectJsonFiles(rootDir, relativeDir);
   return Promise.all(files.map((file) => readSymbolAnchor(join(rootDir, file))));
@@ -458,7 +504,17 @@ async function loadSymbolAnchorRecords(rootDir: string, relativeDir: string): Pr
 
 async function loadVectorArtifactRecords(rootDir: string, relativeDir: string): Promise<VectorArtifact[]> {
   const files = await collectJsonFiles(rootDir, relativeDir);
-  return Promise.all(files.map((file) => readVectorArtifact(join(rootDir, file))));
+  const artifacts = await Promise.all(
+    files.map(async (file) => {
+      const parsed = await readJsonFile(join(rootDir, file));
+      if (!hasStringKind(parsed) || !VECTOR_ARTIFACT_KIND_SET.has(parsed.kind)) {
+        return undefined;
+      }
+      assertVectorArtifact(parsed);
+      return parsed as VectorArtifact;
+    }),
+  );
+  return artifacts.filter((artifact): artifact is VectorArtifact => artifact !== undefined);
 }
 
 export async function loadSymbolAnchors(rootDir: string): Promise<SymbolAnchor[]> {
@@ -493,7 +549,7 @@ export async function loadCanonicalRecordById(rootDir: string, recordId: string)
 }
 
 export async function loadSourceRecords(rootDir: string): Promise<SourceRecord[]> {
-  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.raw.sources);
+  const records = await loadLayerRecordsByKind(rootDir, STORAGE_LAYOUT.raw.sources, SOURCE_RECORD_KIND_SET);
   return records.filter((record): record is SourceRecord => record.kind === "source_record");
 }
 

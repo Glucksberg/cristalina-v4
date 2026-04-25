@@ -12,13 +12,14 @@ import {
   loadDiagnostics,
   loadProposals,
   loadRatificationRecords,
+  loadSourceRecords,
   loadRuntimeInstances,
   loadRuntimeSessions,
   loadWikiPages,
   loadWikiClaims,
   loadWorldClaims,
 } from "../store/io.js";
-import type { NonCanonicalIntakeInput } from "./non-canonical-intake-store.js";
+import type { NonCanonicalIntakeInput, NonCanonicalIntakeResult } from "./non-canonical-intake-store.js";
 import { writeNonCanonicalIntakeToStore } from "./non-canonical-intake-store.js";
 
 function systemPrincipal(actor_ref = "system:non-canonical-test") {
@@ -82,6 +83,7 @@ test("evidence_only intake writes raw source and disposition without world or ca
   assert.equal(result.records.observation, undefined);
   assert.equal(result.records.diagnostic, undefined);
   assert.equal((await loadDispositionRecords(rootDir)).length, 1);
+  assert.deepEqual((await loadSourceRecords(rootDir)).map((record) => record.id), [result.records.source_record.id]);
   await assertNoCanonProposalWorldOrWiki(rootDir);
 });
 
@@ -435,6 +437,48 @@ test("non-canonical intake serializes concurrent writes for the same stable ids"
   assert.equal((await loadDispositionRecords(rootDir)).length, 1);
   const auditLog = await readFile(join(rootDir, "audits/changes.log"), "utf8");
   assert.equal((auditLog.match(/non_canonical_intake/g) ?? []).length, 1);
+});
+
+test("non-canonical intake serializes concurrent writes for the same raw content_ref", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const sharedContentRef = "raw/sources/non-canonical-shared-content-ref.json";
+  const left = buildInput(rootDir, "evidence_only");
+  left.ids.source = "src_noncanonical_content_ref_left_001";
+  left.ids.disposition = "disp_noncanonical_content_ref_left_001";
+  left.source.content_ref = sharedContentRef;
+  left.source.source_ref = "non-canonical/content-ref/left";
+  left.source.payload = {
+    note: "Left concurrent evidence.",
+  };
+
+  const right = buildInput(rootDir, "evidence_only");
+  right.ids.source = "src_noncanonical_content_ref_right_001";
+  right.ids.disposition = "disp_noncanonical_content_ref_right_001";
+  right.source.content_ref = sharedContentRef;
+  right.source.source_ref = "non-canonical/content-ref/right";
+  right.source.payload = {
+    note: "Right concurrent evidence.",
+  };
+
+  const settled = await Promise.allSettled([
+    writeNonCanonicalIntakeToStore(left),
+    writeNonCanonicalIntakeToStore(right),
+  ]);
+  const fulfilled = settled.filter(
+    (result): result is PromiseFulfilledResult<NonCanonicalIntakeResult> =>
+      result.status === "fulfilled",
+  );
+  const rejected = settled.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.match(String(rejected[0]?.reason), /already owned by source_record/);
+  assert.deepEqual((await loadSourceRecords(rootDir)).map((record) => record.id), [fulfilled[0]!.value.records.source_record.id]);
+  assert.equal((await loadDispositionRecords(rootDir)).length, 1);
 });
 
 test("non-canonical intake repairs partial materialization when raw payload is missing", async (t) => {

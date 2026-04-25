@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { STORAGE_LAYOUT } from "../storage.js";
 import { atomicWriteText, isMissingFileError } from "../store/atomic-write.js";
@@ -59,6 +59,7 @@ function hasJsonLineEntry(source: string, entryId: string): boolean {
 const APPEND_LOCK_TIMEOUT_MS = 5_000;
 const APPEND_LOCK_STALE_MS = 30_000;
 const APPEND_LOCK_POLL_MS = 10;
+const SAFE_SNAPSHOT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function isAlreadyExistsError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
@@ -66,6 +67,28 @@ function isAlreadyExistsError(error: unknown): boolean {
 
 function appendLockPath(filePath: string): string {
   return `${filePath}.lock`;
+}
+
+function assertSafeSnapshotId(snapshotId: string): void {
+  if (!SAFE_SNAPSHOT_ID_PATTERN.test(snapshotId)) {
+    throw new Error(`Snapshot id must be a safe path segment: ${snapshotId}`);
+  }
+}
+
+function resolveWithinRoot(rootDir: string, relativePath: string): string {
+  const rootPath = resolve(rootDir);
+  const targetPath = resolve(rootPath, relativePath);
+  const relativePathFromRoot = relative(rootPath, targetPath);
+
+  if (
+    relativePathFromRoot === "" ||
+    relativePathFromRoot.startsWith("..") ||
+    isAbsolute(relativePathFromRoot)
+  ) {
+    throw new Error(`Resolved path escapes store root: ${relativePath}`);
+  }
+
+  return targetPath;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -147,7 +170,11 @@ export async function appendValidationLog(rootDir: string, entry: ValidationLogE
 }
 
 export async function writeSnapshotManifest(rootDir: string, snapshot: SnapshotManifest): Promise<string> {
-  const filePath = join(rootDir, STORAGE_LAYOUT.audits.snapshots, `${snapshot.snapshot_id}.json`);
+  assertSafeSnapshotId(snapshot.snapshot_id);
+  const filePath = resolveWithinRoot(
+    rootDir,
+    join(STORAGE_LAYOUT.audits.snapshots, `${snapshot.snapshot_id}.json`),
+  );
   await mkdir(dirname(filePath), { recursive: true });
   await atomicWriteText(filePath, `${JSON.stringify(snapshot, null, 2)}\n`);
   return filePath;
@@ -162,7 +189,11 @@ export async function writeSnapshotRecordCopies(
   snapshotId: string,
   records: CoreRecord[],
 ): Promise<SnapshotRecordEntry[]> {
-  const snapshotDir = join(rootDir, STORAGE_LAYOUT.audits.snapshots, snapshotId, "records");
+  assertSafeSnapshotId(snapshotId);
+  const snapshotDir = resolveWithinRoot(
+    rootDir,
+    join(STORAGE_LAYOUT.audits.snapshots, snapshotId, "records"),
+  );
   await mkdir(snapshotDir, { recursive: true });
 
   return Promise.all(
