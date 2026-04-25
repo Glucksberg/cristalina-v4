@@ -17,4 +17,5 @@ Current executable surface:
 - consumption of `ProjectionManifest.review_refs` and Hermes projection artifacts without defining new memory law in the adapter
 - consumption of projection manifest retrieval traces without redefining retrieval ranking, authority, or suppression law
 - authenticated write-through ingress for Hermes conversation-preference flows
+- authenticated non-canonical write-through for `evidence_only`, `runtime_only`, and `diagnostic_only` intake
 - authenticated owner/system queue actions forwarded to the core without redefining authority law

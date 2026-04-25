@@ -8,6 +8,7 @@ import {
   rejectQueuedConversationPreferenceProposalToStore,
   writeConversationPreferenceFlowToStore,
   writePreferenceFeedbackFlowToStore,
+  writeNonCanonicalIntakeToStore,
   type AuthenticatedPrincipal,
   type ConversationPreferenceManualContradictionReviewQueueEntry,
   type ConversationPreferenceOwnerRatificationQueueEntry,
@@ -19,6 +20,8 @@ import {
   type ConversationPreferenceResolutionStoreResult,
   type ConversationPreferenceStoreInput,
   type ConversationPreferenceStoreResult,
+  type NonCanonicalIntakeInput,
+  type NonCanonicalIntakeResult,
 } from "@cristalina-v4/core";
 
 const HERMES_RUNTIME = "hermes";
@@ -72,6 +75,12 @@ export interface HermesQueuedManualContradictionExpirationInput
   authenticated_principal: HermesAuthenticatedPrincipal;
 }
 
+export interface HermesNonCanonicalIntakeInput
+  extends Omit<NonCanonicalIntakeInput, "source" | "authenticated_principal"> {
+  authenticated_principal: HermesAuthenticatedPrincipal;
+  source: Omit<NonCanonicalIntakeInput["source"], "runtime">;
+}
+
 function requireAuthenticatedPrincipal(principal: HermesAuthenticatedPrincipal | undefined): HermesAuthenticatedPrincipal {
   if (!principal) {
     throw new Error("Hermes adapter writeback requires an authenticated_principal");
@@ -99,6 +108,20 @@ export async function writeHermesProjectionFeedbackToStore(
 ): Promise<ConversationPreferenceStoreResult> {
   const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
   return writePreferenceFeedbackFlowToStore({
+    ...input,
+    authenticated_principal,
+    source: {
+      ...input.source,
+      runtime: HERMES_RUNTIME,
+    },
+  });
+}
+
+export async function writeHermesNonCanonicalIntakeToStore(
+  input: HermesNonCanonicalIntakeInput,
+): Promise<NonCanonicalIntakeResult> {
+  const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
+  return writeNonCanonicalIntakeToStore({
     ...input,
     authenticated_principal,
     source: {

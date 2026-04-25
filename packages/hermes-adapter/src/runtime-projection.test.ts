@@ -34,9 +34,11 @@ import {
   listHermesConversationPreferenceManualContradictionReviewQueue,
   ratifyHermesQueuedConversationPreference,
   writeHermesConversationPreferenceToStore,
+  writeHermesNonCanonicalIntakeToStore,
   writeHermesProjectionFeedbackToStore,
   type HermesAuthenticatedPrincipal,
   type HermesConversationPreferenceWriteInput,
+  type HermesNonCanonicalIntakeInput,
 } from "./writeback.js";
 
 function buildHermesWriteInput(
@@ -118,6 +120,57 @@ function buildHermesManualReviewInput(
       message_refs: [`msg_hermes_manual_${suffix}`],
     },
   });
+}
+
+function buildHermesNonCanonicalInput(
+  rootDir: string,
+  mode: HermesNonCanonicalIntakeInput["mode"],
+  suffix: string,
+): HermesNonCanonicalIntakeInput {
+  const actor = "system:hermes-noncanonical-test";
+  return {
+    rootDir,
+    now: "2026-04-21T01:00:00.000Z",
+    actor,
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: actor,
+      system_scope: "hermes-noncanonical-test",
+    },
+    mode,
+    ids: {
+      source: `src_hermes_noncanonical_${mode}_${suffix}`,
+      runtime_instance: `runtime_hermes_noncanonical_${suffix}`,
+      runtime_session: `session_hermes_noncanonical_${suffix}`,
+      conversation_thread: `thread_hermes_noncanonical_${suffix}`,
+      observation: `obs_hermes_noncanonical_${mode}_${suffix}`,
+      disposition: `disp_hermes_noncanonical_${mode}_${suffix}`,
+      diagnostic: `diag_hermes_noncanonical_${mode}_${suffix}`,
+    },
+    source: {
+      source_ref: `runtime/hermes-noncanonical#${mode}-${suffix}`,
+      content_ref: `raw/sources/hermes-noncanonical-${mode}-${suffix}.json`,
+      source_type: "hermes_adapter_noncanonical_fixture",
+      payload: {
+        note: `Hermes ${mode} adapter fixture`,
+      },
+      runtime_ref: `runtime_hermes_noncanonical_${suffix}`,
+      session_ref: `session_hermes_noncanonical_${suffix}`,
+      thread_ref: `thread_hermes_noncanonical_${suffix}`,
+      agent_identity_ref: "actor_agent_hermes_noncanonical_001",
+      owner_identity_ref: "actor_owner_hermes_noncanonical_001",
+      session_objective: "Exercise non-canonical Hermes adapter write-through",
+      session_summary: "Hermes non-canonical adapter session",
+      thread_summary: "Hermes non-canonical adapter thread",
+      message_refs: [`msg_hermes_noncanonical_${mode}_${suffix}`],
+    },
+    diagnostic: {
+      code: "hermes_adapter_noncanonical_fixture",
+      severity: "info",
+      message: `Hermes ${mode} adapter fixture diagnostic`,
+    },
+    validation_scope: `test:hermes-adapter:noncanonical:${mode}`,
+  };
 }
 
 test("Hermes adapter lists and loads pending projection reviews", async (t) => {
@@ -563,5 +616,32 @@ test("Hermes adapter writes projection feedback through the runtime-neutral inta
   assert.equal(result.records.intake.runtime_instance?.runtime, "hermes");
   assert.equal(result.records.projection_manifest.adapter, "hermes");
   assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 1);
+  assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
+});
+
+test("Hermes adapter writes non-canonical intake through core runtime law", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const evidence = await writeHermesNonCanonicalIntakeToStore(
+    buildHermesNonCanonicalInput(rootDir, "evidence_only", "001"),
+  );
+  const runtime = await writeHermesNonCanonicalIntakeToStore(
+    buildHermesNonCanonicalInput(rootDir, "runtime_only", "002"),
+  );
+  const diagnostic = await writeHermesNonCanonicalIntakeToStore(
+    buildHermesNonCanonicalInput(rootDir, "diagnostic_only", "003"),
+  );
+
+  assert.deepEqual(evidence.records.disposition_record.outcomes, ["evidence_only"]);
+  assert.equal(evidence.records.observation, undefined);
+  assert.deepEqual(runtime.records.disposition_record.outcomes, ["runtime_only"]);
+  assert.equal(runtime.records.runtime_instance?.runtime, "hermes");
+  assert.equal(runtime.records.observation?.runtime_instance_ref, "runtime_hermes_noncanonical_002");
+  assert.deepEqual(diagnostic.records.disposition_record.outcomes, ["diagnostic_only"]);
+  assert.equal(diagnostic.records.diagnostic?.code, "hermes_adapter_noncanonical_fixture");
+  assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 0);
   assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
 });
