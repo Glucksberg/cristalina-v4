@@ -1399,6 +1399,7 @@ async function runRegisteredIntakeWorkflow<Result>(input: {
   journal_operation: RecoveryJournal["operation"];
   journal_stable_id: string;
   created_at: string;
+  prepare_locked?: () => Promise<void>;
   recover_or_reset: () => Promise<void>;
   load_existing: () => Promise<Result | undefined>;
   build_plan: () => Promise<RegisteredIntakeWorkflowPlan<Result>>;
@@ -1409,6 +1410,7 @@ async function runRegisteredIntakeWorkflow<Result>(input: {
       throw new Error(`Registered intake profile ${input.profile.profile_id} is missing a runner contract version`);
     }
 
+    await input.prepare_locked?.();
     await input.recover_or_reset();
 
     const existing = await input.load_existing();
@@ -4242,7 +4244,6 @@ export async function writeConversationPreferenceFlowToStore(
   await initializeStore(rootDir, input.now);
 
   const source_record = profile.source_normalization(input);
-  await assertSourceContentRefAvailable(rootDir, source_record);
   const intakeBuilder = selectConversationPreferenceIntakeBuilder(input);
   const previewPaths = buildPaths(rootDir, source_record, profile.proposal_emission({ input, source_record }), input);
 
@@ -4253,6 +4254,7 @@ export async function writeConversationPreferenceFlowToStore(
     journal_operation: "conversation_preference_write",
     journal_stable_id: input.ids.proposal,
     created_at: input.now,
+    prepare_locked: () => assertSourceContentRefAvailable(rootDir, source_record),
     recover_or_reset: () => recoverOrResetWriteFlow(rootDir, input, previewPaths),
     load_existing: async () => {
       const { intake } = await buildExpectedIntakeForStore(rootDir, input, source_record, intakeBuilder);

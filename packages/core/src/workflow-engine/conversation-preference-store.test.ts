@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadCanonicalRecords, loadWorldClaims, writeCoreRecord } from "../store/io.js";
+import { loadCanonicalRecords, loadSourceRecords, loadWorldClaims, writeCoreRecord } from "../store/io.js";
 import {
   applyConversationPreferenceResolutionToStore,
   type AuthenticatedConversationPreferenceStoreInput,
@@ -21,6 +21,7 @@ import {
   writeOpenClawPreferenceFeedbackFlowToStore,
   writeStructuredPreferenceSignalFlowToStore,
   type ConversationPreferenceStoreInput,
+  type ConversationPreferenceStoreResult,
 } from "./conversation-preference-store.js";
 import { buildDefaultConversationPreferenceFlowInput } from "../test-support/conversation-preference-fixtures.js";
 
@@ -1318,6 +1319,46 @@ test("writeConversationPreferenceFlowToStore rejects reusing a raw content_ref o
   );
 
   assert.equal(await readFile(firstResult.paths.raw_source, "utf8"), originalPayload);
+});
+
+test("writeConversationPreferenceFlowToStore serializes concurrent writes for the same raw content_ref", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const sharedContentRef = "raw/sources/conversation-turn-shared-content-ref.json";
+  const left = cloneInputWithSuffix(
+    rootDir,
+    "content_ref_race_left",
+    "The user prefers short operational summaries.",
+  );
+  left.source.content_ref = sharedContentRef;
+
+  const right = cloneInputWithSuffix(
+    rootDir,
+    "content_ref_race_right",
+    "The user prefers exhaustive operational summaries.",
+  );
+  right.source.content_ref = sharedContentRef;
+
+  const settled = await Promise.allSettled([
+    writeConversationPreferenceFlowToStore(left),
+    writeConversationPreferenceFlowToStore(right),
+  ]);
+  const fulfilled = settled.filter(
+    (result): result is PromiseFulfilledResult<ConversationPreferenceStoreResult> =>
+      result.status === "fulfilled",
+  );
+  const rejected = settled.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.match(String(rejected[0]?.reason), /already owned by source_record/);
+  assert.deepEqual(
+    (await loadSourceRecords(rootDir)).map((record) => record.id),
+    [fulfilled[0]!.value.records.source_record.id],
+  );
 });
 
 test("writeConversationPreferenceFlowToStore rejects wiki paths outside wiki/pages markdown storage", async (t) => {
