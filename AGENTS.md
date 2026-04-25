@@ -89,6 +89,7 @@ Rules:
 
 Current session phrases:
 
+- 2026-04-24: Conflict intake only stays legal when detected world contradictions cannot materialize without explicit contradiction records, and resolution application reauthenticates owner or system authority before mutating world truth.
 - 2026-04-24: Projection boundaries only stay enforceable when direct manifest loads, flow-local replay, queue recovery, and reuse gates obey the same explicit consistency contract instead of treating derived artifacts as implicitly safe.
 - 2026-04-23: Memory replay only stays correct when retries, duplicate deliveries, and recovery runs converge on the same durable state instead of producing semantically new events.
 - 2026-04-23: Temporal memory only stays honest when observation time, persistence time, governance time, projection time, and resume time remain distinct and replay uses recorded chronology instead of fresh wall-clock assumptions.
