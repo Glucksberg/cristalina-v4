@@ -115,6 +115,58 @@ test("runtime_only intake writes runtime observation without canon proposal", as
   await assertNoCanonProposalWorldOrWiki(rootDir);
 });
 
+test("runtime_only intake preserves shared runtime identity across distinct intakes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const first = buildInput(rootDir, "runtime_only");
+  first.source.runtime_ref = "runtime_noncanonical_shared_001";
+  first.source.session_ref = "session_noncanonical_shared_001";
+  first.source.thread_ref = "thread_noncanonical_shared_001";
+  first.source.runtime = "openclaw";
+  first.source.agent_identity_ref = "actor_agent_noncanonical_shared_001";
+  first.source.message_refs = ["msg_noncanonical_shared_001"];
+
+  const second = buildInput(rootDir, "runtime_only");
+  second.now = "2026-04-21T00:05:00.000Z";
+  second.ids.source = "src_noncanonical_runtime_only_002";
+  second.ids.observation = "obs_noncanonical_runtime_only_002";
+  second.ids.disposition = "disp_noncanonical_runtime_only_002";
+  second.source.source_ref = "non-canonical/runtime_only/002";
+  second.source.content_ref = "raw/sources/non-canonical-runtime-only-002.json";
+  second.source.payload = {
+    note: "Second runtime-only fixture in the same thread.",
+  };
+  second.source.runtime_ref = first.source.runtime_ref;
+  second.source.session_ref = first.source.session_ref;
+  second.source.thread_ref = first.source.thread_ref;
+  second.source.runtime = first.source.runtime;
+  second.source.agent_identity_ref = first.source.agent_identity_ref;
+  second.source.message_refs = ["msg_noncanonical_shared_002"];
+
+  await writeNonCanonicalIntakeToStore(first);
+  await writeNonCanonicalIntakeToStore(second);
+  const rerun = await writeNonCanonicalIntakeToStore(first);
+  const [thread] = await loadConversationThreads(rootDir);
+
+  assert.equal(rerun.reused, true);
+  assert.equal((await loadRuntimeInstances(rootDir)).length, 1);
+  assert.equal((await loadRuntimeSessions(rootDir)).length, 1);
+  assert.equal((await loadConversationThreads(rootDir)).length, 1);
+  assert.deepEqual(thread?.message_refs, ["msg_noncanonical_shared_001", "msg_noncanonical_shared_002"]);
+  assert.deepEqual((await loadSourceRecords(rootDir)).map((record) => record.id).sort(), [
+    "src_noncanonical_runtime_only_001",
+    "src_noncanonical_runtime_only_002",
+  ]);
+  assert.deepEqual((await loadDispositionRecords(rootDir)).map((record) => record.id).sort(), [
+    "disp_noncanonical_runtime_only_001",
+    "disp_noncanonical_runtime_only_002",
+  ]);
+  await assertNoCanonProposalWorldOrWiki(rootDir);
+});
+
 test("runtime_only intake preserves observed_at separately from persistence time", async (t) => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-core-noncanonical-"));
   t.after(async () => {

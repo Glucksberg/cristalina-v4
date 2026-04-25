@@ -267,6 +267,59 @@ test("external candidate normalization suppresses unmapped or forbidden candidat
   assert.deepEqual(validateRetrievalContract(hybrid), []);
 });
 
+test("forbidden external candidates do not suppress a valid native candidate for the same local ref", () => {
+  const fixture = buildSymbolicRetrievalFixture();
+  const native = fixture.retrieval_result.included_candidates.find(
+    (candidate) => candidate.ref.id === fixture.canonical_record.id,
+  );
+  assert.ok(native);
+  const [forbidden] = normalizeExternalCandidates({
+    recipe: {
+      ...fixture.recipe,
+      external_candidate_policy: "forbid",
+    },
+    records: [fixture.canonical_record],
+    candidates: [
+      {
+        provider_id: "benchmark_provider",
+        external_candidate_id: "mapped-canon-but-forbidden-001",
+        mapped_ref: {
+          id: fixture.canonical_record.id,
+          kind: fixture.canonical_record.kind,
+          layer: fixture.canonical_record.layer,
+        },
+        source_layer: "canon",
+        authority: "canon",
+        score: 1,
+        retrieved_at: "2026-04-21T00:00:00.000Z",
+      },
+    ],
+  });
+  assert.ok(forbidden);
+  assert.deepEqual(forbidden.suppression_reasons, ["invalid_external_candidate"]);
+
+  const hybrid = executeHybridRetrieval({
+    query_ref: "retrieval_query_external_forbidden_native_merge_001",
+    recipe: {
+      ...fixture.recipe,
+      final_top_k: 4,
+    },
+    candidates: [forbidden, native],
+  });
+  const includedMatches = hybrid.included_candidates.filter(
+    (candidate) => candidate.ref.id === fixture.canonical_record.id,
+  );
+  const suppressedExternal = hybrid.suppressed_candidates.find((candidate) => candidate.id === forbidden.id);
+
+  assert.equal(includedMatches.length, 1);
+  assert.equal(includedMatches[0]!.id, native.id);
+  assert.equal(includedMatches[0]!.suppression_reasons, undefined);
+  assert.equal(includedMatches[0]!.can_support_proposal, true);
+  assert.ok(suppressedExternal);
+  assert.deepEqual(suppressedExternal.suppression_reasons, ["invalid_external_candidate"]);
+  assert.deepEqual(validateRetrievalContract(hybrid), []);
+});
+
 test("external candidate batches preserve provider identity before normalization", () => {
   const fixture = buildSymbolicRetrievalFixture();
   const batch = {

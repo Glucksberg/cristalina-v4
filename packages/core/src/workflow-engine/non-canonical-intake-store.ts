@@ -476,6 +476,16 @@ function definedIntakePaths(paths: NonCanonicalIntakePaths): Array<[string, stri
   ];
 }
 
+function ownedIntakePaths(paths: NonCanonicalIntakePaths): Array<[string, string]> {
+  return [
+    ["raw_payload", paths.raw_payload],
+    ["source_record", paths.source_record],
+    ...(paths.observation ? [["observation", paths.observation] as [string, string]] : []),
+    ["disposition_record", paths.disposition_record],
+    ...(paths.diagnostic ? [["diagnostic", paths.diagnostic] as [string, string]] : []),
+  ];
+}
+
 function assertNoPathCollisions(paths: NonCanonicalIntakePaths): void {
   const seen = new Map<string, string>();
   for (const [label, filePath] of definedIntakePaths(paths)) {
@@ -488,7 +498,7 @@ function assertNoPathCollisions(paths: NonCanonicalIntakePaths): void {
 }
 
 async function resetPartiallyMaterializedIntake(paths: NonCanonicalIntakePaths): Promise<void> {
-  for (const [, filePath] of definedIntakePaths(paths)) {
+  for (const [, filePath] of ownedIntakePaths(paths)) {
     await rm(filePath, { force: true });
   }
 }
@@ -670,6 +680,75 @@ function buildRuntimeContext(input: NonCanonicalIntakeInput, source_record: Sour
   };
 }
 
+async function reconcilePersistedRuntimeContext(
+  rootDir: string,
+  context: {
+    runtime_instance?: RuntimeInstance;
+    runtime_session?: RuntimeSession;
+    conversation_thread?: ConversationThread;
+  },
+): Promise<{
+  runtime_instance?: RuntimeInstance;
+  runtime_session?: RuntimeSession;
+  conversation_thread?: ConversationThread;
+}> {
+  function latestTimestamp(left?: string | null, right?: string | null): string | null | undefined {
+    if (!left) return right;
+    if (!right) return left;
+    return left >= right ? left : right;
+  }
+
+  async function preserveRuntimeRecord<
+    T extends RuntimeInstance | RuntimeSession | ConversationThread,
+  >(record: T | undefined): Promise<T | undefined> {
+    if (!record) {
+      return undefined;
+    }
+
+    const filePath = coreRecordPath(rootDir, record);
+    if (!(await pathExists(filePath))) {
+      return record;
+    }
+
+    const existing = await readCoreRecord<T>(filePath);
+    if (existing.id !== record.id || existing.kind !== record.kind || existing.layer !== record.layer) {
+      throw new Error(`Existing runtime identity record does not match expected identity: ${record.kind}:${record.id}`);
+    }
+    if ("runtime_instance_ref" in existing && "runtime_instance_ref" in record && existing.runtime_instance_ref !== record.runtime_instance_ref) {
+      throw new Error(`Existing ${record.kind} ${record.id} belongs to runtime_instance ${existing.runtime_instance_ref}, not ${record.runtime_instance_ref}`);
+    }
+    if ("runtime_session_ref" in existing && "runtime_session_ref" in record && existing.runtime_session_ref !== record.runtime_session_ref) {
+      throw new Error(`Existing ${record.kind} ${record.id} belongs to runtime_session ${existing.runtime_session_ref}, not ${record.runtime_session_ref}`);
+    }
+    if ("runtime" in existing && "runtime" in record && existing.runtime !== record.runtime) {
+      throw new Error(`Existing ${record.kind} ${record.id} belongs to runtime ${existing.runtime}, not ${record.runtime}`);
+    }
+
+    const preservedRecord: T = {
+      ...record,
+      created_at: existing.created_at,
+      updated_at: latestTimestamp(existing.updated_at, record.updated_at),
+      provenance: existing.provenance,
+      upstream_refs: existing.upstream_refs ?? record.upstream_refs,
+    };
+
+    if (record.kind === "conversation_thread" && existing.kind === "conversation_thread") {
+      return {
+        ...preservedRecord,
+        message_refs: [...new Set([...existing.message_refs, ...record.message_refs])],
+      } as T;
+    }
+
+    return preservedRecord;
+  }
+
+  return {
+    runtime_instance: await preserveRuntimeRecord(context.runtime_instance),
+    runtime_session: await preserveRuntimeRecord(context.runtime_session),
+    conversation_thread: await preserveRuntimeRecord(context.conversation_thread),
+  };
+}
+
 function buildDiagnostic(input: NonCanonicalIntakeInput, source_record: SourceRecord): Diagnostic | undefined {
   if (input.mode !== "diagnostic_only") {
     return undefined;
@@ -745,9 +824,27 @@ export async function writeNonCanonicalIntakeToStore(
   await initializeStore(rootDir, input.now);
   return withNonCanonicalIntakeLocks(
     rootDir,
-    [input.ids.disposition, `content_ref:${content_ref}`],
+    [
+      input.ids.disposition,
+      `content_ref:${content_ref}`,
+      ...runtimeIdentityLockIds(input),
+    ],
     () => writeNonCanonicalIntakeToStoreLocked(rootDir, input, content_ref),
   );
+}
+
+function runtimeIdentityLockIds(input: NonCanonicalIntakeInput): string[] {
+  if (input.mode !== "runtime_only") {
+    return [];
+  }
+
+  return [
+    input.ids.runtime_instance ?? input.source.runtime_ref,
+    input.ids.runtime_session ?? input.source.session_ref,
+    input.ids.conversation_thread ?? input.source.thread_ref,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => `runtime_identity:${value}`);
 }
 
 async function writeNonCanonicalIntakeToStoreLocked(
@@ -759,7 +856,7 @@ async function writeNonCanonicalIntakeToStoreLocked(
   const attachment_refs = [...new Set(input.source.attachment_refs?.map(normalizeAttachmentRef) ?? [])];
   const source_record = buildSourceRecord(input, content_ref, attachment_refs);
   await assertSourceContentRefAvailable(rootDir, source_record);
-  const runtime_context = buildRuntimeContext(input, source_record);
+  const runtime_context = await reconcilePersistedRuntimeContext(rootDir, buildRuntimeContext(input, source_record));
   const observation = buildObservation(
     {
       ...input,

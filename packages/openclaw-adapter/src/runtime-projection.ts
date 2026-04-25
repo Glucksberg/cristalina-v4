@@ -5,7 +5,7 @@ import {
   type ProjectionRuntimeSelectionFilter,
   type ProjectionRuntimeSummary,
   type ProjectionRuntimeView,
-} from "../../core/dist/index.js";
+} from "@cristalina-v4/core";
 
 export type OpenClawProjectionRuntimeSummary = ProjectionRuntimeSummary;
 export type OpenClawProjectionRuntimeView = ProjectionRuntimeView;

@@ -4,6 +4,19 @@ import test from "node:test";
 import * as internalApi from "./internal.js";
 import * as publicApi from "./index.js";
 
+function importPackageSpecifier(specifier: string): Promise<Record<string, unknown>> {
+  return import(specifier) as Promise<Record<string, unknown>>;
+}
+
+function isPackagePathNotExported(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
+  );
+}
+
 test("public core entrypoint does not export raw persistence or canon mutation primitives", () => {
   for (const name of [
     "writeCoreRecord",
@@ -50,6 +63,24 @@ test("public core entrypoint exposes workflow writes instead of raw store writer
     "runWikiMaintenanceToStore",
   ]) {
     assert.equal(Object.prototype.hasOwnProperty.call(publicApi, name), true, `${name} must remain available through the public workflow API`);
+  }
+});
+
+test("package export map exposes the public entrypoint but blocks internal and test-only subpaths", async () => {
+  const packageApi = await importPackageSpecifier("@cristalina-v4/core");
+  assert.equal(Object.prototype.hasOwnProperty.call(packageApi, "writeConversationPreferenceFlowToStore"), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(packageApi, "writeCoreRecord"), false);
+
+  for (const specifier of [
+    "@cristalina-v4/core/dist/internal.js",
+    "@cristalina-v4/core/dist/testing.js",
+    "@cristalina-v4/core/dist/test-support/conversation-preference-fixtures.js",
+  ]) {
+    await assert.rejects(
+      () => importPackageSpecifier(specifier),
+      isPackagePathNotExported,
+      `${specifier} must stay outside the package export map`,
+    );
   }
 });
 

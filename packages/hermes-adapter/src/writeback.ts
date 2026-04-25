@@ -19,7 +19,7 @@ import {
   type ConversationPreferenceResolutionStoreResult,
   type ConversationPreferenceStoreInput,
   type ConversationPreferenceStoreResult,
-} from "../../core/dist/index.js";
+} from "@cristalina-v4/core";
 
 const HERMES_RUNTIME = "hermes";
 

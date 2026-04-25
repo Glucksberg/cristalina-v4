@@ -394,17 +394,41 @@ export function executeLexicalCandidateSearch(input: LexicalCandidateSearchInput
 }
 
 function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandidate[] {
-  const byId = new Map<string, RetrievalCandidate>();
+  const byId = new Map<string, RetrievalCandidate[]>();
   for (const candidate of candidates) {
     const key = candidateMergeKey(candidate);
-    const existing = byId.get(key);
-    if (!existing) {
-      byId.set(key, candidate);
+    const existing = byId.get(key) ?? [];
+    existing.push(candidate);
+    byId.set(key, existing);
+  }
+
+  const merged: RetrievalCandidate[] = [];
+  for (const group of byId.values()) {
+    const eligibleSignals = group.filter((candidate) => !candidate.suppression_reasons?.length);
+    if (eligibleSignals.length > 0) {
+      merged.push(mergeCandidateGroup(eligibleSignals));
+      const suppressedSignals = group.filter((candidate) => candidate.suppression_reasons?.length);
+      if (suppressedSignals.length > 0) {
+        merged.push(mergeCandidateGroup(suppressedSignals));
+      }
       continue;
     }
+
+    merged.push(mergeCandidateGroup(group));
+  }
+
+  return merged.map((candidate) => ({
+    ...candidate,
+    suppression_reasons: candidate.suppression_reasons?.length ? candidate.suppression_reasons : undefined,
+    eligible_upstream_refs: candidate.eligible_upstream_refs?.length ? candidate.eligible_upstream_refs : undefined,
+  }));
+}
+
+function mergeCandidateGroup(candidates: RetrievalCandidate[]): RetrievalCandidate {
+  return candidates.slice(1).reduce((existing, candidate) => {
     const base = preferredMergeBase(existing, candidate);
     const other = base === existing ? candidate : existing;
-    byId.set(key, {
+    return {
       ...base,
       vector_score: Math.max(existing.vector_score ?? 0, candidate.vector_score ?? 0) || undefined,
       lexical_score: Math.max(existing.lexical_score ?? 0, candidate.lexical_score ?? 0) || undefined,
@@ -418,14 +442,8 @@ function mergeCandidateSignals(candidates: RetrievalCandidate[]): RetrievalCandi
       symbol_refs: [...new Set([...existing.symbol_refs, ...candidate.symbol_refs])],
       can_support_proposal: existing.can_support_proposal || candidate.can_support_proposal,
       eligible_upstream_refs: [...new Set([...(existing.eligible_upstream_refs ?? []), ...(candidate.eligible_upstream_refs ?? [])])],
-    });
-  }
-
-  return [...byId.values()].map((candidate) => ({
-    ...candidate,
-    suppression_reasons: candidate.suppression_reasons?.length ? candidate.suppression_reasons : undefined,
-    eligible_upstream_refs: candidate.eligible_upstream_refs?.length ? candidate.eligible_upstream_refs : undefined,
-  }));
+    };
+  }, candidates[0]!);
 }
 
 function candidateMergeKey(candidate: RetrievalCandidate): string {
