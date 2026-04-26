@@ -81,6 +81,25 @@ In particular:
 - `authenticated_principal` is the authority-bearing caller
 - queue expiration, owner-ratification, and contradiction-manual-review actions must arrive with an explicit authenticated principal instead of relying on free-form `actor` strings
 
+### Runtime identity rule
+
+Adapters fix their runtime identity at the adapter boundary.
+
+For adapter write-through, runtime identity refs must not drift between the id fields and source provenance fields:
+
+- `ids.runtime_instance` must match `source.runtime_ref` when both are present
+- `ids.runtime_session` must match `source.session_ref` when both are present
+- `ids.conversation_thread` must match `source.thread_ref` when both are present
+
+The shared adapter SDK should enforce this before the core materializes non-canonical runtime records.
+
+Runtime drift must not be silently repaired by an adapter. It must either:
+
+- fail closed before write-through
+- or be written as bounded `diagnostic_only` intake through the core
+
+Runtime drift diagnostics remain audit/runtime feedback. They must not emit proposals, ratifications, canon records, world claims, wiki pages, or wiki claims.
+
 ---
 
 ## 4. What May Differ Between Adapters

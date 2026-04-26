@@ -33,6 +33,7 @@ import {
   expireHermesQueuedConversationPreferenceManualContradictionReview,
   listHermesConversationPreferenceManualContradictionReviewQueue,
   ratifyHermesQueuedConversationPreference,
+  writeHermesAdapterDriftDiagnosticToStore,
   writeHermesConversationPreferenceToStore,
   writeHermesNonCanonicalIntakeToStore,
   writeHermesProjectionFeedbackToStore,
@@ -659,4 +660,42 @@ test("Hermes adapter rejects non-canonical runtime context ref drift", async (t)
     () => writeHermesNonCanonicalIntakeToStore(input),
     /Hermes adapter non-canonical intake runtime_instance mismatch/,
   );
+
+  const sessionInput = buildHermesNonCanonicalInput(rootDir, "runtime_only", "005");
+  sessionInput.source.session_ref = "session_hermes_noncanonical_foreign";
+  await assert.rejects(
+    () => writeHermesNonCanonicalIntakeToStore(sessionInput),
+    /Hermes adapter non-canonical intake runtime_session mismatch/,
+  );
+
+  const threadInput = buildHermesNonCanonicalInput(rootDir, "runtime_only", "006");
+  threadInput.source.thread_ref = "thread_hermes_noncanonical_foreign";
+  await assert.rejects(
+    () => writeHermesNonCanonicalIntakeToStore(threadInput),
+    /Hermes adapter non-canonical intake conversation_thread mismatch/,
+  );
+});
+
+test("Hermes adapter records drift diagnostics without runtime identity writes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-drift-diagnostic-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildHermesNonCanonicalInput(rootDir, "diagnostic_only", "007");
+  const result = await writeHermesAdapterDriftDiagnosticToStore({
+    ...input,
+    diagnostic: {
+      code: "hermes_adapter_runtime_drift",
+      severity: "warning",
+      message: "Hermes runtime state drift was detected and reported as diagnostics only.",
+    },
+  });
+
+  assert.deepEqual(result.records.disposition_record.outcomes, ["diagnostic_only"]);
+  assert.equal(result.records.runtime_instance, undefined);
+  assert.equal(result.records.observation, undefined);
+  assert.equal(result.records.diagnostic?.code, "hermes_adapter_runtime_drift");
+  assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 0);
+  assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
 });

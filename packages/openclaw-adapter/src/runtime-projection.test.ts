@@ -31,6 +31,7 @@ import {
   listOpenClawConversationPreferenceManualContradictionReviewQueue,
   listOpenClawConversationPreferenceOwnerRatificationQueue,
   ratifyOpenClawQueuedConversationPreference,
+  writeOpenClawAdapterDriftDiagnosticToStore,
   writeOpenClawNonCanonicalIntakeToStore,
   writeOpenClawConversationPreferenceToStore,
   writeOpenClawProjectionFeedbackToStore,
@@ -672,4 +673,41 @@ test("OpenClaw adapter rejects non-canonical runtime context ref drift", async (
     () => writeOpenClawNonCanonicalIntakeToStore(input),
     /OpenClaw adapter non-canonical intake runtime_instance mismatch/,
   );
+
+  const sessionInput = buildOpenClawNonCanonicalInput(rootDir, "runtime_only", "005");
+  sessionInput.source.session_ref = "session_openclaw_noncanonical_foreign";
+  await assert.rejects(
+    () => writeOpenClawNonCanonicalIntakeToStore(sessionInput),
+    /OpenClaw adapter non-canonical intake runtime_session mismatch/,
+  );
+
+  const threadInput = buildOpenClawNonCanonicalInput(rootDir, "runtime_only", "006");
+  threadInput.source.thread_ref = "thread_openclaw_noncanonical_foreign";
+  await assert.rejects(
+    () => writeOpenClawNonCanonicalIntakeToStore(threadInput),
+    /OpenClaw adapter non-canonical intake conversation_thread mismatch/,
+  );
+});
+
+test("OpenClaw adapter records drift diagnostics without runtime identity writes", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-openclaw-adapter-drift-diagnostic-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildOpenClawNonCanonicalInput(rootDir, "diagnostic_only", "007");
+  const result = await writeOpenClawAdapterDriftDiagnosticToStore({
+    ...input,
+    diagnostic: {
+      code: "openclaw_adapter_runtime_drift",
+      severity: "warning",
+      message: "OpenClaw runtime state drift was detected and reported as diagnostics only.",
+    },
+  });
+
+  assert.deepEqual(result.records.disposition_record.outcomes, ["diagnostic_only"]);
+  assert.equal(result.records.runtime_instance, undefined);
+  assert.equal(result.records.observation, undefined);
+  assert.equal(result.records.diagnostic?.code, "openclaw_adapter_runtime_drift");
+  assert.equal((await listOpenClawProjectionRuntimeViews(rootDir)).length, 0);
 });

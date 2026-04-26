@@ -9,6 +9,7 @@ import {
   writeConversationPreferenceFlowToStore,
   writePreferenceFeedbackFlowToStore,
   writeNonCanonicalIntakeToStore,
+  assertAdapterRuntimeContextRefs,
   type AuthenticatedPrincipal,
   type ConversationPreferenceManualContradictionReviewQueueEntry,
   type ConversationPreferenceOwnerRatificationQueueEntry,
@@ -81,6 +82,11 @@ export interface OpenClawNonCanonicalIntakeInput
   source: Omit<NonCanonicalIntakeInput["source"], "runtime">;
 }
 
+export interface OpenClawAdapterDriftDiagnosticInput
+  extends Omit<OpenClawNonCanonicalIntakeInput, "mode" | "diagnostic"> {
+  diagnostic: NonNullable<NonCanonicalIntakeInput["diagnostic"]>;
+}
+
 function requireAuthenticatedPrincipal(principal: OpenClawAuthenticatedPrincipal | undefined): OpenClawAuthenticatedPrincipal {
   if (!principal) {
     throw new Error("OpenClaw adapter writeback requires an authenticated_principal");
@@ -89,35 +95,12 @@ function requireAuthenticatedPrincipal(principal: OpenClawAuthenticatedPrincipal
   return principal;
 }
 
-function assertMatchingRuntimeRef(input: {
-  label: string;
-  id?: string;
-  source_ref?: string | null;
-}): void {
-  if (!input.id || !input.source_ref || input.id === input.source_ref) {
-    return;
-  }
-
-  throw new Error(
-    `OpenClaw adapter non-canonical intake ${input.label} mismatch: ids.${input.label}=${input.id} does not match source ref ${input.source_ref}`,
-  );
-}
-
 function assertNonCanonicalRuntimeContextRefs(input: OpenClawNonCanonicalIntakeInput): void {
-  assertMatchingRuntimeRef({
-    label: "runtime_instance",
-    id: input.ids.runtime_instance,
-    source_ref: input.source.runtime_ref,
-  });
-  assertMatchingRuntimeRef({
-    label: "runtime_session",
-    id: input.ids.runtime_session,
-    source_ref: input.source.session_ref,
-  });
-  assertMatchingRuntimeRef({
-    label: "conversation_thread",
-    id: input.ids.conversation_thread,
-    source_ref: input.source.thread_ref,
+  assertAdapterRuntimeContextRefs({
+    adapter: OPENCLAW_RUNTIME,
+    operation: "non-canonical intake",
+    ids: input.ids,
+    source: input.source,
   });
 }
 
@@ -161,6 +144,15 @@ export async function writeOpenClawNonCanonicalIntakeToStore(
       ...input.source,
       runtime: OPENCLAW_RUNTIME,
     },
+  });
+}
+
+export async function writeOpenClawAdapterDriftDiagnosticToStore(
+  input: OpenClawAdapterDriftDiagnosticInput,
+): Promise<NonCanonicalIntakeResult> {
+  return writeOpenClawNonCanonicalIntakeToStore({
+    ...input,
+    mode: "diagnostic_only",
   });
 }
 

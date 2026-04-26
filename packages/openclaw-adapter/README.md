@@ -18,4 +18,5 @@ Current executable surface:
 - consumption of projection manifest retrieval traces without redefining retrieval ranking, authority, or suppression law
 - authenticated write-through ingress for conversation preference and OpenClaw feedback flows
 - authenticated non-canonical write-through for `evidence_only`, `runtime_only`, and `diagnostic_only` intake
+- explicit adapter drift diagnostics through bounded `diagnostic_only` intake
 - authenticated owner/system queue actions forwarded to the core without redefining authority law
