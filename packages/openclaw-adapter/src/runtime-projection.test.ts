@@ -658,3 +658,18 @@ test("OpenClaw adapter writes non-canonical intake through core runtime law", as
   assert.equal(diagnostic.records.diagnostic?.code, "openclaw_adapter_noncanonical_fixture");
   assert.equal((await listOpenClawProjectionRuntimeViews(rootDir)).length, 0);
 });
+
+test("OpenClaw adapter rejects non-canonical runtime context ref drift", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-openclaw-adapter-noncanonical-drift-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildOpenClawNonCanonicalInput(rootDir, "runtime_only", "004");
+  input.source.runtime_ref = "runtime_openclaw_noncanonical_foreign";
+
+  await assert.rejects(
+    () => writeOpenClawNonCanonicalIntakeToStore(input),
+    /OpenClaw adapter non-canonical intake runtime_instance mismatch/,
+  );
+});

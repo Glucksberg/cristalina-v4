@@ -645,3 +645,18 @@ test("Hermes adapter writes non-canonical intake through core runtime law", asyn
   assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 0);
   assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
 });
+
+test("Hermes adapter rejects non-canonical runtime context ref drift", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-hermes-adapter-noncanonical-drift-"));
+  t.after(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const input = buildHermesNonCanonicalInput(rootDir, "runtime_only", "004");
+  input.source.runtime_ref = "runtime_hermes_noncanonical_foreign";
+
+  await assert.rejects(
+    () => writeHermesNonCanonicalIntakeToStore(input),
+    /Hermes adapter non-canonical intake runtime_instance mismatch/,
+  );
+});

@@ -89,6 +89,38 @@ function requireAuthenticatedPrincipal(principal: OpenClawAuthenticatedPrincipal
   return principal;
 }
 
+function assertMatchingRuntimeRef(input: {
+  label: string;
+  id?: string;
+  source_ref?: string | null;
+}): void {
+  if (!input.id || !input.source_ref || input.id === input.source_ref) {
+    return;
+  }
+
+  throw new Error(
+    `OpenClaw adapter non-canonical intake ${input.label} mismatch: ids.${input.label}=${input.id} does not match source ref ${input.source_ref}`,
+  );
+}
+
+function assertNonCanonicalRuntimeContextRefs(input: OpenClawNonCanonicalIntakeInput): void {
+  assertMatchingRuntimeRef({
+    label: "runtime_instance",
+    id: input.ids.runtime_instance,
+    source_ref: input.source.runtime_ref,
+  });
+  assertMatchingRuntimeRef({
+    label: "runtime_session",
+    id: input.ids.runtime_session,
+    source_ref: input.source.session_ref,
+  });
+  assertMatchingRuntimeRef({
+    label: "conversation_thread",
+    id: input.ids.conversation_thread,
+    source_ref: input.source.thread_ref,
+  });
+}
+
 export async function writeOpenClawConversationPreferenceToStore(
   input: OpenClawConversationPreferenceWriteInput,
 ): Promise<ConversationPreferenceStoreResult> {
@@ -121,6 +153,7 @@ export async function writeOpenClawNonCanonicalIntakeToStore(
   input: OpenClawNonCanonicalIntakeInput,
 ): Promise<NonCanonicalIntakeResult> {
   const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
+  assertNonCanonicalRuntimeContextRefs(input);
   return writeNonCanonicalIntakeToStore({
     ...input,
     authenticated_principal,
