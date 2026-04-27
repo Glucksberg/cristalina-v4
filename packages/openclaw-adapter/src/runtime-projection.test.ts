@@ -696,8 +696,13 @@ test("OpenClaw adapter records drift diagnostics without runtime identity writes
   });
 
   const input = buildOpenClawNonCanonicalInput(rootDir, "diagnostic_only", "007");
+  input.source.runtime_ref = "runtime_openclaw_drift_observed";
   const result = await writeOpenClawAdapterDriftDiagnosticToStore({
     ...input,
+    ids: {
+      ...input.ids,
+      diagnostic: input.ids.diagnostic!,
+    },
     diagnostic: {
       code: "openclaw_adapter_runtime_drift",
       severity: "warning",
@@ -709,5 +714,6 @@ test("OpenClaw adapter records drift diagnostics without runtime identity writes
   assert.equal(result.records.runtime_instance, undefined);
   assert.equal(result.records.observation, undefined);
   assert.equal(result.records.diagnostic?.code, "openclaw_adapter_runtime_drift");
+  assert.equal(result.records.source_record.provenance.runtime_ref, "runtime_openclaw_drift_observed");
   assert.equal((await listOpenClawProjectionRuntimeViews(rootDir)).length, 0);
 });

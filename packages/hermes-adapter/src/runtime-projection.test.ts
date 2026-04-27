@@ -683,8 +683,13 @@ test("Hermes adapter records drift diagnostics without runtime identity writes",
   });
 
   const input = buildHermesNonCanonicalInput(rootDir, "diagnostic_only", "007");
+  input.source.runtime_ref = "runtime_hermes_drift_observed";
   const result = await writeHermesAdapterDriftDiagnosticToStore({
     ...input,
+    ids: {
+      ...input.ids,
+      diagnostic: input.ids.diagnostic!,
+    },
     diagnostic: {
       code: "hermes_adapter_runtime_drift",
       severity: "warning",
@@ -696,6 +701,7 @@ test("Hermes adapter records drift diagnostics without runtime identity writes",
   assert.equal(result.records.runtime_instance, undefined);
   assert.equal(result.records.observation, undefined);
   assert.equal(result.records.diagnostic?.code, "hermes_adapter_runtime_drift");
+  assert.equal(result.records.source_record.provenance.runtime_ref, "runtime_hermes_drift_observed");
   assert.equal((await listHermesProjectionRuntimeViews(rootDir)).length, 0);
   assert.equal((await listProjectionRuntimeViews(rootDir, "openclaw")).length, 0);
 });

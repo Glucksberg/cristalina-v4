@@ -83,7 +83,10 @@ export interface OpenClawNonCanonicalIntakeInput
 }
 
 export interface OpenClawAdapterDriftDiagnosticInput
-  extends Omit<OpenClawNonCanonicalIntakeInput, "mode" | "diagnostic"> {
+  extends Omit<OpenClawNonCanonicalIntakeInput, "mode" | "diagnostic" | "ids"> {
+  ids: Omit<OpenClawNonCanonicalIntakeInput["ids"], "diagnostic"> & {
+    diagnostic: string;
+  };
   diagnostic: NonNullable<NonCanonicalIntakeInput["diagnostic"]>;
 }
 
@@ -150,9 +153,15 @@ export async function writeOpenClawNonCanonicalIntakeToStore(
 export async function writeOpenClawAdapterDriftDiagnosticToStore(
   input: OpenClawAdapterDriftDiagnosticInput,
 ): Promise<NonCanonicalIntakeResult> {
-  return writeOpenClawNonCanonicalIntakeToStore({
+  const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
+  return writeNonCanonicalIntakeToStore({
     ...input,
+    authenticated_principal,
     mode: "diagnostic_only",
+    source: {
+      ...input.source,
+      runtime: OPENCLAW_RUNTIME,
+    },
   });
 }
 

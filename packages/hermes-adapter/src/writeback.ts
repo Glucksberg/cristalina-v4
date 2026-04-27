@@ -83,7 +83,10 @@ export interface HermesNonCanonicalIntakeInput
 }
 
 export interface HermesAdapterDriftDiagnosticInput
-  extends Omit<HermesNonCanonicalIntakeInput, "mode" | "diagnostic"> {
+  extends Omit<HermesNonCanonicalIntakeInput, "mode" | "diagnostic" | "ids"> {
+  ids: Omit<HermesNonCanonicalIntakeInput["ids"], "diagnostic"> & {
+    diagnostic: string;
+  };
   diagnostic: NonNullable<NonCanonicalIntakeInput["diagnostic"]>;
 }
 
@@ -150,9 +153,15 @@ export async function writeHermesNonCanonicalIntakeToStore(
 export async function writeHermesAdapterDriftDiagnosticToStore(
   input: HermesAdapterDriftDiagnosticInput,
 ): Promise<NonCanonicalIntakeResult> {
-  return writeHermesNonCanonicalIntakeToStore({
+  const authenticated_principal = requireAuthenticatedPrincipal(input.authenticated_principal);
+  return writeNonCanonicalIntakeToStore({
     ...input,
+    authenticated_principal,
     mode: "diagnostic_only",
+    source: {
+      ...input.source,
+      runtime: HERMES_RUNTIME,
+    },
   });
 }
 
