@@ -36,6 +36,7 @@ test("public core entrypoint does not export raw persistence or canon mutation p
     "applyApprovedCanonicalSupersede",
     "evaluateCanonicalProposal",
     "applyApprovedCanonicalProposal",
+    "executeCanonicalProposalWorkflow",
   ]) {
     assert.equal(Object.prototype.hasOwnProperty.call(publicApi, name), false, `${name} must stay off the public adapter API`);
   }
@@ -49,6 +50,7 @@ test("internal core entrypoint is the explicit home for raw persistence and muta
     "appendAuditChange",
     "evaluateCanonicalProposal",
     "applyApprovedCanonicalProposal",
+    "executeCanonicalProposalWorkflow",
   ]) {
     assert.equal(Object.prototype.hasOwnProperty.call(internalApi, name), true, `${name} must stay internal-only`);
   }

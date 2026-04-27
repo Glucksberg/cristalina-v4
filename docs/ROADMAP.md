@@ -1,228 +1,261 @@
 # Cristalina v4
 ## Roadmap
 
-**Status:** Active Draft
+**Status:** Active Draft  
+**Updated:** 2026-04-27  
+**Current posture:** executable core with thin Hermes and OpenClaw boundaries
 
 ---
 
 ## 1. Roadmap Principle
 
-The roadmap is intentionally front-loaded toward the core.
+Cristalina v4 has moved past the "architecture only" stage.
 
-This is not accidental.
+The core now has enough executable law to stop treating adapters as a distant
+future phase. The next useful milestone is not broader architecture; it is a
+small live-session bridge that proves the existing kernel can sit under one
+Hermes session and one OpenClaw session without either runtime defining memory
+semantics.
 
-Cristalina v4 will only be as good as its core contracts.
+The build order still remains:
 
-If the core is vague, the adapters will force the architecture into runtime-specific compromises too early.
+`docs -> types -> schemas -> fixtures -> kernel code -> adapters`
 
-So the first major phase is not "core mínimo".
-
-It is:
-
-**Phase 1: solid core**
-
-That phase is deliberately deep and internally subdivided.
-
----
-
-## 2. Phase Overview
-
-### Phase 0. Architectural Foundation
-
-Goal:
-
-- freeze the conceptual architecture before implementation expands
-
-Includes:
-
-- synthesis thesis
-- storage model
-- core types
-- legal transitions
-- information flow
-- MVP flow
-- knowledge-wiki layer
-- compatibility posture
-
-Status:
-
-- in progress, substantially established
-
-#### Phase 0H. Contract Hardening
-
-Goal:
-
-- converge the architecture into executable contracts before broad implementation starts
-
-Includes:
-
-- hardening plan
-- normalized object envelope
-- runtime identity model
-- disposition model
-- model dependency map
-- docs/schema/scaffold convergence
-- projection fragment labeling rules
-
-### Phase 1. Solid Core
-
-Goal:
-
-- build the actual memory law and object substrate of the system
-
-This is the heaviest phase.
-
-It should be split into:
-
-#### Phase 1A. Object and Storage Foundation
-
-Includes:
-
-- manifest contract
-- store reader/writer
-- stable IDs
-- storage layout implementation
-- serialization and validation of core objects
-- runtime-executable schema layer, not TypeScript-only scaffolding
-- shared object envelope implementation
-- runtime identity object serialization
-- disposition record serialization
-
-#### Phase 1B. World and Wiki Foundation
-
-Includes:
-
-- raw source intake
-- observation capture
-- disposition assignment baseline
-- world-claim storage
-- entity/relation primitives
-- wiki page model
-- wiki claim model
-- wiki maintenance triggers
-- wiki claim extraction
-- wiki staleness and unsupported-claim diagnostics
-
-#### Phase 1C. Governance Foundation
-
-Includes:
-
-- proposal engine
-- disposition record execution path
-- governance gates
-- ratification records
-- canonical apply path
-- supersession path
-- contradiction handling baseline
-
-#### Phase 1D. Projection Foundation
-
-Includes:
-
-- adapter-agnostic projection manifest
-- projection compiler contract
-- bounded diagnostics model
-- provenance-preserving projection references
-- layer-labeled projection fragments
-- identity-aware projection packaging
-
-Phase 1 is complete only when the core can execute an end-to-end flow without any adapter-specific hacks.
-
-### Phase 2. OpenClaw Integration
-
-Goal:
-
-- prove the core against the first real runtime boundary
-
-Includes:
-
-- OpenClaw projection surfaces
-- OpenClaw ingest path
-- authenticated write-through surface
-- explicit owner/system queue actions across the adapter boundary
-- drift handling
-- runtime diagnostics feedback
-- fixture-driven round-trip tests
-
-### Phase 3. Hermes Integration
-
-Goal:
-
-- prove runtime portability against a second real runtime boundary
-
-Includes:
-
-- Hermes projection surfaces
-- Hermes ingest path
-- authenticated write-through surface
-- Hermes-specific adapter contract
-- runtime-specific constraints and differences
-- round-trip tests matching the same core semantics
-
-### Phase 4. Knowledge Wiki Maturity
-
-Goal:
-
-- deepen the editorial synthesis layer until it becomes a genuine advantage
-
-Includes:
-
-- index and log maintenance
-- source summary lifecycle
-- entity/topic/comparison page maintenance
-- wiki linting
-- stale-page detection
-- proposal emission from wiki claims
-
-### Phase 5. Evaluation and Comparative Pressure
-
-Goal:
-
-- prove that the system is better than simpler store-and-retrieval approaches in meaningful ways
-
-Includes:
-
-- longitudinal evals
-- consistency evals
-- contradiction behavior evals
-- projection fidelity evals
-- comparison against retrieval-only baselines
+But the immediate pressure should now come from real runtime loops, not from
+more speculative kernel expansion.
 
 ---
 
-## 3. Immediate Next Focus
+## 2. Current Executable Baseline
 
-The immediate focus now spans the Phase 1 to Phase 2 boundary.
+Already executable:
 
-Specifically:
+- core storage layout, manifest, record IO, validation, recovery journals, and
+  append-style audit/validation logs
+- raw source intake, runtime observations, world claims, wiki pages/claims,
+  disposition records, proposals, ratifications, canon records, diagnostics,
+  projection artifacts, and projection manifests
+- conversation preference write path from raw/runtime evidence through world,
+  wiki, governance, canon, and runtime projection
+- authenticated principal checks separated from `speaker_ref` provenance
+- owner-ratification, rejection, expiration, and manual contradiction review
+  queues
+- active world contradiction detection, explicit contradiction records,
+  accepted/applied contradiction resolutions, canonical follow-up, and
+  projection recompilation
+- projection read policy with runtime/owner identity scoping, suppression
+  metadata, review traces, diagnostics, and retrieval traces
+- non-canonical intake for `evidence_only`, `runtime_only`, and
+  `diagnostic_only`
+- wiki maintenance and read-only memory browser projection
+- native deterministic retrieval, lexical/vector/hybrid retrieval, retrieval
+  audits/evals, vector maintenance, external candidate normalization, and
+  provider/export boundaries
+- working-memory checkpoints, session packs, and session resume receipts as
+  the first operational continuity slice
+- OpenClaw and Hermes adapter packages with projection reads, authenticated
+  write-through, non-canonical write-through, drift diagnostics, and queue
+  actions
+- public API boundary that keeps raw persistence and canon mutation primitives
+  behind the internal entrypoint
 
-1. keep the core contracts strong while expanding the first adapter-facing write boundaries
-2. preserve the distinction between `speaker_ref`, normalized subject, and authenticated acting principal
-3. make owner ratification, rejection, and expiration legal across the adapter boundary instead of only inside fixtures or direct core calls
-4. keep OpenClaw and Hermes write-through surfaces thin, explicit, and semantically subordinate to the core
-5. expand round-trip tests so runtime ingress, queue actions, and projection reads all execute the same authority law
-6. continue converging docs, schemas, fixtures, and executable code as the surface area moves beyond the core
-
-The core is now reasonably established.
-
-That does not mean Phase 1 is "done".
-
-It means the next implementation pressure should come from real external boundaries while the core remains the lawmaking layer.
+This means the first real integration does not need a new memory model.
 
 ---
 
-## 4. What the Roadmap Intentionally Avoids
+## 3. How Far From A Real Hermes/OpenClaw Session
 
-The roadmap explicitly avoids:
+### Ready enough for a controlled first wiring
 
-- adapter-first architecture
-- embeddings-first architecture
-- graph-first lock-in
-- trying to solve humanoid robotics too early
-- trying to solve all multi-agent problems in v1
+The repository is ready to connect a controlled Hermes session and a controlled
+OpenClaw session if the first wiring accepts the current thin contract:
 
-This roadmap is designed to maximize architectural integrity first.
+- the runtime can send authenticated write-through calls into the adapter
+- the runtime can provide stable runtime/session/thread refs
+- the runtime can load a compiled runtime projection by manifest id or latest
+  compatible context
+- humans or trusted system principals handle owner/manual-review queue actions
+  through the explicit adapter APIs
+- the first session focuses on preference, runtime observation, diagnostics,
+  and review flows rather than arbitrary memory editing
 
-It is also designed to avoid a specific local failure mode:
+### Not ready yet for a polished product loop
 
-- documentation racing ahead of executable substrate for too long
+Still missing before the system feels like a normal always-on product:
+
+- a small runtime bridge/daemon or CLI that translates real Hermes/OpenClaw
+  session events into adapter calls
+- concrete session configuration examples for both runtimes
+- a stable operator workflow for selecting root store, actor principal, owner
+  identity, runtime instance, session id, and thread id
+- a simple projection refresh policy after each write or queue action
+- runtime-facing UX around pending reviews and diagnostics
+- a smoke fixture that runs one Hermes-style session and one OpenClaw-style
+  session against the same store
+- operational docs for starting, inspecting, and recovering the store
+
+So the honest answer is:
+
+**the kernel is close enough to wire; the runtime bridge and operator ergonomics
+are the main remaining work.**
+
+---
+
+## 4. Immediate Milestone: First Live Runtime Loop
+
+Goal:
+
+- connect one Hermes session and one OpenClaw session to the same Cristalina
+  store through the existing adapter APIs
+
+Scope:
+
+- no new canon mutation shortcuts
+- no adapter-defined memory law
+- no broad UX layer
+- no new proposal vocabulary unless the first wiring proves it is required
+
+Minimum flow:
+
+1. initialize or select a `.cristalina-v4` store
+2. register or reuse owner, agent, runtime instance, runtime session, and
+   conversation thread refs
+3. write a conversation-preference signal from OpenClaw through the OpenClaw
+   adapter
+4. write a conversation-preference or runtime diagnostic signal from Hermes
+   through the Hermes adapter
+5. load latest runtime projection for each runtime context
+6. list pending owner/manual-review queues
+7. apply one queue action through the adapter boundary
+8. reload both projections and confirm canon/world/wiki/review state is visible
+   without collapsing provenance or authority
+
+Definition of done:
+
+- one command or small script can run the dual-runtime smoke flow
+- OpenClaw and Hermes projections come from the same store
+- both adapters use the public package entrypoint only
+- no adapter imports raw store writers, governance engine, or canon apply
+  primitives
+- projection manifests identify adapter, runtime/session/thread context,
+  read-policy version, compiler version, included refs, and suppressed refs
+- audit and validation logs explain the writes and queue actions
+
+---
+
+## 5. Phase Plan From Here
+
+### Phase A. Runtime Bridge Slice
+
+Purpose:
+
+- turn the current adapter APIs into a first usable live-session bridge
+
+Work:
+
+- add a minimal bridge module or script for Hermes session events
+- add a minimal bridge module or script for OpenClaw session events
+- define runtime config inputs: store root, actor, authenticated principal,
+  owner identity, runtime instance, session, thread, and projection selection
+- add a shared smoke fixture for one Hermes session plus one OpenClaw session
+- document the first manual operator loop
+
+Exit criteria:
+
+- a developer can run a single smoke command and inspect the resulting store
+  plus both runtime projections
+
+### Phase B. Operator UX And Diagnostics
+
+Purpose:
+
+- make the thin bridge usable without reading store internals every time
+
+Work:
+
+- expose concise pending-review summaries
+- expose drift and projection diagnostics clearly
+- add projection refresh commands
+- add store inspection commands for recent writes, current canon, active world
+  claims, pending reviews, and diagnostics
+- document recovery behavior
+
+Exit criteria:
+
+- a trusted operator can see what the system wants, what it wrote, what it
+  deferred, and why
+
+### Phase C. Live Session Continuity
+
+Purpose:
+
+- connect the existing checkpoint/session-pack/receipt primitives to actual
+  Hermes and OpenClaw session handoff behavior
+
+Work:
+
+- add adapter-facing helpers for checkpoint emission
+- compile session packs for each runtime context
+- record resume receipts after a runtime consumes a pack
+- add cross-runtime handoff fixture from Hermes to OpenClaw and OpenClaw to
+  Hermes
+
+Exit criteria:
+
+- a session can resume from derived context without treating the derived pack
+  as truth or bypassing upstream refs
+
+### Phase D. Broader Memory Roads
+
+Purpose:
+
+- widen beyond the current preference trunk only after the live loop works
+
+Work:
+
+- add more proposal operations only where a live flow proves the need
+- strengthen procedure/constraint/goal/value flows
+- add more wiki-to-governance candidate fixtures
+- expand retrieval-backed projection contexts
+- add longitudinal evals across days and sessions
+
+Exit criteria:
+
+- broader memory types use the same governance, replay, projection, and
+  authority law as the initial preference/session loop
+
+---
+
+## 6. Deferred On Purpose
+
+Still intentionally deferred:
+
+- rich adapter-specific UI
+- broad autonomous memory editing
+- hostile multi-tenant hardening as the primary design center
+- arbitrary external-user access
+- embeddings-first product behavior
+- treating session packs, wiki pages, retrieval results, or projections as
+  direct truth sources
+
+These are deferred because the shortest path to value is now a thin live loop
+over the core, not a wider surface area.
+
+---
+
+## 7. Practical Estimate
+
+In roadmap terms, the project is no longer "far from adapters."
+
+What remains before a first real Hermes/OpenClaw connection is mostly:
+
+- bridge glue
+- runtime configuration
+- smoke fixtures
+- operator docs
+- a small amount of projection refresh ergonomics
+
+The risky architectural work is much smaller than it was. The remaining risk is
+integration discipline: preserving authenticated authority, stable runtime
+identity, replayability, and projection boundaries while making the first live
+loop convenient enough to use.

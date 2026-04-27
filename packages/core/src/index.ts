@@ -24,7 +24,6 @@ export * from "./retrieval-engine/openai-compatible-embedding-provider.js";
 export * from "./retrieval-engine/orchestrator.js";
 export * from "./retrieval-engine/vector-export.js";
 export * from "./workflow-engine/source-intake.js";
-export * from "./workflow-engine/pipeline.js";
 export * from "./workflow-engine/conversation-preference-store.js";
 export * from "./workflow-engine/non-canonical-intake-store.js";
 export * from "./workflow-engine/wiki-maintenance-store.js";

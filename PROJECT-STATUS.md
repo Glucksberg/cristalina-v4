@@ -1,6 +1,6 @@
 # Project Status
 
-**Current status:** Core hardening in progress, with executable kernel baseline and thin authenticated adapter boundaries
+**Current status:** Executable kernel baseline with thin authenticated Hermes and OpenClaw boundaries; ready for a controlled first live-session bridge
 
 What already exists:
 
@@ -18,25 +18,29 @@ What already exists:
 - core validation layer
 - governance engine baseline
 - canonical apply path
-- OpenClaw projection compiler baseline
+- projection compiler baseline with runtime read policy
+- contradiction detection, review, resolution, canonical follow-up, and projection recompilation
+- non-canonical intake for evidence-only, runtime-only, and diagnostic-only flows
+- wiki maintenance and memory browser projection
+- retrieval, vector, external-candidate, and maintenance/eval boundaries
+- working-memory checkpoints, session packs, and resume receipts
 - executable core fixtures and tests
 - thin OpenClaw adapter package with projection reads and authenticated write-through
 - thin Hermes adapter package with projection reads and authenticated write-through
 
 What is next:
 
-- docs/schema/scaffold convergence
-- contradiction handling baseline
-- richer proposal operations beyond create/revise/supersede
-- common projection manifest hardening across adapters
-- runtime-identity fixtures
-- richer OpenClaw adapter surface beyond the current thin boundary
-- richer Hermes adapter surface beyond the current thin boundary
-- eval harness
+- minimal runtime bridge or CLI for one Hermes session and one OpenClaw session
+- shared dual-runtime smoke fixture against the same store
+- runtime configuration examples for store root, owner/agent identity, session, thread, and authenticated principal
+- projection refresh and inspection commands for operators
+- runtime-facing review and diagnostic summaries
+- richer proposal operations only after the first live loop proves the need
 
 What does not exist yet:
 
-- broad runtime-specific adapter UX beyond the current thin authenticated write-through surfaces
-- eval harness
+- polished runtime-specific UX beyond the current thin authenticated write-through surfaces
+- a live-session bridge/daemon that translates real Hermes and OpenClaw events into adapter calls
+- production-style operator docs for start, inspect, review, recover, and handoff
 
-This project is early, but not vague.
+This project is now close to first wiring. The main remaining work is runtime glue and operator ergonomics, not a new memory law.
