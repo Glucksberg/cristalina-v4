@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import type {
   AuthenticatedPrincipal,
   CoreRecord,
+  ProjectionArtifact,
   ProjectionManifest,
   RuntimeKind,
   SessionResumeReceipt,
@@ -17,6 +18,7 @@ import {
   type CompiledSessionPack,
 } from "./projection-engine/session-pack.js";
 import {
+  coreRecordPath,
   loadProjectionArtifacts,
   loadProjectionManifests,
   loadSessionResumeReceipts,
@@ -100,6 +102,35 @@ function compareManifest(left: ProjectionManifest, right: ProjectionManifest): n
 
 function sameRefs(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameSessionPackManifestContract(existing: ProjectionManifest, next: ProjectionManifest): boolean {
+  return (
+    existing.adapter === next.adapter &&
+    existing.projection_profile === next.projection_profile &&
+    existing.audience === next.audience &&
+    existing.source_checkpoint_ref === next.source_checkpoint_ref &&
+    existing.continuity_epoch === next.continuity_epoch &&
+    existing.generation === next.generation &&
+    existing.read_policy_version === next.read_policy_version &&
+    existing.compiler_version === next.compiler_version &&
+    existing.policy_snapshot_ref === next.policy_snapshot_ref &&
+    existing.snapshot_strategy === next.snapshot_strategy &&
+    sameRefs(existing.context_refs, next.context_refs) &&
+    sameRefs(existing.artifact_refs, next.artifact_refs) &&
+    sameRefs(existing.upstream_refs, next.upstream_refs)
+  );
+}
+
+function sameSessionPackArtifactContract(existing: ProjectionArtifact, next: ProjectionArtifact): boolean {
+  return (
+    existing.adapter === next.adapter &&
+    existing.path === next.path &&
+    existing.artifact_kind === next.artifact_kind &&
+    existing.source_layer === next.source_layer &&
+    existing.authoritative_home === next.authoritative_home &&
+    sameRefs(existing.upstream_refs, next.upstream_refs)
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -299,80 +330,84 @@ export async function loadLatestWorkingMemoryCheckpoint(
 }
 
 export async function compileSessionPackToStore(input: CompileSessionPackToStoreInput): Promise<StoredSessionPack> {
-  const checkpoints = await loadWorkingMemoryCheckpoints(input.rootDir);
-  const checkpoint = selectSessionPackCheckpoint(input, checkpoints);
-  const stableKey = sessionPackStableKey(input.adapter, checkpoint);
+  return withSessionContinuityLock(input.rootDir, `session_pack:${input.adapter}:${input.checkpoint_id ?? "latest"}`, async () => {
+    const checkpoints = await loadWorkingMemoryCheckpoints(input.rootDir);
+    const checkpoint = selectSessionPackCheckpoint(input, checkpoints);
+    const stableKey = sessionPackStableKey(input.adapter, checkpoint);
 
-  const upstream_records: CoreRecord[] = checkpoint.upstream_refs.map((upstreamRef) => ({
-    id: upstreamRef,
-    kind: "observation",
-    layer: "runtime",
-    authoritative_home: "runtime",
-    created_at: checkpoint.created_at,
-    visibility_state: checkpoint.visibility_state,
-    provenance: {
-      source_type: "session_pack_upstream_ref",
-      source_ref: checkpoint.id,
-    },
-    summary: `Session pack upstream ref ${upstreamRef}`,
-    epistemic_state: "observed",
-  } as unknown as CoreRecord));
+    const upstream_records: CoreRecord[] = checkpoint.upstream_refs.map((upstreamRef) => ({
+      id: upstreamRef,
+      kind: "observation",
+      layer: "runtime",
+      authoritative_home: "runtime",
+      created_at: checkpoint.created_at,
+      visibility_state: checkpoint.visibility_state,
+      provenance: {
+        source_type: "session_pack_upstream_ref",
+        source_ref: checkpoint.id,
+      },
+      summary: `Session pack upstream ref ${upstreamRef}`,
+      epistemic_state: "observed",
+    } as unknown as CoreRecord));
 
-  const pack = compileSessionPack({
-    id: input.id ?? compactRecordId(`pmf_session_resume_${input.adapter}`, stableKey),
-    artifact_id: input.artifact_id ?? compactRecordId(`part_session_resume_${input.adapter}`, stableKey),
-    now: input.now,
-    adapter: input.adapter,
-    checkpoint,
-    upstream_records,
-    continuity_epoch: checkpoint.continuity_epoch,
-    generation: checkpoint.generation,
-    read_policy_version: checkpoint.read_policy_version,
-    audience: input.audience ?? "runtime",
-    policy_snapshot_ref: checkpoint.policy_snapshot_ref ?? null,
+    const pack = compileSessionPack({
+      id: input.id ?? compactRecordId(`pmf_session_resume_${input.adapter}`, stableKey),
+      artifact_id: input.artifact_id ?? compactRecordId(`part_session_resume_${input.adapter}`, stableKey),
+      now: input.now,
+      adapter: input.adapter,
+      checkpoint,
+      upstream_records,
+      continuity_epoch: checkpoint.continuity_epoch,
+      generation: checkpoint.generation,
+      read_policy_version: checkpoint.read_policy_version,
+      audience: input.audience ?? "runtime",
+      policy_snapshot_ref: checkpoint.policy_snapshot_ref ?? null,
+    });
+
+    const [artifactPath] = Object.keys(pack.artifact_contents);
+    if (!artifactPath) {
+      throw new Error(`Session pack ${pack.manifest.id} did not emit an artifact path`);
+    }
+    const existingManifest = (await loadProjectionManifests(input.rootDir)).find((manifest) => manifest.id === pack.manifest.id);
+    const existingArtifact = (await loadProjectionArtifacts(input.rootDir, input.adapter)).find((artifact) => artifact.id === pack.artifact.id);
+    if (existingManifest && !sameSessionPackManifestContract(existingManifest, pack.manifest)) {
+      throw new Error(`Session pack manifest id ${pack.manifest.id} already exists with a different session pack contract`);
+    }
+    if (existingArtifact && !sameSessionPackArtifactContract(existingArtifact, pack.artifact)) {
+      throw new Error(`Session pack artifact id ${pack.artifact.id} already exists with a different session pack contract`);
+    }
+    if (existingManifest && !existingArtifact) {
+      throw new Error(`Session pack manifest id ${pack.manifest.id} already exists without artifact ${pack.artifact.id}`);
+    }
+    if (!existingManifest && existingArtifact) {
+      throw new Error(`Session pack artifact id ${pack.artifact.id} already exists without manifest ${pack.manifest.id}`);
+    }
+    if (existingManifest && existingArtifact) {
+      return {
+        artifact_path: coreRecordPath(input.rootDir, existingArtifact),
+        manifest_path: coreRecordPath(input.rootDir, existingManifest),
+        pack: {
+          artifact: existingArtifact,
+          manifest: existingManifest,
+          artifact_contents: {
+            [existingArtifact.path]: pack.artifact_contents[artifactPath] ?? "",
+          },
+        },
+      };
+    }
+
+    const artifactFile = ensureInsideRoot(input.rootDir, artifactPath);
+    await mkdir(dirname(artifactFile), { recursive: true });
+    await writeFile(artifactFile, pack.artifact_contents[artifactPath]);
+    const artifactRecordPath = await writeCoreRecord(input.rootDir, pack.artifact);
+    const manifestPath = await writeCoreRecord(input.rootDir, pack.manifest);
+
+    return {
+      artifact_path: artifactRecordPath,
+      manifest_path: manifestPath,
+      pack,
+    };
   });
-
-  const [artifactPath] = Object.keys(pack.artifact_contents);
-  if (!artifactPath) {
-    throw new Error(`Session pack ${pack.manifest.id} did not emit an artifact path`);
-  }
-  const existingManifest = (await loadProjectionManifests(input.rootDir)).find((manifest) => manifest.id === pack.manifest.id);
-  if (
-    existingManifest &&
-    (
-      existingManifest.adapter !== pack.manifest.adapter ||
-      existingManifest.projection_profile !== pack.manifest.projection_profile ||
-      existingManifest.source_checkpoint_ref !== pack.manifest.source_checkpoint_ref ||
-      existingManifest.continuity_epoch !== pack.manifest.continuity_epoch ||
-      existingManifest.generation !== pack.manifest.generation ||
-      existingManifest.read_policy_version !== pack.manifest.read_policy_version ||
-      !sameRefs(existingManifest.artifact_refs, pack.manifest.artifact_refs)
-    )
-  ) {
-    throw new Error(`Session pack manifest id ${pack.manifest.id} already exists with a different session pack contract`);
-  }
-  const existingArtifact = (await loadProjectionArtifacts(input.rootDir, input.adapter)).find((artifact) => artifact.id === pack.artifact.id);
-  if (
-    existingArtifact &&
-    (
-      existingArtifact.path !== pack.artifact.path ||
-      existingArtifact.artifact_kind !== pack.artifact.artifact_kind ||
-      !sameRefs(existingArtifact.upstream_refs, pack.artifact.upstream_refs)
-    )
-  ) {
-    throw new Error(`Session pack artifact id ${pack.artifact.id} already exists with a different session pack contract`);
-  }
-  const artifactFile = ensureInsideRoot(input.rootDir, artifactPath);
-  await mkdir(dirname(artifactFile), { recursive: true });
-  await writeFile(artifactFile, pack.artifact_contents[artifactPath]);
-  const artifactRecordPath = await writeCoreRecord(input.rootDir, pack.artifact);
-  const manifestPath = await writeCoreRecord(input.rootDir, pack.manifest);
-
-  return {
-    artifact_path: artifactRecordPath,
-    manifest_path: manifestPath,
-    pack,
-  };
 }
 
 export async function loadLatestSessionPackManifest(

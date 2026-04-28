@@ -89,7 +89,7 @@ Rules:
 
 Current session phrases:
 
-- 2026-04-27: Runtime bridges only stay operationally legal when convenience commands preserve the same store root, checkpoint identity, artifact uniqueness, build-artifact consistency, and explicit authority boundaries as the underlying core workflows.
+- 2026-04-27: Runtime bridges only stay operationally legal when convenience commands preserve the same store root, checkpoint identity, artifact uniqueness, serialized session-continuity writes, immutable derived pack lineage, build-artifact consistency, and explicit authority boundaries as the underlying core workflows.
 - 2026-04-24: Store replay only stays trustworthy when loaders select records by declared kind instead of file shape, sidecar blobs remain downstream of metadata, and raw evidence ownership is serialized by content ref as well as workflow id.
 - 2026-04-24: Conflict intake only stays legal when detected world contradictions cannot materialize without explicit contradiction records, and resolution application reauthenticates owner or system authority before mutating world truth.
 - 2026-04-24: Projection boundaries only stay enforceable when direct manifest loads, flow-local replay, queue recovery, and reuse gates obey the same explicit consistency contract instead of treating derived artifacts as implicitly safe.
