@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { inspectCristalinaStore, loadLatestWorkingMemoryCheckpoint } from "@cristalina-v4/core";
+import { inspectCristalinaStore, listStoreProjectionManifests, loadLatestWorkingMemoryCheckpoint } from "@cristalina-v4/core";
 import { listOpenClawConversationPreferenceOwnerRatificationQueue } from "@cristalina-v4/openclaw-adapter";
 
 import { executeCristalinaCommand } from "./commands.js";
@@ -151,4 +151,57 @@ test("CLI checkpoint create emits a new generation instead of overwriting the pr
   assert.ok(active);
   assert.equal(active.generation, 2);
   assert.ok(active.supersedes_ref);
+});
+
+test("session-pack compile preserves distinct packs for explicit checkpoint ids", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-session-pack-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_session_pack_001",
+      agentIdentityRef: "actor_agent_cli_session_pack_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_session_pack_001",
+      hermesRuntimeRef: "runtime_hermes_cli_session_pack_001",
+    }), null, 2)}\n`,
+  );
+
+  const openclawCheckpoint = await executeCristalinaCommand({ name: "checkpoint", action: "create", configPath, runtime: "openclaw" });
+  const hermesCheckpoint = await executeCristalinaCommand({ name: "checkpoint", action: "create", configPath, runtime: "hermes" });
+  const openclawCheckpointRef = (JSON.parse(openclawCheckpoint.stdout) as { record_refs: string[] }).record_refs[0]!;
+  const hermesCheckpointRef = (JSON.parse(hermesCheckpoint.stdout) as { record_refs: string[] }).record_refs[0]!;
+
+  const first = await executeCristalinaCommand({
+    name: "session-pack",
+    action: "compile",
+    configPath,
+    runtime: "hermes",
+    checkpointId: openclawCheckpointRef,
+  });
+  const second = await executeCristalinaCommand({
+    name: "session-pack",
+    action: "compile",
+    configPath,
+    runtime: "hermes",
+    checkpointId: hermesCheckpointRef,
+  });
+  assert.equal(first.exitCode, 0);
+  assert.equal(second.exitCode, 0);
+
+  const firstManifest = (JSON.parse(first.stdout) as { manifest: string }).manifest;
+  const secondManifest = (JSON.parse(second.stdout) as { manifest: string }).manifest;
+  assert.notEqual(firstManifest, secondManifest);
+
+  const manifests = await listStoreProjectionManifests(storeRoot);
+  const sessionPacks = manifests.filter((manifest) =>
+    manifest.adapter === "hermes" &&
+    manifest.projection_profile === "session_resume_v2");
+  assert.equal(sessionPacks.length, 2);
+  assert.deepEqual(
+    sessionPacks.map((manifest) => manifest.source_checkpoint_ref).sort(),
+    [openclawCheckpointRef, hermesCheckpointRef].sort(),
+  );
 });

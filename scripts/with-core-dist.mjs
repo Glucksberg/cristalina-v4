@@ -9,6 +9,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPT_DIR, "..");
 const LOCK_ROOT = join(REPO_ROOT, "node_modules", ".cache", "cristalina");
 const LOCK_DIR = join(LOCK_ROOT, "core-dist.lock");
+const LOCK_HELD_ENV = "CRISTALINA_CORE_DIST_LOCK_HELD";
 const LOCK_STALE_MS = 10 * 60 * 1000;
 const LOCK_TIMEOUT_MS = 2 * 60 * 1000;
 const LOCK_POLL_MS = 200;
@@ -83,11 +84,16 @@ if (!command) {
   process.exit(2);
 }
 
-await acquireLock();
+const lockAlreadyHeld = process.env[LOCK_HELD_ENV] === "1";
+if (!lockAlreadyHeld) {
+  await acquireLock();
+}
 
 try {
   await run("pnpm", ["--filter", "@cristalina-v4/core", "build"], { cwd: REPO_ROOT });
   await run(command, args);
 } finally {
-  await rm(LOCK_DIR, { recursive: true, force: true });
+  if (!lockAlreadyHeld) {
+    await rm(LOCK_DIR, { recursive: true, force: true });
+  }
 }

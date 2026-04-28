@@ -211,8 +211,6 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
     if (command.action === "compile") {
       const stored = await compileSessionPackToStore({
         rootDir: storeRoot,
-        id: `pmf_session_resume_cli_${command.runtime}`,
-        artifact_id: `part_session_resume_cli_${command.runtime}`,
         now: new Date().toISOString(),
         adapter: command.runtime,
         checkpoint_id: command.checkpointId,

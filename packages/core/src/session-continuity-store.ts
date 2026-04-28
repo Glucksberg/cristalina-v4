@@ -43,8 +43,8 @@ export interface CreateWorkingMemoryCheckpointInput {
 
 export interface CompileSessionPackToStoreInput {
   rootDir: string;
-  id: string;
-  artifact_id: string;
+  id?: string;
+  artifact_id?: string;
   now: string;
   adapter: AdapterRuntime;
   checkpoint_id?: string;
@@ -99,6 +99,18 @@ function sameRefs(left: string[], right: string[]): boolean {
 
 function compactRecordId(prefix: string, stableKey: string): string {
   return `${prefix}_${createHash("sha256").update(stableKey).digest("hex").slice(0, 24)}`;
+}
+
+function sessionPackStableKey(adapter: AdapterRuntime, checkpoint: WorkingMemoryCheckpoint): string {
+  return [
+    adapter,
+    checkpoint.id,
+    checkpoint.runtime_instance_ref,
+    checkpoint.runtime_session_ref,
+    checkpoint.conversation_thread_ref,
+    checkpoint.continuity_epoch,
+    `g${checkpoint.generation}`,
+  ].join(":");
 }
 
 function checkpointMatchesFilter(
@@ -229,6 +241,7 @@ export async function loadLatestWorkingMemoryCheckpoint(
 export async function compileSessionPackToStore(input: CompileSessionPackToStoreInput): Promise<StoredSessionPack> {
   const checkpoints = await loadWorkingMemoryCheckpoints(input.rootDir);
   const checkpoint = selectSessionPackCheckpoint(input, checkpoints);
+  const stableKey = sessionPackStableKey(input.adapter, checkpoint);
 
   const upstream_records: CoreRecord[] = checkpoint.upstream_refs.map((upstreamRef) => ({
     id: upstreamRef,
@@ -246,8 +259,8 @@ export async function compileSessionPackToStore(input: CompileSessionPackToStore
   } as unknown as CoreRecord));
 
   const pack = compileSessionPack({
-    id: input.id,
-    artifact_id: input.artifact_id,
+    id: input.id ?? compactRecordId(`pmf_session_resume_${input.adapter}`, stableKey),
+    artifact_id: input.artifact_id ?? compactRecordId(`part_session_resume_${input.adapter}`, stableKey),
     now: input.now,
     adapter: input.adapter,
     checkpoint,
