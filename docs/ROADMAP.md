@@ -395,6 +395,9 @@ Candidate commands:
 
 ## 8. Step 3 Plan: Configuration Menu
 
+**Execution status:** implemented as a versioned config writer plus
+non-interactive installer-safe menu path.
+
 ### Purpose
 
 Make Cristalina configurable without forcing the operator to hand-edit JSON or
@@ -473,6 +476,20 @@ Final placement must be decided before implementation and covered by schema.
 - `cristalina config` can create a valid config from scratch
 - config can be edited later without breaking existing store records
 - missing required values are diagnosed before runtime writes begin
+
+### Implemented Slice
+
+- config artifacts now persist `schema_version: 1`
+- `cristalina config --init --non-interactive` creates a validated config from
+  scratch for script/install use
+- interactive `cristalina config --init` prompts for store root, owner, agent,
+  operator, OpenClaw runtime, and Hermes runtime refs when a TTY is available
+- config records session/thread strategy, projection consistency preference,
+  review behavior, checkpoint/resume behavior, diagnostics verbosity, and
+  runtime hook metadata paths
+- saved config is loadable by `doctor` and `status`
+- tests cover schema validation, default config generation, non-interactive menu
+  creation, and doctor compatibility
 
 ### Explicit Non-Goals
 

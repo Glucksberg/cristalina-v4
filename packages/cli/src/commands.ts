@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { parseCristalinaCommand, helpText, CommandUsageError, type CristalinaCommand } from "./args.js";
 import { loadCristalinaConfig, resolveStoreRoot } from "./config.js";
+import { runConfigMenu } from "./config-menu.js";
 import { collectRuntimeBridgeStatus, formatStatus, initializeCristalinaStore } from "./bridge.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -65,6 +66,26 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   }
 
   if (command.name === "config") {
+    if (command.init || command.nonInteractive) {
+      const configured = await runConfigMenu({
+        configPath: command.configPath,
+        nonInteractive: command.nonInteractive,
+        storeRoot: command.storeRoot,
+        ownerIdentityRef: command.ownerIdentityRef,
+        agentIdentityRef: command.agentIdentityRef,
+        operatorRef: command.operatorRef,
+        principalKind: command.principalKind,
+        principalActorRef: command.principalActorRef,
+        openclawRuntimeRef: command.openclawRuntimeRef,
+        hermesRuntimeRef: command.hermesRuntimeRef,
+      });
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify(configured, null, 2)}\n`,
+        stderr: "",
+      };
+    }
+
     const loaded = await loadCristalinaConfig({ configPath: command.configPath });
     return {
       exitCode: loaded.diagnostics.length === 0 ? 0 : 1,

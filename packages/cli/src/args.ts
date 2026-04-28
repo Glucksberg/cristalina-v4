@@ -1,7 +1,20 @@
 export type CristalinaCommand =
   | { name: "help" }
   | { name: "init"; storeRoot?: string }
-  | { name: "config"; configPath?: string }
+  | {
+      name: "config";
+      configPath?: string;
+      init?: boolean;
+      nonInteractive?: boolean;
+      storeRoot?: string;
+      ownerIdentityRef?: string;
+      agentIdentityRef?: string;
+      operatorRef?: string;
+      principalKind?: "owner" | "participant" | "system";
+      principalActorRef?: string;
+      openclawRuntimeRef?: string;
+      hermesRuntimeRef?: string;
+    }
   | { name: "doctor"; configPath?: string; storeRoot?: string }
   | { name: "status"; configPath?: string; storeRoot?: string }
   | { name: "smoke"; target: "dual-runtime" }
@@ -14,6 +27,8 @@ export class CommandUsageError extends Error {
   readonly exitCode = 2;
 }
 
+type OptionKind = "flag" | "value";
+
 function readOption(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   if (index < 0) return undefined;
@@ -24,14 +39,24 @@ function readOption(args: string[], name: string): string | undefined {
   return value;
 }
 
-function rejectUnknownOptions(args: string[], allowed: Set<string>): void {
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(name);
+}
+
+function rejectUnknownOptions(args: string[], allowed: Map<string, OptionKind> | Set<string>): void {
+  const allowedMap = allowed instanceof Set
+    ? new Map([...allowed].map((entry) => [entry, "value" as const]))
+    : allowed;
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index]!;
     if (!value.startsWith("--")) continue;
-    if (!allowed.has(value)) {
+    const kind = allowedMap.get(value);
+    if (!kind) {
       throw new CommandUsageError(`Unknown option ${value}`);
     }
-    index += 1;
+    if (kind === "value") {
+      index += 1;
+    }
   }
 }
 
@@ -48,8 +73,43 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "config") {
-    rejectUnknownOptions([subcommand, ...rest].filter((value): value is string => Boolean(value)), new Set(["--config"]));
-    return { name: "config", configPath: readOption(argv, "--config") };
+    const optionArgs = [subcommand, ...rest].filter((value): value is string => Boolean(value));
+    rejectUnknownOptions(optionArgs, new Map([
+      ["--config", "value"],
+      ["--init", "flag"],
+      ["--non-interactive", "flag"],
+      ["--store-root", "value"],
+      ["--owner", "value"],
+      ["--agent", "value"],
+      ["--operator", "value"],
+      ["--principal-kind", "value"],
+      ["--principal-actor", "value"],
+      ["--openclaw-runtime", "value"],
+      ["--hermes-runtime", "value"],
+    ]));
+    const principalKind = readOption(argv, "--principal-kind");
+    if (
+      principalKind !== undefined &&
+      principalKind !== "owner" &&
+      principalKind !== "participant" &&
+      principalKind !== "system"
+    ) {
+      throw new CommandUsageError("--principal-kind must be owner, participant, or system");
+    }
+    return {
+      name: "config",
+      configPath: readOption(argv, "--config"),
+      init: hasFlag(argv, "--init"),
+      nonInteractive: hasFlag(argv, "--non-interactive"),
+      storeRoot: readOption(argv, "--store-root"),
+      ownerIdentityRef: readOption(argv, "--owner"),
+      agentIdentityRef: readOption(argv, "--agent"),
+      operatorRef: readOption(argv, "--operator"),
+      principalKind,
+      principalActorRef: readOption(argv, "--principal-actor"),
+      openclawRuntimeRef: readOption(argv, "--openclaw-runtime"),
+      hermesRuntimeRef: readOption(argv, "--hermes-runtime"),
+    };
   }
 
   if (command === "doctor" || command === "status") {
@@ -120,7 +180,7 @@ export function helpText(): string {
     "",
     "Commands:",
     "  init [--store-root PATH]",
-    "  config [--config PATH]",
+    "  config [--config PATH] [--init] [--non-interactive]",
     "  doctor [--config PATH] [--store-root PATH]",
     "  status [--config PATH] [--store-root PATH]",
     "  smoke dual-runtime",

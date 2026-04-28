@@ -30,6 +30,7 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
   await writeFile(
     configPath,
     `${JSON.stringify({
+      schema_version: 1,
       store_root: storeRoot,
       owner_identity_ref: "actor_owner_cli_doctor_001",
       agent_identity_ref: "actor_agent_cli_doctor_001",
@@ -41,6 +42,11 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
           runtime_instance_ref: "runtime_hermes_cli_doctor_001",
         },
       },
+      session_thread_strategy: "prompt_per_launch",
+      projection_consistency: "allow_mixed_state",
+      review_behavior: "list_only",
+      checkpoint_resume: "record_checkpoints",
+      diagnostics_verbosity: "normal",
     }, null, 2)}\n`,
   );
 

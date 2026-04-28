@@ -61,6 +61,7 @@ What runs today:
 - Minimal authenticated write-through and projection surfaces in the OpenClaw and Hermes adapters
 - Dual-runtime smoke flow proving one OpenClaw session and one Hermes session against the same store
 - Initial `cristalina` CLI package with help, init, config, doctor, status, and smoke command boundaries
+- Versioned config writer for store root, identity refs, runtime refs, projection policy, review behavior, and hook metadata paths
 
 What's planned:
 - installable `cristalina` CLI and runtime bridge package
@@ -82,6 +83,7 @@ pnpm test
 pnpm build
 pnpm smoke:dual-runtime
 pnpm cristalina --help
+pnpm cristalina config --init --non-interactive
 pnpm cristalina smoke dual-runtime
 
 # Run an end-to-end fixture (writes a real .cristalina-v4/ store under examples/)

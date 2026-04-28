@@ -31,10 +31,11 @@ What already exists:
 - shared dual-runtime smoke fixture against the same store
 - initial `@cristalina-v4/cli` package with `cristalina` command, config loader,
   doctor/status surface, and smoke wrapper
+- versioned local config writer with non-interactive setup and interactive TTY
+  prompts for the first operator flow
 
 What is next:
 
-- runtime configuration examples for store root, owner/agent identity, session, thread, and authenticated principal
 - projection refresh and inspection commands for operators
 - runtime-facing review and diagnostic summaries
 - richer proposal operations only after the first live loop proves the need
