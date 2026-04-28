@@ -36,6 +36,7 @@ What already exists:
 - runtime-neutral event bridge for OpenClaw and Hermes preference, feedback,
   diagnostic, review, projection-refresh, and declared continuity events
 - local OpenClaw installer command and metadata writer
+- local Hermes installer command sharing the OpenClaw metadata contract
 
 What is next:
 

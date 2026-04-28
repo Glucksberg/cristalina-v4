@@ -174,28 +174,16 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   }
 
   if (command.name === "install") {
-    if (command.target === "openclaw") {
-      const result = await installRuntime({
-        runtime: "openclaw",
-        configPath: command.configPath,
-        nonInteractive: command.nonInteractive,
-        metadataPath: command.metadataPath,
-        runtimeRoot: command.runtimeRoot,
-      });
-      return {
-        exitCode: 0,
-        stdout: `${JSON.stringify(result, null, 2)}\n`,
-        stderr: "",
-      };
-    }
-
+    const result = await installRuntime({
+      runtime: command.target,
+      configPath: command.configPath,
+      nonInteractive: command.nonInteractive,
+      metadataPath: command.metadataPath,
+      runtimeRoot: command.runtimeRoot,
+    });
     return {
-      exitCode: 1,
-      stdout: `${JSON.stringify({
-        target: command.target,
-        status: "not_installed",
-        reason: "Installer scripts are implemented in the runtime-specific installer steps.",
-      }, null, 2)}\n`,
+      exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
       stderr: "",
     };
   }

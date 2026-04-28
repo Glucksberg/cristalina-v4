@@ -681,6 +681,8 @@ OpenClaw integration must support:
 
 ## 11. Step 6 Plan: Hermes Installer
 
+**Execution status:** implemented on the same installer contract as OpenClaw.
+
 ### Purpose
 
 Make Cristalina installable into Hermes with one command and prove that Hermes
@@ -737,6 +739,19 @@ Hermes integration must support:
 - rerunning the installer does not duplicate runtime identity or hooks
 - `cristalina doctor --runtime hermes` passes after install
 - Hermes does not require a separate memory-law branch
+
+### Implemented Slice
+
+- `cristalina install hermes --non-interactive` uses the same installer code
+  path and metadata schema as OpenClaw
+- metadata is written to `.cristalina-v4/runtime-hermes.json` by default,
+  outside canon/world/wiki truth layers
+- metadata records the same bridge command, projection command, runtime
+  instance ref, config path, store root, event contract, authority note, and
+  disable hint
+- `scripts/install-hermes.sh` provides the local one-line installer shape for
+  development
+- tests prove Hermes/OpenClaw installer metadata parity
 
 ### Explicit Non-Goals
 

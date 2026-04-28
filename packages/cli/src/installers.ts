@@ -114,3 +114,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
 export function openClawInstallOneLiner(url = "https://.../install-openclaw.sh"): string {
   return `curl -fsSL ${url} | sh`;
 }
+
+export function hermesInstallOneLiner(url = "https://.../install-hermes.sh"): string {
+  return `curl -fsSL ${url} | sh`;
+}
