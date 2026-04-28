@@ -39,11 +39,13 @@ What already exists:
 - local Hermes installer command sharing the OpenClaw metadata contract
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
+- operator inspection commands for projections, reviews, diagnostics, store
+  summary, and inspect-only recovery planning
 
 What is next:
 
-- projection refresh and inspection commands for operators
-- runtime-facing review and diagnostic summaries
+- richer runtime-specific hook registration against real OpenClaw/Hermes config
+  files
 - richer proposal operations only after the first live loop proves the need
 
 What does not exist yet:

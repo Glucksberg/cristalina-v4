@@ -5,13 +5,23 @@ import { fileURLToPath } from "node:url";
 import { parseCristalinaCommand, helpText, CommandUsageError, type CristalinaCommand } from "./args.js";
 import {
   compileSessionPackToStore,
+  inspectCristalinaStore,
+  listStoreDiagnostics,
+  listStoreProjectionManifests,
   loadLatestSessionPackManifest,
+  planCristalinaStoreRecovery,
   recordSessionResumeReceiptToStore,
   type AuthenticatedPrincipal,
 } from "@cristalina-v4/core";
 import { loadCristalinaConfig, resolveStoreRoot, type CristalinaConfig } from "./config.js";
 import { runConfigMenu } from "./config-menu.js";
 import { collectRuntimeBridgeStatus, formatStatus, initializeCristalinaStore } from "./bridge.js";
+import {
+  ratifyOpenClawQueuedConversationPreference,
+} from "@cristalina-v4/openclaw-adapter";
+import {
+  ratifyHermesQueuedConversationPreference,
+} from "@cristalina-v4/hermes-adapter";
 import { handleRuntimeBridgeEventFile } from "./runtime-events.js";
 import { handleRuntimeBridgeEvent } from "./runtime-events.js";
 import { installRuntime } from "./installers.js";
@@ -50,7 +60,7 @@ function runNodeScript(scriptPath: string): Promise<CommandResult> {
   });
 }
 
-async function loadStatus(command: Extract<CristalinaCommand, { name: "doctor" | "status" | "projection" | "reviews" }>) {
+async function loadStatus(command: Extract<CristalinaCommand, { name: "doctor" | "status" | "projection" | "reviews" | "diagnostics" | "store" }>) {
   const loaded = await loadCristalinaConfig({ configPath: command.configPath });
   const storeRoot = resolveStoreRoot(loaded.config, command.storeRoot);
   return collectRuntimeBridgeStatus({
@@ -233,13 +243,23 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
 
   if (command.name === "projection") {
     const status = await loadStatus(command);
+    if (command.action === "show") {
+      const storeRoot = status.store_root;
+      const manifests = storeRoot ? await listStoreProjectionManifests(storeRoot) : [];
+      const manifest = manifests.find((entry) => entry.id === command.manifestId);
+      return {
+        exitCode: manifest ? 0 : 1,
+        stdout: `${JSON.stringify({ manifest, diagnostics: manifest ? [] : [`Projection manifest ${command.manifestId ?? "(missing)"} not found`] }, null, 2)}\n`,
+        stderr: "",
+      };
+    }
     return {
-      exitCode: command.action === "list" ? 0 : 1,
+      exitCode: 0,
       stdout: `${JSON.stringify({
         action: command.action,
         projections: status.projections,
         diagnostics: command.action === "refresh"
-          ? ["Projection refresh is reserved for the seamless operation step."]
+          ? ["Projection refresh inspected current projection state; recompilation remains owned by write workflows."]
           : status.diagnostics,
       }, null, 2)}\n`,
       stderr: "",
@@ -248,15 +268,70 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
 
   if (command.name === "reviews") {
     const status = await loadStatus(command);
+    if (command.action === "apply") {
+      if (!command.runtime || !command.queueId) {
+        return {
+          exitCode: 2,
+          stdout: "",
+          stderr: "reviews apply requires --runtime and --queue-id\n",
+        };
+      }
+      const loaded = await loadRequiredConfig(command.configPath);
+      const principal = commandPrincipal(loaded.config);
+      const input = {
+        rootDir: loaded.storeRoot,
+        queue_id: command.queueId,
+        now: new Date().toISOString(),
+        actor: principal.actor_ref,
+        authenticated_principal: principal,
+        validation_scope: `cli:reviews:apply:${command.runtime}`,
+      };
+      const result = command.runtime === "openclaw"
+        ? await ratifyOpenClawQueuedConversationPreference(input)
+        : await ratifyHermesQueuedConversationPreference(input);
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify({
+          queue_id: command.queueId,
+          runtime: command.runtime,
+          status: result.records.owner_ratification_queue?.status,
+          projection_manifest_ref: result.records.projection_manifest.id,
+        }, null, 2)}\n`,
+        stderr: "",
+      };
+    }
     return {
-      exitCode: command.action === "list" ? 0 : 1,
+      exitCode: 0,
       stdout: `${JSON.stringify({
         action: command.action,
         pending_owner_reviews: status.pending_owner_reviews,
-        diagnostics: command.action === "apply"
-          ? ["Review apply requires an explicit queue id and authenticated principal; this is reserved for the operator step."]
-          : status.diagnostics,
+        diagnostics: status.diagnostics,
       }, null, 2)}\n`,
+      stderr: "",
+    };
+  }
+
+  if (command.name === "diagnostics") {
+    const status = await loadStatus(command);
+    const diagnostics = status.store_root ? await listStoreDiagnostics(status.store_root) : [];
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify({ diagnostics, status_diagnostics: status.diagnostics }, null, 2)}\n`,
+      stderr: "",
+    };
+  }
+
+  if (command.name === "store") {
+    const status = await loadStatus(command);
+    if (!status.store_root) {
+      return { exitCode: 1, stdout: formatStatus(status), stderr: "" };
+    }
+    const result = command.action === "inspect"
+      ? await inspectCristalinaStore(status.store_root)
+      : await planCristalinaStoreRecovery(status.store_root);
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
       stderr: "",
     };
   }

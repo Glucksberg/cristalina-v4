@@ -856,6 +856,8 @@ future hardening item before rich production resume packs.
 
 ## 13. Step 8 Plan: Seamless Operation
 
+**Execution status:** implemented as the first operator command surface.
+
 ### Purpose
 
 Make day-to-day Cristalina usage predictable after installation. The operator
@@ -874,7 +876,7 @@ Required CLI surfaces:
 - `cristalina reviews apply`
 - `cristalina diagnostics list`
 - `cristalina store inspect`
-- `cristalina recover`
+- `cristalina store recover`
 
 ### Runtime-Facing Surfaces
 
@@ -920,6 +922,22 @@ The operational layer must detect:
 - repair/recovery actions remain explicit
 - no operational convenience path bypasses authority, provenance, or projection
   rules
+
+### Implemented Slice
+
+- core exports operator inspection helpers for diagnostics, projection
+  manifests, store summary, and inspect-only recovery planning
+- `projection list`, `projection show`, and `projection refresh` return current
+  projection state without manual manifest browsing
+- `reviews list` summarizes pending owner reviews, and `reviews apply` can
+  ratify an explicit owner queue item through the adapter boundary
+- `diagnostics list` exposes stored diagnostics
+- `store inspect` summarizes projection, diagnostic, checkpoint, and resume
+  receipt counts
+- `store recover` is intentionally inspect-only and reports that write-path
+  recovery remains owned by core workflows
+- tests cover the expanded parser surface and existing bridge/operator
+  boundaries
 
 ### Explicit Non-Goals
 

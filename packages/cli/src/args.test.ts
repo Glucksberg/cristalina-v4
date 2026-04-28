@@ -38,6 +38,18 @@ test("CLI parser recognizes the planned command surface", () => {
     configPath: undefined,
     runtime: "hermes",
   });
+  assert.deepEqual(parseCristalinaCommand(["diagnostics", "list"]), {
+    name: "diagnostics",
+    action: "list",
+    configPath: undefined,
+    storeRoot: undefined,
+  });
+  assert.deepEqual(parseCristalinaCommand(["store", "inspect"]), {
+    name: "store",
+    action: "inspect",
+    configPath: undefined,
+    storeRoot: undefined,
+  });
 });
 
 test("CLI parser rejects unknown commands and options", () => {

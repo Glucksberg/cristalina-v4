@@ -22,8 +22,10 @@ export type CristalinaCommand =
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes" }
-  | { name: "projection"; action: "list" | "refresh"; configPath?: string; storeRoot?: string }
-  | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string }
+  | { name: "projection"; action: "list" | "show" | "refresh"; configPath?: string; storeRoot?: string; manifestId?: string }
+  | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string }
+  | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
+  | { name: "store"; action: "inspect" | "recover"; configPath?: string; storeRoot?: string }
   | {
       name: "install";
       target: "openclaw" | "hermes";
@@ -188,15 +190,20 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "projection") {
-    if (subcommand !== "list" && subcommand !== "refresh") {
-      throw new CommandUsageError("projection requires action list or refresh");
+    if (subcommand !== "list" && subcommand !== "show" && subcommand !== "refresh") {
+      throw new CommandUsageError("projection requires action list, show, or refresh");
     }
-    rejectUnknownOptions(rest, new Set(["--config", "--store-root"]));
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--store-root", "value"],
+      ["--manifest", "value"],
+    ]));
     return {
       name: "projection",
       action: subcommand,
       configPath: readOption(argv, "--config"),
       storeRoot: readOption(argv, "--store-root"),
+      manifestId: readOption(argv, "--manifest"),
     };
   }
 
@@ -204,13 +211,40 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
     if (subcommand !== "list" && subcommand !== "apply") {
       throw new CommandUsageError("reviews requires action list or apply");
     }
-    rejectUnknownOptions(rest, new Set(["--config", "--store-root"]));
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--store-root", "value"],
+      ["--runtime", "value"],
+      ["--queue-id", "value"],
+    ]));
+    const runtime = readOption(argv, "--runtime");
+    if (runtime !== undefined && runtime !== "openclaw" && runtime !== "hermes") {
+      throw new CommandUsageError("--runtime must be openclaw or hermes");
+    }
     return {
       name: "reviews",
       action: subcommand,
       configPath: readOption(argv, "--config"),
       storeRoot: readOption(argv, "--store-root"),
+      runtime,
+      queueId: readOption(argv, "--queue-id"),
     };
+  }
+
+  if (command === "diagnostics") {
+    if (subcommand !== "list") {
+      throw new CommandUsageError("diagnostics requires action list");
+    }
+    rejectUnknownOptions(rest, new Set(["--config", "--store-root"]));
+    return { name: "diagnostics", action: "list", configPath: readOption(argv, "--config"), storeRoot: readOption(argv, "--store-root") };
+  }
+
+  if (command === "store") {
+    if (subcommand !== "inspect" && subcommand !== "recover") {
+      throw new CommandUsageError("store requires action inspect or recover");
+    }
+    rejectUnknownOptions(rest, new Set(["--config", "--store-root"]));
+    return { name: "store", action: subcommand, configPath: readOption(argv, "--config"), storeRoot: readOption(argv, "--store-root") };
   }
 
   if (command === "install") {
@@ -254,9 +288,13 @@ export function helpText(): string {
     "  session-pack consume --runtime openclaw|hermes [--config PATH]",
     "  session-pack apply --runtime openclaw|hermes [--config PATH]",
     "  projection list [--config PATH] [--store-root PATH]",
+    "  projection show --manifest ID [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",
     "  reviews list [--config PATH] [--store-root PATH]",
-    "  reviews apply [--config PATH] [--store-root PATH]",
+    "  reviews apply --runtime openclaw|hermes --queue-id ID [--config PATH] [--store-root PATH]",
+    "  diagnostics list [--config PATH] [--store-root PATH]",
+    "  store inspect [--config PATH] [--store-root PATH]",
+    "  store recover [--config PATH] [--store-root PATH]",
     "  install openclaw [--config PATH] [--non-interactive]",
     "  install hermes [--config PATH] [--non-interactive]",
     "",

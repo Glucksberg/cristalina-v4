@@ -66,6 +66,7 @@ What runs today:
 - Local OpenClaw installer metadata command
 - Local Hermes installer metadata command using the same bridge contract
 - Session continuity helpers for checkpoint, session-pack, and resume receipt flows
+- Operator commands for projections, reviews, diagnostics, store inspection, and recovery planning
 
 What's planned:
 - installable `cristalina` CLI and runtime bridge package
@@ -94,6 +95,7 @@ pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
 pnpm cristalina checkpoint create --runtime openclaw --config path/to/config.json
 pnpm cristalina session-pack compile --runtime hermes --config path/to/config.json
+pnpm cristalina store inspect --config path/to/config.json
 
 # Run an end-to-end fixture (writes a real .cristalina-v4/ store under examples/)
 pnpm fixture:mvp-flow-001   # conversation → observation → world → proposal → ratification → projection
