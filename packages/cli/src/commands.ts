@@ -7,6 +7,7 @@ import { loadCristalinaConfig, resolveStoreRoot } from "./config.js";
 import { runConfigMenu } from "./config-menu.js";
 import { collectRuntimeBridgeStatus, formatStatus, initializeCristalinaStore } from "./bridge.js";
 import { handleRuntimeBridgeEventFile } from "./runtime-events.js";
+import { installRuntime } from "./installers.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -173,6 +174,21 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   }
 
   if (command.name === "install") {
+    if (command.target === "openclaw") {
+      const result = await installRuntime({
+        runtime: "openclaw",
+        configPath: command.configPath,
+        nonInteractive: command.nonInteractive,
+        metadataPath: command.metadataPath,
+        runtimeRoot: command.runtimeRoot,
+      });
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify(result, null, 2)}\n`,
+        stderr: "",
+      };
+    }
+
     return {
       exitCode: 1,
       stdout: `${JSON.stringify({

@@ -7,7 +7,7 @@ import test from "node:test";
 const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 
 test("CLI source stays on public core and adapter package boundaries", async () => {
-  const files = ["bridge.ts", "commands.ts", "config.ts", "config-menu.ts", "index.ts", "runtime-events.ts"];
+  const files = ["bridge.ts", "commands.ts", "config.ts", "config-menu.ts", "index.ts", "installers.ts", "runtime-events.ts"];
   for (const file of files) {
     const source = await readFile(join(SOURCE_ROOT, file), "utf8");
     assert.equal(source.includes("@cristalina-v4/core/internal"), false, `${file} must not import core internal entrypoint`);

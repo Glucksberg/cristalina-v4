@@ -600,6 +600,9 @@ deferred to the session-continuity step for their stateful behavior.
 
 ## 10. Step 5 Plan: OpenClaw Installer
 
+**Execution status:** implemented as local `cristalina install openclaw` plus
+development one-line shell wrapper.
+
 ### Purpose
 
 Make Cristalina installable into OpenClaw with one command while keeping
@@ -654,6 +657,19 @@ OpenClaw integration must support:
 - one local command installs the OpenClaw integration
 - rerunning the installer does not duplicate runtime identity or hooks
 - `cristalina doctor --runtime openclaw` passes after install
+
+### Implemented Slice
+
+- `cristalina install openclaw --non-interactive` creates config if missing,
+  initializes the store if needed, validates the OpenClaw runtime binding, and
+  writes operational metadata
+- metadata is written to `.cristalina-v4/runtime-openclaw.json` by default,
+  outside canon/world/wiki truth layers
+- metadata records bridge command, projection command, runtime instance ref,
+  config path, store root, event contract, authority note, and disable hint
+- `scripts/install-openclaw.sh` provides the local one-line installer shape for
+  development
+- tests prove metadata placement and authority wording
 
 ### Explicit Non-Goals
 

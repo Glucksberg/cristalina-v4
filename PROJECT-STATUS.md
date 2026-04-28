@@ -35,6 +35,7 @@ What already exists:
   prompts for the first operator flow
 - runtime-neutral event bridge for OpenClaw and Hermes preference, feedback,
   diagnostic, review, projection-refresh, and declared continuity events
+- local OpenClaw installer command and metadata writer
 
 What is next:
 

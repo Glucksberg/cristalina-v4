@@ -22,6 +22,9 @@ test("CLI parser recognizes the planned command surface", () => {
     name: "install",
     target: "openclaw",
     configPath: undefined,
+    nonInteractive: false,
+    metadataPath: undefined,
+    runtimeRoot: undefined,
   });
 });
 

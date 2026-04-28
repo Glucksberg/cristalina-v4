@@ -22,7 +22,14 @@ export type CristalinaCommand =
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "projection"; action: "list" | "refresh"; configPath?: string; storeRoot?: string }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string }
-  | { name: "install"; target: "openclaw" | "hermes"; configPath?: string };
+  | {
+      name: "install";
+      target: "openclaw" | "hermes";
+      configPath?: string;
+      nonInteractive?: boolean;
+      metadataPath?: string;
+      runtimeRoot?: string;
+    };
 
 export class CommandUsageError extends Error {
   readonly exitCode = 2;
@@ -178,8 +185,20 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
     if (subcommand !== "openclaw" && subcommand !== "hermes") {
       throw new CommandUsageError("install requires target openclaw or hermes");
     }
-    rejectUnknownOptions(rest, new Set(["--config"]));
-    return { name: "install", target: subcommand, configPath: readOption(argv, "--config") };
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--non-interactive", "flag"],
+      ["--metadata", "value"],
+      ["--runtime-root", "value"],
+    ]));
+    return {
+      name: "install",
+      target: subcommand,
+      configPath: readOption(argv, "--config"),
+      nonInteractive: hasFlag(argv, "--non-interactive"),
+      metadataPath: readOption(argv, "--metadata"),
+      runtimeRoot: readOption(argv, "--runtime-root"),
+    };
   }
 
   throw new CommandUsageError(`Unknown command ${command}`);
@@ -201,8 +220,8 @@ export function helpText(): string {
     "  projection refresh [--config PATH] [--store-root PATH]",
     "  reviews list [--config PATH] [--store-root PATH]",
     "  reviews apply [--config PATH] [--store-root PATH]",
-    "  install openclaw [--config PATH]",
-    "  install hermes [--config PATH]",
+    "  install openclaw [--config PATH] [--non-interactive]",
+    "  install hermes [--config PATH] [--non-interactive]",
     "",
   ].join("\n");
 }
