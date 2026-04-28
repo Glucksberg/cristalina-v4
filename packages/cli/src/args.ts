@@ -19,6 +19,7 @@ export type CristalinaCommand =
   | { name: "status"; configPath?: string; storeRoot?: string }
   | { name: "smoke"; target: "dual-runtime" }
   | { name: "bridge"; action: "start"; configPath?: string }
+  | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "projection"; action: "list" | "refresh"; configPath?: string; storeRoot?: string }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string }
   | { name: "install"; target: "openclaw" | "hermes"; configPath?: string };
@@ -130,10 +131,20 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "bridge") {
-    if (subcommand !== "start") {
-      throw new CommandUsageError("bridge requires action start");
+    if (subcommand !== "start" && subcommand !== "event") {
+      throw new CommandUsageError("bridge requires action start or event");
     }
-    rejectUnknownOptions(rest, new Set(["--config"]));
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--event", "value"],
+    ]));
+    if (subcommand === "event") {
+      const eventPath = readOption(argv, "--event");
+      if (!eventPath) {
+        throw new CommandUsageError("bridge event requires --event PATH");
+      }
+      return { name: "bridge", action: "event", configPath: readOption(argv, "--config"), eventPath };
+    }
     return { name: "bridge", action: "start", configPath: readOption(argv, "--config") };
   }
 
@@ -185,6 +196,7 @@ export function helpText(): string {
     "  status [--config PATH] [--store-root PATH]",
     "  smoke dual-runtime",
     "  bridge start [--config PATH]",
+    "  bridge event --event PATH [--config PATH]",
     "  projection list [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",
     "  reviews list [--config PATH] [--store-root PATH]",

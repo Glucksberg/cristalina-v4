@@ -6,6 +6,7 @@ import { parseCristalinaCommand, helpText, CommandUsageError, type CristalinaCom
 import { loadCristalinaConfig, resolveStoreRoot } from "./config.js";
 import { runConfigMenu } from "./config-menu.js";
 import { collectRuntimeBridgeStatus, formatStatus, initializeCristalinaStore } from "./bridge.js";
+import { handleRuntimeBridgeEventFile } from "./runtime-events.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -113,6 +114,23 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   }
 
   if (command.name === "bridge") {
+    if (command.action === "event") {
+      const loaded = await loadCristalinaConfig({ configPath: command.configPath });
+      if (loaded.diagnostics.length > 0) {
+        return {
+          exitCode: 1,
+          stdout: `${JSON.stringify({ diagnostics: loaded.diagnostics }, null, 2)}\n`,
+          stderr: "",
+        };
+      }
+      const result = await handleRuntimeBridgeEventFile(loaded.config, command.eventPath);
+      return {
+        exitCode: result.status === "deferred" ? 1 : 0,
+        stdout: `${JSON.stringify(result, null, 2)}\n`,
+        stderr: "",
+      };
+    }
+
     return {
       exitCode: 0,
       stdout: `${JSON.stringify({

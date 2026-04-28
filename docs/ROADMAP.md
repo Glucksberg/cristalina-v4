@@ -501,6 +501,9 @@ Final placement must be decided before implementation and covered by schema.
 
 ## 9. Step 4 Plan: Runtime-Neutral Event Bridge
 
+**Execution status:** implemented as a runtime-neutral event handler and CLI
+event command.
+
 ### Purpose
 
 Create one bridge contract that both runtime-specific integrations use. The
@@ -565,6 +568,27 @@ Initial event families:
 - both OpenClaw and Hermes can call the same bridge semantics
 - bridge output includes projection summary and review summary
 - adapter parity is proven by tests against the same store
+
+### Implemented Slice
+
+- runtime bridge event types cover message observation, conversation
+  preference signals, projection feedback, runtime diagnostics, review actions,
+  checkpoint requests, projection refresh requests, and session resume requests
+- deterministic id derivation is based on runtime and event id
+- `handleRuntimeBridgeEvent` resolves store, owner, agent, runtime instance,
+  session, and thread context from versioned config plus event overrides
+- OpenClaw and Hermes preference events call the same bridge semantics and then
+  dispatch to the correct public adapter
+- runtime ref drift is recorded as diagnostic-only intake instead of silently
+  repairing or trusting the event
+- `cristalina bridge event --event PATH --config PATH` runs one event through
+  the same bridge contract
+- tests prove idempotent repeated event delivery, participant owner-claim review
+  routing, owner-authenticated Hermes application, and diagnostic-only drift
+  handling
+
+Checkpoint and session-resume event families are declared now but remain
+deferred to the session-continuity step for their stateful behavior.
 
 ### Explicit Non-Goals
 

@@ -62,6 +62,7 @@ What runs today:
 - Dual-runtime smoke flow proving one OpenClaw session and one Hermes session against the same store
 - Initial `cristalina` CLI package with help, init, config, doctor, status, and smoke command boundaries
 - Versioned config writer for store root, identity refs, runtime refs, projection policy, review behavior, and hook metadata paths
+- Runtime-neutral bridge event handler shared by OpenClaw and Hermes events
 
 What's planned:
 - installable `cristalina` CLI and runtime bridge package
@@ -85,6 +86,7 @@ pnpm smoke:dual-runtime
 pnpm cristalina --help
 pnpm cristalina config --init --non-interactive
 pnpm cristalina smoke dual-runtime
+pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 
 # Run an end-to-end fixture (writes a real .cristalina-v4/ store under examples/)
 pnpm fixture:mvp-flow-001   # conversation → observation → world → proposal → ratification → projection

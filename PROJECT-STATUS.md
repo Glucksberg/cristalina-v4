@@ -33,6 +33,8 @@ What already exists:
   doctor/status surface, and smoke wrapper
 - versioned local config writer with non-interactive setup and interactive TTY
   prompts for the first operator flow
+- runtime-neutral event bridge for OpenClaw and Hermes preference, feedback,
+  diagnostic, review, projection-refresh, and declared continuity events
 
 What is next:
 

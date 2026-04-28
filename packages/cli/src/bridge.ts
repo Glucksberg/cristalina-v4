@@ -5,6 +5,7 @@ import {
   createStoreManifest,
   parseStoreManifestYaml,
   serializeStoreManifestYaml,
+  STORAGE_LAYOUT,
   type ProjectionRuntimeSummary,
 } from "@cristalina-v4/core";
 import {
@@ -38,6 +39,16 @@ async function exists(path: string): Promise<boolean> {
   return true;
 }
 
+function collectLayoutDirectories(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.includes(".") ? [] : [value];
+  }
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  return Object.values(value).flatMap((entry) => collectLayoutDirectories(entry));
+}
+
 export async function initializeCristalinaStore(storeRoot: string, now = new Date().toISOString()): Promise<string> {
   const root = resolve(storeRoot);
   const manifest = createStoreManifest({
@@ -46,8 +57,12 @@ export async function initializeCristalinaStore(storeRoot: string, now = new Dat
   });
 
   await mkdir(root, { recursive: true });
-  for (const layerRoot of Object.values(manifest.roots)) {
-    await mkdir(join(root, layerRoot), { recursive: true });
+  const directories = new Set([
+    ...Object.values(manifest.roots),
+    ...collectLayoutDirectories(STORAGE_LAYOUT),
+  ]);
+  for (const directory of directories) {
+    await mkdir(join(root, directory), { recursive: true });
   }
   await writeFile(join(root, "manifest.yaml"), serializeStoreManifestYaml(manifest));
   return root;
