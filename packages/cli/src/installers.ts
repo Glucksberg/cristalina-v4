@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { loadCristalinaConfig, resolveStoreRoot, type CristalinaConfig } from "./config.js";
 import { runConfigMenu } from "./config-menu.js";
@@ -39,6 +40,10 @@ function defaultHookPath(config: CristalinaConfig, runtime: "openclaw" | "hermes
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function cliEntrypointPath(): string {
+  return fileURLToPath(new URL("index.js", import.meta.url));
 }
 
 function runtimeInstanceRef(config: CristalinaConfig, runtime: "openclaw" | "hermes"): string {
@@ -106,8 +111,10 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   const metadataPath = resolveMetadataPath(input, loaded.config);
   const hookPath = resolveHookPath(input, loaded.config);
   const hookScriptPath = resolve(dirname(hookPath), "cristalina-bridge-event.sh");
+  const cliPath = cliEntrypointPath();
   const runtimeRef = runtimeInstanceRef(loaded.config, input.runtime);
   const bridgeCommand = `cristalina bridge event --config ${loaded.configPath} --event <event.json>`;
+  const hookBridgeCommand = `${shellQuote(process.execPath)} ${shellQuote(cliPath)} bridge event --config ${shellQuote(loaded.configPath)} --event <event.json>`;
   const projectionCommand = `cristalina projection list --config ${loaded.configPath}`;
   const sessionPackCommand = `cristalina session-pack latest --runtime ${input.runtime} --config ${loaded.configPath}`;
   const metadata = {
@@ -138,8 +145,8 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     runtime_root: input.runtimeRoot ?? null,
     runtime_instance_ref: runtimeRef,
     event_path_env: "CRISTALINA_EVENT_PATH",
-    bridge_command: bridgeCommand,
-    bridge_command_argv: ["cristalina", "bridge", "event", "--config", loaded.configPath, "--event", "$CRISTALINA_EVENT_PATH"],
+    bridge_command: hookBridgeCommand,
+    bridge_command_argv: [process.execPath, cliPath, "bridge", "event", "--config", loaded.configPath, "--event", "$CRISTALINA_EVENT_PATH"],
     projection_command: projectionCommand,
     session_pack_command: sessionPackCommand,
     hook_script_path: hookScriptPath,
@@ -152,7 +159,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     `  echo "CRISTALINA_EVENT_PATH is required for ${input.runtime} Cristalina bridge hook" >&2`,
     "  exit 2",
     "fi",
-    `exec cristalina bridge event --config ${shellQuote(loaded.configPath)} --event "$CRISTALINA_EVENT_PATH"`,
+    `exec ${shellQuote(process.execPath)} ${shellQuote(cliPath)} bridge event --config ${shellQuote(loaded.configPath)} --event "$CRISTALINA_EVENT_PATH"`,
     "",
   ].join("\n");
 

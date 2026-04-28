@@ -122,6 +122,52 @@ test("reviews apply writes to the explicit store-root override", async () => {
   assert.equal((await listOpenClawConversationPreferenceOwnerRatificationQueue(storeB)).length, 0);
 });
 
+test("bridge event treats deferred review as successful event processing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-bridge-deferred-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const eventPath = join(root, "event.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_bridge_deferred_001",
+      agentIdentityRef: "actor_agent_cli_bridge_deferred_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_bridge_deferred_001",
+      hermesRuntimeRef: "runtime_hermes_cli_bridge_deferred_001",
+    }), null, 2)}\n`,
+  );
+  await writeFile(
+    eventPath,
+    `${JSON.stringify({
+      event_id: "evt_cli_bridge_deferred_001",
+      event_type: "conversation_preference_signal",
+      runtime: "openclaw",
+      occurred_at: "2026-04-28T18:00:00.000Z",
+      actor_ref: "actor_participant_cli_bridge_deferred_001",
+      authenticated_principal: {
+        kind: "participant",
+        actor_ref: "actor_participant_cli_bridge_deferred_001",
+      },
+      runtime_instance_ref: "runtime_openclaw_cli_bridge_deferred_001",
+      statement: "The owner prefers deferred bridge events to be reported as processed.",
+      message: "A collaborator says deferred bridge events should be reported as processed.",
+      speaker_ref: "actor_participant_cli_bridge_deferred_001",
+    }, null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "bridge",
+    action: "event",
+    configPath,
+    eventPath,
+  });
+  const payload = JSON.parse(result.stdout) as { status: string };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "deferred");
+});
+
 test("CLI checkpoint create emits a new generation instead of overwriting the previous checkpoint", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-checkpoint-"));
   const storeRoot = join(root, "store");

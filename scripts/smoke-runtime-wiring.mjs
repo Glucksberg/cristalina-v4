@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +50,41 @@ async function command(input, expectedExitCodes = [0]) {
   return result;
 }
 
+async function runHook(scriptPath, eventPath) {
+  const result = await new Promise((resolveHook) => {
+    const child = spawn(scriptPath, [], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        CRISTALINA_EVENT_PATH: eventPath,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      resolveHook({ exitCode: 1, stdout, stderr: `${stderr}${error.message}\n` });
+    });
+    child.on("exit", (code) => {
+      resolveHook({ exitCode: code ?? 1, stdout, stderr });
+    });
+  });
+  assert.equal(
+    result.exitCode,
+    0,
+    `${scriptPath} exited ${result.exitCode}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+  return JSON.parse(result.stdout);
+}
+
 await rm(GENERATED_ROOT, { recursive: true, force: true });
 await mkdir(GENERATED_ROOT, { recursive: true });
 
@@ -84,15 +120,10 @@ const openclawHook = JSON.parse(await readFile(openclawInstall.hook_path, "utf8"
 const hermesHook = JSON.parse(await readFile(hermesInstall.hook_path, "utf8"));
 assert.equal(openclawHook.hook_contract, "cristalina.runtime_hook.v1");
 assert.equal(hermesHook.hook_contract, "cristalina.runtime_hook.v1");
-assert.match(await readFile(openclawInstall.hook_script_path, "utf8"), /cristalina bridge event/);
-assert.match(await readFile(hermesInstall.hook_script_path, "utf8"), /cristalina bridge event/);
+assert.match(await readFile(openclawInstall.hook_script_path, "utf8"), /bridge event/);
+assert.match(await readFile(hermesInstall.hook_script_path, "utf8"), /bridge event/);
 
-const openclawWrite = parseJsonResult(await command({
-  name: "bridge",
-  action: "event",
-  configPath: CONFIG_PATH,
-  eventPath: OPENCLAW_EVENT,
-}, [1]));
+const openclawWrite = await runHook(openclawInstall.hook_script_path, OPENCLAW_EVENT);
 assert.equal(openclawWrite.status, "deferred");
 
 const queueBefore = await listOpenClawConversationPreferenceOwnerRatificationQueue(STORE_ROOT);
@@ -106,20 +137,10 @@ const reviewApply = parseJsonResult(await command({
 }));
 assert.equal(reviewApply.status, "applied");
 
-const hermesWrite = parseJsonResult(await command({
-  name: "bridge",
-  action: "event",
-  configPath: CONFIG_PATH,
-  eventPath: HERMES_EVENT,
-}));
+const hermesWrite = await runHook(hermesInstall.hook_script_path, HERMES_EVENT);
 assert.equal(hermesWrite.status, "applied");
 
-const hermesDiagnostic = parseJsonResult(await command({
-  name: "bridge",
-  action: "event",
-  configPath: CONFIG_PATH,
-  eventPath: HERMES_DIAGNOSTIC_EVENT,
-}));
+const hermesDiagnostic = await runHook(hermesInstall.hook_script_path, HERMES_DIAGNOSTIC_EVENT);
 assert.equal(hermesDiagnostic.status, "diagnostic_recorded");
 
 const projectionList = parseJsonResult(await command({

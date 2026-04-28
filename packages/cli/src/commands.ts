@@ -175,7 +175,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
       }
       const result = await handleRuntimeBridgeEventFile(loaded.config, command.eventPath);
       return {
-        exitCode: result.status === "deferred" ? 1 : 0,
+        exitCode: 0,
         stdout: `${JSON.stringify(result, null, 2)}\n`,
         stderr: "",
       };

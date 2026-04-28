@@ -47,8 +47,10 @@ test("OpenClaw installer writes operational metadata outside truth layers", asyn
   assert.equal(hook.runtime, "openclaw");
   assert.equal(hook.hook_contract, "cristalina.runtime_hook.v1");
   assert.equal(hook.event_path_env, "CRISTALINA_EVENT_PATH");
-  assert.deepEqual(hook.bridge_command_argv.slice(0, 5), ["cristalina", "bridge", "event", "--config", configPath]);
+  assert.deepEqual(hook.bridge_command_argv.slice(2, 6), ["bridge", "event", "--config", configPath]);
+  assert.equal(hook.bridge_command_argv[0], process.execPath);
   assert.match(await readFile(result.hook_script_path, "utf8"), /CRISTALINA_EVENT_PATH/);
+  assert.match(await readFile(result.hook_script_path, "utf8"), new RegExp(process.execPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("OpenClaw one-liner documents the public installer shape", () => {
