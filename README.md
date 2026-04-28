@@ -65,6 +65,7 @@ What runs today:
 - Runtime-neutral bridge event handler shared by OpenClaw and Hermes events
 - Local OpenClaw installer metadata command
 - Local Hermes installer metadata command using the same bridge contract
+- Session continuity helpers for checkpoint, session-pack, and resume receipt flows
 
 What's planned:
 - installable `cristalina` CLI and runtime bridge package
@@ -91,6 +92,8 @@ pnpm cristalina smoke dual-runtime
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
+pnpm cristalina checkpoint create --runtime openclaw --config path/to/config.json
+pnpm cristalina session-pack compile --runtime hermes --config path/to/config.json
 
 # Run an end-to-end fixture (writes a real .cristalina-v4/ store under examples/)
 pnpm fixture:mvp-flow-001   # conversation → observation → world → proposal → ratification → projection

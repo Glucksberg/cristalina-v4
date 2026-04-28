@@ -37,6 +37,8 @@ What already exists:
   diagnostic, review, projection-refresh, and declared continuity events
 - local OpenClaw installer command and metadata writer
 - local Hermes installer command sharing the OpenClaw metadata contract
+- public session-continuity helpers plus bridge/CLI checkpoint and session-pack
+  commands
 
 What is next:
 

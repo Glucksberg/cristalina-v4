@@ -1,0 +1,264 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+
+import type {
+  AuthenticatedPrincipal,
+  CoreRecord,
+  ProjectionManifest,
+  RuntimeKind,
+  SessionResumeReceipt,
+  SessionResumeReceiptStatus,
+  WorkingMemoryCheckpoint,
+} from "./types.js";
+import {
+  compileSessionPack,
+  recordSessionResumeReceipt,
+  type CompiledSessionPack,
+} from "./projection-engine/session-pack.js";
+import {
+  loadProjectionManifests,
+  loadSessionResumeReceipts,
+  loadWorkingMemoryCheckpoints,
+  writeCoreRecord,
+} from "./store/io.js";
+
+type AdapterRuntime = Exclude<RuntimeKind, "generic">;
+
+export interface CreateWorkingMemoryCheckpointInput {
+  rootDir: string;
+  id: string;
+  now: string;
+  runtime_instance_ref: string;
+  runtime_session_ref: string;
+  conversation_thread_ref: string;
+  continuity_epoch: string;
+  generation: number;
+  read_policy_version: string;
+  summary?: string;
+  upstream_refs?: string[];
+  policy_snapshot_ref?: string | null;
+  authenticated_principal?: AuthenticatedPrincipal;
+}
+
+export interface CompileSessionPackToStoreInput {
+  rootDir: string;
+  id: string;
+  artifact_id: string;
+  now: string;
+  adapter: AdapterRuntime;
+  checkpoint_id?: string;
+  audience?: string;
+}
+
+export interface RecordSessionResumeReceiptToStoreInput {
+  rootDir: string;
+  now: string;
+  receipt_status: SessionResumeReceiptStatus;
+  adapter: AdapterRuntime;
+  manifest_id?: string;
+  checkpoint_id?: string;
+  authenticated_principal: AuthenticatedPrincipal;
+}
+
+export interface StoredSessionPack {
+  artifact_path: string;
+  manifest_path: string;
+  pack: CompiledSessionPack;
+}
+
+function ensureInsideRoot(rootDir: string, relativePath: string): string {
+  const root = resolve(rootDir);
+  const target = resolve(root, relativePath);
+  if (target !== root && !target.startsWith(`${root}/`)) {
+    throw new Error(`Session continuity path escapes store root: ${relativePath}`);
+  }
+  return target;
+}
+
+function compareCheckpoint(left: WorkingMemoryCheckpoint, right: WorkingMemoryCheckpoint): number {
+  if (right.generation !== left.generation) {
+    return right.generation - left.generation;
+  }
+  return Date.parse(right.created_at) - Date.parse(left.created_at) || right.id.localeCompare(left.id);
+}
+
+function compareManifest(left: ProjectionManifest, right: ProjectionManifest): number {
+  const leftGeneration = left.generation ?? -1;
+  const rightGeneration = right.generation ?? -1;
+  if (rightGeneration !== leftGeneration) {
+    return rightGeneration - leftGeneration;
+  }
+  return Date.parse(right.updated_at ?? right.created_at) - Date.parse(left.updated_at ?? left.created_at) || right.id.localeCompare(left.id);
+}
+
+export async function createWorkingMemoryCheckpointToStore(
+  input: CreateWorkingMemoryCheckpointInput,
+): Promise<WorkingMemoryCheckpoint> {
+  const upstream_refs = input.upstream_refs ?? [input.runtime_session_ref, input.conversation_thread_ref];
+  const existing = await loadWorkingMemoryCheckpoints(input.rootDir);
+  const previous = existing
+    .filter((checkpoint) =>
+      checkpoint.status === "active" &&
+      checkpoint.runtime_instance_ref === input.runtime_instance_ref &&
+      checkpoint.runtime_session_ref === input.runtime_session_ref &&
+      checkpoint.conversation_thread_ref === input.conversation_thread_ref &&
+      checkpoint.continuity_epoch === input.continuity_epoch)
+    .sort(compareCheckpoint)[0];
+
+  const checkpoint: WorkingMemoryCheckpoint = {
+    id: input.id,
+    kind: "working_memory_checkpoint",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: input.now,
+    visibility_state: {
+      privacy_scope: "runtime_private",
+    },
+    provenance: {
+      source_type: "runtime_checkpoint",
+      source_ref: input.runtime_session_ref,
+      evidence_refs: upstream_refs,
+      actor_ref: input.authenticated_principal?.actor_ref,
+      runtime_ref: input.runtime_instance_ref,
+      session_ref: input.runtime_session_ref,
+      thread_ref: input.conversation_thread_ref,
+    },
+    runtime_instance_ref: input.runtime_instance_ref,
+    runtime_session_ref: input.runtime_session_ref,
+    conversation_thread_ref: input.conversation_thread_ref,
+    continuity_epoch: input.continuity_epoch,
+    generation: input.generation,
+    read_policy_version: input.read_policy_version,
+    policy_snapshot_ref: input.policy_snapshot_ref ?? null,
+    upstream_refs,
+    summary: input.summary ?? null,
+    status: "active",
+    ...(previous ? { supersedes_ref: previous.id } : {}),
+  };
+
+  if (previous) {
+    await writeCoreRecord(input.rootDir, {
+      ...previous,
+      status: "superseded",
+      superseded_by_ref: checkpoint.id,
+    });
+  }
+  await writeCoreRecord(input.rootDir, checkpoint);
+  return checkpoint;
+}
+
+export async function loadLatestWorkingMemoryCheckpoint(
+  rootDir: string,
+  filter: Partial<Pick<WorkingMemoryCheckpoint, "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref">> = {},
+): Promise<WorkingMemoryCheckpoint | null> {
+  const checkpoints = await loadWorkingMemoryCheckpoints(rootDir);
+  return checkpoints
+    .filter((checkpoint) =>
+      checkpoint.status === "active" &&
+      (filter.runtime_instance_ref === undefined || checkpoint.runtime_instance_ref === filter.runtime_instance_ref) &&
+      (filter.runtime_session_ref === undefined || checkpoint.runtime_session_ref === filter.runtime_session_ref) &&
+      (filter.conversation_thread_ref === undefined || checkpoint.conversation_thread_ref === filter.conversation_thread_ref))
+    .sort(compareCheckpoint)[0] ?? null;
+}
+
+export async function compileSessionPackToStore(input: CompileSessionPackToStoreInput): Promise<StoredSessionPack> {
+  const checkpoint = input.checkpoint_id
+    ? (await loadWorkingMemoryCheckpoints(input.rootDir)).find((entry) => entry.id === input.checkpoint_id) ?? null
+    : await loadLatestWorkingMemoryCheckpoint(input.rootDir);
+  if (!checkpoint) {
+    throw new Error("Cannot compile session pack without an active checkpoint");
+  }
+
+  const upstream_records: CoreRecord[] = checkpoint.upstream_refs.map((upstreamRef) => ({
+    id: upstreamRef,
+    kind: "observation",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: checkpoint.created_at,
+    visibility_state: checkpoint.visibility_state,
+    provenance: {
+      source_type: "session_pack_upstream_ref",
+      source_ref: checkpoint.id,
+    },
+    summary: `Session pack upstream ref ${upstreamRef}`,
+    epistemic_state: "observed",
+  } as unknown as CoreRecord));
+
+  const pack = compileSessionPack({
+    id: input.id,
+    artifact_id: input.artifact_id,
+    now: input.now,
+    adapter: input.adapter,
+    checkpoint,
+    upstream_records,
+    continuity_epoch: checkpoint.continuity_epoch,
+    generation: checkpoint.generation,
+    read_policy_version: checkpoint.read_policy_version,
+    audience: input.audience ?? "runtime",
+    policy_snapshot_ref: checkpoint.policy_snapshot_ref ?? null,
+  });
+
+  const [artifactPath] = Object.keys(pack.artifact_contents);
+  if (!artifactPath) {
+    throw new Error(`Session pack ${pack.manifest.id} did not emit an artifact path`);
+  }
+  const artifactFile = ensureInsideRoot(input.rootDir, artifactPath);
+  await mkdir(dirname(artifactFile), { recursive: true });
+  await writeFile(artifactFile, pack.artifact_contents[artifactPath]);
+  const artifactRecordPath = await writeCoreRecord(input.rootDir, pack.artifact);
+  const manifestPath = await writeCoreRecord(input.rootDir, pack.manifest);
+
+  return {
+    artifact_path: artifactRecordPath,
+    manifest_path: manifestPath,
+    pack,
+  };
+}
+
+export async function loadLatestSessionPackManifest(
+  rootDir: string,
+  adapter?: AdapterRuntime,
+): Promise<ProjectionManifest | null> {
+  const manifests = await loadProjectionManifests(rootDir);
+  return manifests
+    .filter((manifest) =>
+      manifest.projection_profile === "session_resume_v2" &&
+      (adapter === undefined || manifest.adapter === adapter))
+    .sort(compareManifest)[0] ?? null;
+}
+
+export async function recordSessionResumeReceiptToStore(
+  input: RecordSessionResumeReceiptToStoreInput,
+): Promise<SessionResumeReceipt> {
+  const manifest = input.manifest_id
+    ? (await loadProjectionManifests(input.rootDir)).find((entry) => entry.id === input.manifest_id) ?? null
+    : await loadLatestSessionPackManifest(input.rootDir, input.adapter);
+  if (!manifest) {
+    throw new Error("Cannot record session resume receipt without a session pack manifest");
+  }
+
+  const checkpoint = input.checkpoint_id
+    ? (await loadWorkingMemoryCheckpoints(input.rootDir)).find((entry) => entry.id === input.checkpoint_id) ?? null
+    : (await loadWorkingMemoryCheckpoints(input.rootDir)).find((entry) => entry.id === manifest.source_checkpoint_ref) ?? null;
+  if (!checkpoint) {
+    throw new Error(`Cannot record session resume receipt without checkpoint ${manifest.source_checkpoint_ref}`);
+  }
+
+  const receipt = recordSessionResumeReceipt({
+    now: input.now,
+    receipt_status: input.receipt_status,
+    adapter: input.adapter,
+    manifest,
+    checkpoint,
+    authenticated_principal: input.authenticated_principal,
+  });
+
+  const existing = await loadSessionResumeReceipts(input.rootDir);
+  const reused = existing.find((entry) => entry.receipt_key === receipt.receipt_key);
+  if (reused) {
+    return reused;
+  }
+
+  await writeCoreRecord(input.rootDir, receipt);
+  return receipt;
+}

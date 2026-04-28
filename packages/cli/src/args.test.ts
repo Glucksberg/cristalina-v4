@@ -26,6 +26,18 @@ test("CLI parser recognizes the planned command surface", () => {
     metadataPath: undefined,
     runtimeRoot: undefined,
   });
+  assert.deepEqual(parseCristalinaCommand(["checkpoint", "create", "--runtime", "openclaw"]), {
+    name: "checkpoint",
+    action: "create",
+    configPath: undefined,
+    runtime: "openclaw",
+  });
+  assert.deepEqual(parseCristalinaCommand(["session-pack", "latest", "--runtime", "hermes"]), {
+    name: "session-pack",
+    action: "latest",
+    configPath: undefined,
+    runtime: "hermes",
+  });
 });
 
 test("CLI parser rejects unknown commands and options", () => {

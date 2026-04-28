@@ -3,10 +3,17 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseCristalinaCommand, helpText, CommandUsageError, type CristalinaCommand } from "./args.js";
-import { loadCristalinaConfig, resolveStoreRoot } from "./config.js";
+import {
+  compileSessionPackToStore,
+  loadLatestSessionPackManifest,
+  recordSessionResumeReceiptToStore,
+  type AuthenticatedPrincipal,
+} from "@cristalina-v4/core";
+import { loadCristalinaConfig, resolveStoreRoot, type CristalinaConfig } from "./config.js";
 import { runConfigMenu } from "./config-menu.js";
 import { collectRuntimeBridgeStatus, formatStatus, initializeCristalinaStore } from "./bridge.js";
 import { handleRuntimeBridgeEventFile } from "./runtime-events.js";
+import { handleRuntimeBridgeEvent } from "./runtime-events.js";
 import { installRuntime } from "./installers.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -51,6 +58,33 @@ async function loadStatus(command: Extract<CristalinaCommand, { name: "doctor" |
     configDiagnostics: loaded.diagnostics,
     storeRoot,
   });
+}
+
+async function loadRequiredConfig(configPath: string | undefined): Promise<{ config: CristalinaConfig; storeRoot: string }> {
+  const loaded = await loadCristalinaConfig({ configPath });
+  if (loaded.diagnostics.length > 0) {
+    throw new Error(loaded.diagnostics.join("; "));
+  }
+  const storeRoot = resolveStoreRoot(loaded.config);
+  if (!storeRoot) {
+    throw new Error("Config store_root is required");
+  }
+  return { config: loaded.config, storeRoot };
+}
+
+function commandPrincipal(config: CristalinaConfig): AuthenticatedPrincipal {
+  const principal = config.authenticated_principal;
+  if ((principal?.kind === "owner" || principal?.kind === "participant") && principal.actor_ref) {
+    return { kind: principal.kind, actor_ref: principal.actor_ref };
+  }
+  if (principal?.kind === "system" && principal.actor_ref && principal.system_scope) {
+    return { kind: "system", actor_ref: principal.actor_ref, system_scope: principal.system_scope };
+  }
+  return {
+    kind: "system",
+    actor_ref: "system:cristalina-cli",
+    system_scope: "cristalina-cli",
+  };
 }
 
 export async function executeCristalinaCommand(command: CristalinaCommand): Promise<CommandResult> {
@@ -139,6 +173,60 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
         status: "not_started",
         reason: "Step 2 defines the command boundary; the daemon starts in the runtime-neutral event bridge step.",
       }, null, 2)}\n`,
+      stderr: "",
+    };
+  }
+
+  if (command.name === "checkpoint") {
+    const { config } = await loadRequiredConfig(command.configPath);
+    const principal = commandPrincipal(config);
+    const result = await handleRuntimeBridgeEvent(config, {
+      event_id: `cli_checkpoint_${command.runtime}`,
+      event_type: "checkpoint_requested",
+      runtime: command.runtime,
+      occurred_at: new Date().toISOString(),
+      actor_ref: principal.actor_ref ?? "system:cristalina-cli",
+      authenticated_principal: principal,
+      runtime_instance_ref: config.runtimes?.[command.runtime]?.runtime_instance_ref,
+    });
+    return { exitCode: 0, stdout: `${JSON.stringify(result, null, 2)}\n`, stderr: "" };
+  }
+
+  if (command.name === "session-pack") {
+    const { config, storeRoot } = await loadRequiredConfig(command.configPath);
+    const principal = commandPrincipal(config);
+    if (command.action === "compile") {
+      const stored = await compileSessionPackToStore({
+        rootDir: storeRoot,
+        id: `pmf_session_resume_cli_${command.runtime}`,
+        artifact_id: `part_session_resume_cli_${command.runtime}`,
+        now: new Date().toISOString(),
+        adapter: command.runtime,
+      });
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify({ manifest: stored.pack.manifest.id, artifact_refs: stored.pack.manifest.artifact_refs }, null, 2)}\n`,
+        stderr: "",
+      };
+    }
+    if (command.action === "latest") {
+      const manifest = await loadLatestSessionPackManifest(storeRoot, command.runtime);
+      return {
+        exitCode: manifest ? 0 : 1,
+        stdout: `${JSON.stringify({ manifest }, null, 2)}\n`,
+        stderr: "",
+      };
+    }
+    const receipt = await recordSessionResumeReceiptToStore({
+      rootDir: storeRoot,
+      now: new Date().toISOString(),
+      receipt_status: command.action === "consume" ? "consumed" : "applied",
+      adapter: command.runtime,
+      authenticated_principal: principal,
+    });
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify({ receipt }, null, 2)}\n`,
       stderr: "",
     };
   }

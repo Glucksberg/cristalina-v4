@@ -1,6 +1,12 @@
 import { readFile } from "node:fs/promises";
 
-import type { AuthenticatedPrincipal, ProjectionRuntimeView } from "@cristalina-v4/core";
+import {
+  compileSessionPackToStore,
+  createWorkingMemoryCheckpointToStore,
+  recordSessionResumeReceiptToStore,
+  type AuthenticatedPrincipal,
+  type ProjectionRuntimeView,
+} from "@cristalina-v4/core";
 import {
   loadLatestOpenClawProjectionRuntimeView,
   listOpenClawConversationPreferenceOwnerRatificationQueue,
@@ -432,15 +438,62 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
     };
   }
 
-  return {
-    event_id: event.event_id,
-    event_type: event.event_type,
-    runtime: event.runtime,
-    status: "deferred",
-    record_refs: [],
-    pending_owner_review_count: await pendingOwnerReviewCount(event.runtime, context.storeRoot),
-    diagnostics: [`${event.event_type} is declared in the bridge contract and implemented in the session-continuity step`],
-  };
+  if (event.event_type === "checkpoint_requested") {
+    const checkpoint = await createWorkingMemoryCheckpointToStore({
+      rootDir: context.storeRoot,
+      id: id("wmc", event),
+      now: event.occurred_at,
+      runtime_instance_ref: context.runtimeInstanceRef,
+      runtime_session_ref: context.runtimeSessionRef,
+      conversation_thread_ref: context.conversationThreadRef,
+      continuity_epoch: `epoch_${safeIdPart(context.runtimeSessionRef)}`,
+      generation: 1,
+      read_policy_version: "projection-read-v2",
+      summary: "Runtime requested a handoff checkpoint through the bridge.",
+      authenticated_principal: event.authenticated_principal,
+    });
+    return {
+      event_id: event.event_id,
+      event_type: event.event_type,
+      runtime: event.runtime,
+      status: "applied",
+      record_refs: [checkpoint.id],
+      pending_owner_review_count: await pendingOwnerReviewCount(event.runtime, context.storeRoot),
+      diagnostics: [],
+    };
+  }
+
+  if (event.event_type === "session_resume_requested") {
+    const stored = await compileSessionPackToStore({
+      rootDir: context.storeRoot,
+      id: id("pmf_session_resume", event),
+      artifact_id: id("part_session_resume", event),
+      now: event.occurred_at,
+      adapter: event.runtime,
+    });
+    const receipt = await recordSessionResumeReceiptToStore({
+      rootDir: context.storeRoot,
+      now: event.occurred_at,
+      receipt_status: "consumed",
+      adapter: event.runtime,
+      manifest_id: stored.pack.manifest.id,
+      checkpoint_id: stored.pack.manifest.source_checkpoint_ref ?? undefined,
+      authenticated_principal: event.authenticated_principal,
+    });
+    return {
+      event_id: event.event_id,
+      event_type: event.event_type,
+      runtime: event.runtime,
+      status: "applied",
+      record_refs: [stored.pack.manifest.id, ...stored.pack.manifest.artifact_refs, receipt.id],
+      projection_manifest_ref: stored.pack.manifest.id,
+      pending_owner_review_count: await pendingOwnerReviewCount(event.runtime, context.storeRoot),
+      diagnostics: [],
+    };
+  }
+
+  const exhaustive: never = event;
+  throw new Error(`Unhandled runtime bridge event ${(exhaustive as { event_type?: string }).event_type ?? "unknown"}`);
 }
 
 export async function handleRuntimeBridgeEventFile(config: CristalinaConfig, path: string): Promise<RuntimeBridgeEventResult> {

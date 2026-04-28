@@ -763,6 +763,9 @@ Hermes integration must support:
 
 ## 12. Step 7 Plan: Session Continuity
 
+**Execution status:** implemented as public core continuity helpers, bridge
+events, and CLI checkpoint/session-pack commands.
+
 ### Purpose
 
 Connect the existing checkpoint, session-pack, and resume-receipt primitives to
@@ -819,6 +822,29 @@ resume.
   authority
 - both adapters expose session continuity without semantic fork
 - cross-runtime handoff is executable in a fixture
+
+### Implemented Slice
+
+- core exports public helpers for writing working-memory checkpoints, selecting
+  the latest active checkpoint, compiling session packs into the store, loading
+  latest session-pack manifests, and recording resume receipts
+- checkpoint creation supersedes a previous active checkpoint for the same
+  runtime/session/thread/epoch
+- bridge handles `checkpoint_requested` and `session_resume_requested`
+- `session_resume_requested` compiles a session pack and records a consumed
+  resume receipt without treating pack prose as proposal input
+- CLI exposes:
+  - `cristalina checkpoint create --runtime openclaw|hermes`
+  - `cristalina session-pack compile --runtime openclaw|hermes`
+  - `cristalina session-pack latest --runtime openclaw|hermes`
+  - `cristalina session-pack consume --runtime openclaw|hermes`
+  - `cristalina session-pack apply --runtime openclaw|hermes`
+- tests prove OpenClaw checkpoint to Hermes session-resume handoff through the
+  same runtime-neutral bridge
+
+The current helper materializes minimal upstream placeholders for checkpoint
+refs when compiling a session pack. Broader upstream dereferencing remains a
+future hardening item before rich production resume packs.
 
 ### Explicit Non-Goals
 

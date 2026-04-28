@@ -91,3 +91,40 @@ test("runtime bridge records runtime ref drift as diagnostic-only intake", async
   assert.equal(result.pending_owner_review_count, 0);
   assert.ok(result.diagnostics[0]!.includes("declared runtime_instance_ref"));
 });
+
+test("runtime bridge compiles cross-runtime session resume pack from checkpoint", async () => {
+  const { config } = await buildConfiguredStore();
+  const checkpoint = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_openclaw_checkpoint_001",
+    event_type: "checkpoint_requested",
+    runtime: "openclaw",
+    occurred_at: "2026-04-28T12:03:00.000Z",
+    actor_ref: "system:runtime-events-checkpoint",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-checkpoint",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_openclaw_runtime_events_001",
+  });
+  assert.equal(checkpoint.status, "applied");
+  assert.match(checkpoint.record_refs[0]!, /^wmc_openclaw_/);
+
+  const resume = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_resume_001",
+    event_type: "session_resume_requested",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:04:00.000Z",
+    actor_ref: "system:runtime-events-resume",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-resume",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+  });
+
+  assert.equal(resume.status, "applied");
+  assert.match(resume.projection_manifest_ref!, /^pmf_session_resume_hermes_/);
+  assert.ok(resume.record_refs.some((ref) => ref.startsWith("session_resume_receipt_consumed_hermes_")));
+});

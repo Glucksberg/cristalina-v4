@@ -20,6 +20,8 @@ export type CristalinaCommand =
   | { name: "smoke"; target: "dual-runtime" }
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
+  | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
+  | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "projection"; action: "list" | "refresh"; configPath?: string; storeRoot?: string }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string }
   | {
@@ -155,6 +157,36 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
     return { name: "bridge", action: "start", configPath: readOption(argv, "--config") };
   }
 
+  if (command === "checkpoint") {
+    if (subcommand !== "create") {
+      throw new CommandUsageError("checkpoint requires action create");
+    }
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--runtime", "value"],
+    ]));
+    const runtime = readOption(argv, "--runtime");
+    if (runtime !== "openclaw" && runtime !== "hermes") {
+      throw new CommandUsageError("checkpoint create requires --runtime openclaw or hermes");
+    }
+    return { name: "checkpoint", action: "create", configPath: readOption(argv, "--config"), runtime };
+  }
+
+  if (command === "session-pack") {
+    if (subcommand !== "compile" && subcommand !== "latest" && subcommand !== "consume" && subcommand !== "apply") {
+      throw new CommandUsageError("session-pack requires action compile, latest, consume, or apply");
+    }
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--runtime", "value"],
+    ]));
+    const runtime = readOption(argv, "--runtime");
+    if (runtime !== "openclaw" && runtime !== "hermes") {
+      throw new CommandUsageError("session-pack requires --runtime openclaw or hermes");
+    }
+    return { name: "session-pack", action: subcommand, configPath: readOption(argv, "--config"), runtime };
+  }
+
   if (command === "projection") {
     if (subcommand !== "list" && subcommand !== "refresh") {
       throw new CommandUsageError("projection requires action list or refresh");
@@ -216,6 +248,11 @@ export function helpText(): string {
     "  smoke dual-runtime",
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
+    "  checkpoint create --runtime openclaw|hermes [--config PATH]",
+    "  session-pack compile --runtime openclaw|hermes [--config PATH]",
+    "  session-pack latest --runtime openclaw|hermes [--config PATH]",
+    "  session-pack consume --runtime openclaw|hermes [--config PATH]",
+    "  session-pack apply --runtime openclaw|hermes [--config PATH]",
     "  projection list [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",
     "  reviews list [--config PATH] [--store-root PATH]",

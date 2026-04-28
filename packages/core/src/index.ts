@@ -12,6 +12,7 @@ export * from "./adapter-sdk/runtime-context.js";
 export * from "./projection-engine/openclaw.js";
 export * from "./projection-engine/memory-browser.js";
 export * from "./projection-engine/session-pack.js";
+export * from "./session-continuity-store.js";
 export * from "./retrieval-engine/audit.js";
 export * from "./retrieval-engine/chunking.js";
 export * from "./retrieval-engine/embedding-provider.js";
