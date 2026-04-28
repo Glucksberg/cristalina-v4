@@ -27,11 +27,12 @@ What already exists:
 - executable core fixtures and tests
 - thin OpenClaw adapter package with projection reads and authenticated write-through
 - thin Hermes adapter package with projection reads and authenticated write-through
+- clean workspace typecheck from a fresh no-`dist` state
+- shared dual-runtime smoke fixture against the same store
 
 What is next:
 
 - minimal runtime bridge or CLI for one Hermes session and one OpenClaw session
-- shared dual-runtime smoke fixture against the same store
 - runtime configuration examples for store root, owner/agent identity, session, thread, and authenticated principal
 - projection refresh and inspection commands for operators
 - runtime-facing review and diagnostic summaries

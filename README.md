@@ -46,22 +46,27 @@ Cristalina v4 keeps those concerns separate at the architectural level, with exe
 
 ## Status
 
-**Current phase:** kernel implementation — early but not vague. See [PROJECT-STATUS.md](PROJECT-STATUS.md) for a precise rundown of what is and isn't built.
+**Current phase:** operational foundation for the first runtime bridge. See [PROJECT-STATUS.md](PROJECT-STATUS.md) for a precise rundown of what is and isn't built.
 
 What runs today:
 - Source intake profiles (3 normalized intake kinds)
 - Workflow engine (observations → world → wiki → proposals → contradictions)
 - Governance engine (5 promotion gates)
 - Canon engine (create / revise / supersede)
-- Projection SDK + OpenClaw projection compiler
+- Projection SDK + OpenClaw and Hermes projection compilers
 - Store IO with reuse and recovery
-- Audit log and 3 executable end-to-end fixture flows
-- Minimal authenticated write-through surfaces in the OpenClaw and Hermes adapters
+- Audit log, recovery journals, and executable end-to-end fixture flows
+- Retrieval, vector, external-candidate, maintenance, and eval boundaries
+- Working-memory checkpoints, session packs, and resume receipts
+- Minimal authenticated write-through and projection surfaces in the OpenClaw and Hermes adapters
+- Dual-runtime smoke flow proving one OpenClaw session and one Hermes session against the same store
 
 What's planned:
-- richer runtime adapters beyond the current thin authenticated write-through surfaces
-- Standalone wiki engine, retrieval orchestrator
-- Eval harness
+- installable `cristalina` CLI and runtime bridge package
+- configuration menu in the style of `openclaw config`
+- one-line OpenClaw and Hermes installers
+- session-pack consumption through the runtime bridge
+- operator commands for status, review, diagnostics, projection refresh, and recovery
 
 ## Quick start
 
@@ -74,6 +79,7 @@ pnpm install
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm smoke:dual-runtime
 
 # Run an end-to-end fixture (writes a real .cristalina-v4/ store under examples/)
 pnpm fixture:mvp-flow-001   # conversation → observation → world → proposal → ratification → projection
@@ -82,6 +88,8 @@ pnpm fixture:mvp-flow-003   # contradiction detection → resolution → project
 ```
 
 After running a fixture, inspect `examples/mvp-flow-00X/.cristalina-v4/` to see the materialized store layout — every layer, every record, every audit entry.
+
+After running `pnpm smoke:dual-runtime`, inspect `examples/dual-runtime-smoke/.cristalina-v4/smoke-summary.json` for the shared store root, OpenClaw/Hermes projection manifests, stable runtime refs, review action count, and audit/validation log counts.
 
 ## Repository layout
 

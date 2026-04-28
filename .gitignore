@@ -6,3 +6,4 @@ coverage/
 *.tsbuildinfo
 docs/diario-dev/
 .serena/
+examples/dual-runtime-smoke/.cristalina-v4/

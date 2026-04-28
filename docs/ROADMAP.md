@@ -203,6 +203,8 @@ Primary outcome:
 
 ## 6. Step 1 Plan: Operational Foundation
 
+**Execution status:** implemented as the first operational foundation slice.
+
 ### Purpose
 
 Before adding a CLI or installer, the repo must behave like an installable
@@ -265,6 +267,22 @@ project. A one-line installer cannot depend on hidden local build state.
 - one command proves the first dual-runtime loop
 - docs describe the current baseline accurately
 - no adapter imports `packages/core/src/internal.ts` or internal package paths
+
+### Implemented Slice
+
+- adapter build, typecheck, and test scripts now run behind a serialized
+  core-dist wrapper so recursive workspace commands do not depend on stale
+  `packages/core/dist`
+- root `pnpm smoke:dual-runtime` builds the needed packages and runs a
+  dual-runtime store smoke
+- `examples/dual-runtime-smoke/README.md` documents the generated smoke store
+- README and project status now include the dual-runtime smoke and current
+  retrieval/session baseline
+
+The smoke flow intentionally writes OpenClaw and Hermes preferences into
+distinct semantic slots for the same owner. That keeps the smoke focused on
+runtime wiring and queue behavior instead of exercising contradiction
+resolution.
 
 ### Explicit Non-Goals
 

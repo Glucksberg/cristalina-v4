@@ -10,9 +10,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "pnpm --filter @cristalina-v4/core build && tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm build && node --test dist/**/*.test.js"
+    "build": "node ../../scripts/with-core-dist.mjs -- tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/with-core-dist.mjs -- tsc -p tsconfig.json --noEmit",
+    "test": "node ../../scripts/with-core-dist.mjs -- pnpm run test:local",
+    "test:local": "tsc -p tsconfig.json && node --test dist/**/*.test.js"
   },
   "dependencies": {
     "@cristalina-v4/core": "workspace:*"
