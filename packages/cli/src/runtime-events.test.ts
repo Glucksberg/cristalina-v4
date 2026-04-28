@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { listStoreProjectionManifests } from "@cristalina-v4/core";
+
 import { initializeCristalinaStore } from "./bridge.js";
 import { buildDefaultCristalinaConfig } from "./config.js";
 import { handleRuntimeBridgeEvent, type RuntimeBridgeEvent } from "./runtime-events.js";
@@ -191,4 +193,71 @@ test("runtime bridge rejects ambiguous session resume checkpoints unless checkpo
   });
   assert.equal(resume.status, "applied");
   assert.match(resume.projection_manifest_ref!, /^pmf_session_resume_hermes_/);
+});
+
+test("runtime bridge keeps same resume event id distinct across checkpoint lineage", async () => {
+  const { config, storeRoot } = await buildConfiguredStore();
+  const openclawCheckpoint = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_openclaw_checkpoint_replay_001",
+    event_type: "checkpoint_requested",
+    runtime: "openclaw",
+    occurred_at: "2026-04-28T12:09:00.000Z",
+    actor_ref: "system:runtime-events-checkpoint",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-checkpoint",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_openclaw_runtime_events_001",
+  });
+  const hermesCheckpoint = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_checkpoint_replay_001",
+    event_type: "checkpoint_requested",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:10:00.000Z",
+    actor_ref: "system:runtime-events-checkpoint",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-checkpoint",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+  });
+
+  const first = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_resume_replayed_001",
+    event_type: "session_resume_requested",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:11:00.000Z",
+    actor_ref: "system:runtime-events-resume",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-resume",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+    checkpoint_id: openclawCheckpoint.record_refs[0],
+  });
+  const second = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_resume_replayed_001",
+    event_type: "session_resume_requested",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:12:00.000Z",
+    actor_ref: "system:runtime-events-resume",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-resume",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+    checkpoint_id: hermesCheckpoint.record_refs[0],
+  });
+
+  assert.notEqual(first.projection_manifest_ref, second.projection_manifest_ref);
+  const sessionPacks = (await listStoreProjectionManifests(storeRoot))
+    .filter((manifest) => manifest.adapter === "hermes" && manifest.projection_profile === "session_resume_v2");
+  assert.deepEqual(
+    sessionPacks.map((manifest) => manifest.source_checkpoint_ref).sort(),
+    [openclawCheckpoint.record_refs[0], hermesCheckpoint.record_refs[0]].sort(),
+  );
 });

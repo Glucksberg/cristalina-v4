@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 
@@ -17,6 +17,7 @@ import {
   type CompiledSessionPack,
 } from "./projection-engine/session-pack.js";
 import {
+  loadProjectionArtifacts,
   loadProjectionManifests,
   loadSessionResumeReceipts,
   loadWorkingMemoryCheckpoints,
@@ -24,6 +25,10 @@ import {
 } from "./store/io.js";
 
 type AdapterRuntime = Exclude<RuntimeKind, "generic">;
+const SESSION_CONTINUITY_LOCK_PATH = "audits/snapshots/.session-continuity.lock";
+const SESSION_CONTINUITY_LOCK_STALE_MS = 30_000;
+const SESSION_CONTINUITY_LOCK_RETRY_MS = 10;
+const SESSION_CONTINUITY_LOCK_TIMEOUT_MS = 5_000;
 
 export interface CreateWorkingMemoryCheckpointInput {
   rootDir: string;
@@ -97,6 +102,59 @@ function sameRefs(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolveSleep) => {
+    setTimeout(resolveSleep, ms);
+  });
+}
+
+async function sessionContinuityLockIsStale(lockPath: string, nowMs: number): Promise<boolean> {
+  const lockStat = await stat(lockPath).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  });
+  if (!lockStat) {
+    return false;
+  }
+  return nowMs - lockStat.mtimeMs > SESSION_CONTINUITY_LOCK_STALE_MS;
+}
+
+async function withSessionContinuityLock<T>(rootDir: string, holder: string, fn: () => Promise<T>): Promise<T> {
+  const lockPath = ensureInsideRoot(rootDir, SESSION_CONTINUITY_LOCK_PATH);
+  await mkdir(dirname(lockPath), { recursive: true });
+  const startedAt = Date.now();
+
+  for (;;) {
+    try {
+      await mkdir(lockPath, { recursive: false });
+      try {
+        await writeFile(
+          resolve(lockPath, "owner.json"),
+          `${JSON.stringify({ holder, acquired_at: new Date().toISOString() }, null, 2)}\n`,
+        );
+        return await fn();
+      } finally {
+        await rm(lockPath, { recursive: true, force: true });
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+      const nowMs = Date.now();
+      if (await sessionContinuityLockIsStale(lockPath, nowMs)) {
+        await rm(lockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (nowMs - startedAt > SESSION_CONTINUITY_LOCK_TIMEOUT_MS) {
+        throw new Error(`Timed out acquiring session continuity lock for ${holder}`);
+      }
+      await sleep(SESSION_CONTINUITY_LOCK_RETRY_MS);
+    }
+  }
+}
+
 function compactRecordId(prefix: string, stableKey: string): string {
   return `${prefix}_${createHash("sha256").update(stableKey).digest("hex").slice(0, 24)}`;
 }
@@ -152,76 +210,78 @@ function selectSessionPackCheckpoint(
 export async function createWorkingMemoryCheckpointToStore(
   input: CreateWorkingMemoryCheckpointInput,
 ): Promise<WorkingMemoryCheckpoint> {
-  const upstream_refs = input.upstream_refs ?? [input.runtime_session_ref, input.conversation_thread_ref];
-  const existing = await loadWorkingMemoryCheckpoints(input.rootDir);
-  const existingSameId = existing.find((checkpoint) => checkpoint.id === input.id);
-  if (existingSameId) {
-    if (
-      existingSameId.status === "active" &&
-      existingSameId.runtime_instance_ref === input.runtime_instance_ref &&
-      existingSameId.runtime_session_ref === input.runtime_session_ref &&
-      existingSameId.conversation_thread_ref === input.conversation_thread_ref &&
-      existingSameId.continuity_epoch === input.continuity_epoch &&
-      existingSameId.read_policy_version === input.read_policy_version &&
-      existingSameId.policy_snapshot_ref === (input.policy_snapshot_ref ?? null) &&
-      existingSameId.summary === (input.summary ?? null) &&
-      sameRefs(existingSameId.upstream_refs, upstream_refs)
-    ) {
-      return existingSameId;
+  return withSessionContinuityLock(input.rootDir, `working_memory_checkpoint:${input.id}`, async () => {
+    const upstream_refs = input.upstream_refs ?? [input.runtime_session_ref, input.conversation_thread_ref];
+    const existing = await loadWorkingMemoryCheckpoints(input.rootDir);
+    const existingSameId = existing.find((checkpoint) => checkpoint.id === input.id);
+    if (existingSameId) {
+      if (
+        existingSameId.status === "active" &&
+        existingSameId.runtime_instance_ref === input.runtime_instance_ref &&
+        existingSameId.runtime_session_ref === input.runtime_session_ref &&
+        existingSameId.conversation_thread_ref === input.conversation_thread_ref &&
+        existingSameId.continuity_epoch === input.continuity_epoch &&
+        existingSameId.read_policy_version === input.read_policy_version &&
+        existingSameId.policy_snapshot_ref === (input.policy_snapshot_ref ?? null) &&
+        existingSameId.summary === (input.summary ?? null) &&
+        sameRefs(existingSameId.upstream_refs, upstream_refs)
+      ) {
+        return existingSameId;
+      }
+      throw new Error(`Working memory checkpoint id ${input.id} already exists with a different checkpoint contract`);
     }
-    throw new Error(`Working memory checkpoint id ${input.id} already exists with a different checkpoint contract`);
-  }
 
-  const previous = existing
-    .filter((checkpoint) =>
-      checkpoint.status === "active" &&
-      checkpoint.runtime_instance_ref === input.runtime_instance_ref &&
-      checkpoint.runtime_session_ref === input.runtime_session_ref &&
-      checkpoint.conversation_thread_ref === input.conversation_thread_ref &&
-      checkpoint.continuity_epoch === input.continuity_epoch)
-    .sort(compareCheckpoint)[0];
-  const generation = previous ? Math.max(input.generation, previous.generation + 1) : input.generation;
+    const previous = existing
+      .filter((checkpoint) =>
+        checkpoint.status === "active" &&
+        checkpoint.runtime_instance_ref === input.runtime_instance_ref &&
+        checkpoint.runtime_session_ref === input.runtime_session_ref &&
+        checkpoint.conversation_thread_ref === input.conversation_thread_ref &&
+        checkpoint.continuity_epoch === input.continuity_epoch)
+      .sort(compareCheckpoint)[0];
+    const generation = previous ? Math.max(input.generation, previous.generation + 1) : input.generation;
 
-  const checkpoint: WorkingMemoryCheckpoint = {
-    id: input.id,
-    kind: "working_memory_checkpoint",
-    layer: "runtime",
-    authoritative_home: "runtime",
-    created_at: input.now,
-    visibility_state: {
-      privacy_scope: "runtime_private",
-    },
-    provenance: {
-      source_type: "runtime_checkpoint",
-      source_ref: input.runtime_session_ref,
-      evidence_refs: upstream_refs,
-      actor_ref: input.authenticated_principal?.actor_ref,
-      runtime_ref: input.runtime_instance_ref,
-      session_ref: input.runtime_session_ref,
-      thread_ref: input.conversation_thread_ref,
-    },
-    runtime_instance_ref: input.runtime_instance_ref,
-    runtime_session_ref: input.runtime_session_ref,
-    conversation_thread_ref: input.conversation_thread_ref,
-    continuity_epoch: input.continuity_epoch,
-    generation,
-    read_policy_version: input.read_policy_version,
-    policy_snapshot_ref: input.policy_snapshot_ref ?? null,
-    upstream_refs,
-    summary: input.summary ?? null,
-    status: "active",
-    ...(previous ? { supersedes_ref: previous.id } : {}),
-  };
+    const checkpoint: WorkingMemoryCheckpoint = {
+      id: input.id,
+      kind: "working_memory_checkpoint",
+      layer: "runtime",
+      authoritative_home: "runtime",
+      created_at: input.now,
+      visibility_state: {
+        privacy_scope: "runtime_private",
+      },
+      provenance: {
+        source_type: "runtime_checkpoint",
+        source_ref: input.runtime_session_ref,
+        evidence_refs: upstream_refs,
+        actor_ref: input.authenticated_principal?.actor_ref,
+        runtime_ref: input.runtime_instance_ref,
+        session_ref: input.runtime_session_ref,
+        thread_ref: input.conversation_thread_ref,
+      },
+      runtime_instance_ref: input.runtime_instance_ref,
+      runtime_session_ref: input.runtime_session_ref,
+      conversation_thread_ref: input.conversation_thread_ref,
+      continuity_epoch: input.continuity_epoch,
+      generation,
+      read_policy_version: input.read_policy_version,
+      policy_snapshot_ref: input.policy_snapshot_ref ?? null,
+      upstream_refs,
+      summary: input.summary ?? null,
+      status: "active",
+      ...(previous ? { supersedes_ref: previous.id } : {}),
+    };
 
-  if (previous) {
-    await writeCoreRecord(input.rootDir, {
-      ...previous,
-      status: "superseded",
-      superseded_by_ref: checkpoint.id,
-    });
-  }
-  await writeCoreRecord(input.rootDir, checkpoint);
-  return checkpoint;
+    if (previous) {
+      await writeCoreRecord(input.rootDir, {
+        ...previous,
+        status: "superseded",
+        superseded_by_ref: checkpoint.id,
+      });
+    }
+    await writeCoreRecord(input.rootDir, checkpoint);
+    return checkpoint;
+  });
 }
 
 export async function loadLatestWorkingMemoryCheckpoint(
@@ -275,6 +335,32 @@ export async function compileSessionPackToStore(input: CompileSessionPackToStore
   const [artifactPath] = Object.keys(pack.artifact_contents);
   if (!artifactPath) {
     throw new Error(`Session pack ${pack.manifest.id} did not emit an artifact path`);
+  }
+  const existingManifest = (await loadProjectionManifests(input.rootDir)).find((manifest) => manifest.id === pack.manifest.id);
+  if (
+    existingManifest &&
+    (
+      existingManifest.adapter !== pack.manifest.adapter ||
+      existingManifest.projection_profile !== pack.manifest.projection_profile ||
+      existingManifest.source_checkpoint_ref !== pack.manifest.source_checkpoint_ref ||
+      existingManifest.continuity_epoch !== pack.manifest.continuity_epoch ||
+      existingManifest.generation !== pack.manifest.generation ||
+      existingManifest.read_policy_version !== pack.manifest.read_policy_version ||
+      !sameRefs(existingManifest.artifact_refs, pack.manifest.artifact_refs)
+    )
+  ) {
+    throw new Error(`Session pack manifest id ${pack.manifest.id} already exists with a different session pack contract`);
+  }
+  const existingArtifact = (await loadProjectionArtifacts(input.rootDir, input.adapter)).find((artifact) => artifact.id === pack.artifact.id);
+  if (
+    existingArtifact &&
+    (
+      existingArtifact.path !== pack.artifact.path ||
+      existingArtifact.artifact_kind !== pack.artifact.artifact_kind ||
+      !sameRefs(existingArtifact.upstream_refs, pack.artifact.upstream_refs)
+    )
+  ) {
+    throw new Error(`Session pack artifact id ${pack.artifact.id} already exists with a different session pack contract`);
   }
   const artifactFile = ensureInsideRoot(input.rootDir, artifactPath);
   await mkdir(dirname(artifactFile), { recursive: true });

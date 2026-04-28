@@ -473,8 +473,6 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
   if (event.event_type === "session_resume_requested") {
     const stored = await compileSessionPackToStore({
       rootDir: context.storeRoot,
-      id: id("pmf_session_resume", event),
-      artifact_id: id("part_session_resume", event),
       now: event.occurred_at,
       adapter: event.runtime,
       checkpoint_id: event.checkpoint_id,
