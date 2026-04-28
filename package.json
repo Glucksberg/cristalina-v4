@@ -32,6 +32,7 @@
     "fixture:mvp-flow-001": "pnpm --filter @cristalina-v4/core build && node packages/core/dist/fixtures/write-mvp-flow-001.js examples/mvp-flow-001/.cristalina-v4",
     "fixture:mvp-flow-002": "pnpm --filter @cristalina-v4/core build && node packages/core/dist/fixtures/write-mvp-flow-002.js examples/mvp-flow-002/.cristalina-v4",
     "fixture:mvp-flow-003": "pnpm --filter @cristalina-v4/core build && node packages/core/dist/fixtures/write-mvp-flow-003.js examples/mvp-flow-003/.cristalina-v4",
+    "cristalina": "pnpm --filter @cristalina-v4/cli build && pnpm --filter @cristalina-v4/cli run cristalina --",
     "lint": "echo \"Scaffold lint not configured yet\"",
     "test": "pnpm -r test"
   },

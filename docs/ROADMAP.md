@@ -295,6 +295,8 @@ resolution.
 
 ## 7. Step 2 Plan: Cristalina CLI And Runtime Bridge Package
 
+**Execution status:** implemented as the first CLI and runtime-bridge boundary.
+
 ### Purpose
 
 Create the command and package boundary that installers and runtimes will use.
@@ -368,6 +370,20 @@ Candidate commands:
 - `pnpm cristalina --help` or equivalent local script works
 - `cristalina doctor` can run without writing memory
 - `cristalina smoke dual-runtime` proves the existing adapter loop
+
+### Implemented Slice
+
+- `packages/cli` defines `@cristalina-v4/cli` and binary `cristalina`
+- root `pnpm cristalina --help` builds the required public packages and runs
+  the local command
+- command parser covers the planned command surface for init, config, doctor,
+  status, smoke, bridge, projection, reviews, and install
+- config loader preserves operator, authenticated principal, owner, agent,
+  runtime instance, session, and thread distinctions
+- bridge/status code imports only public core and adapter packages
+- `cristalina smoke dual-runtime` wraps the Step 1 smoke fixture
+- tests cover parser behavior, config loading, doctor behavior, init behavior,
+  and public-boundary import discipline
 
 ### Explicit Non-Goals
 

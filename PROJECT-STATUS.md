@@ -29,10 +29,11 @@ What already exists:
 - thin Hermes adapter package with projection reads and authenticated write-through
 - clean workspace typecheck from a fresh no-`dist` state
 - shared dual-runtime smoke fixture against the same store
+- initial `@cristalina-v4/cli` package with `cristalina` command, config loader,
+  doctor/status surface, and smoke wrapper
 
 What is next:
 
-- minimal runtime bridge or CLI for one Hermes session and one OpenClaw session
 - runtime configuration examples for store root, owner/agent identity, session, thread, and authenticated principal
 - projection refresh and inspection commands for operators
 - runtime-facing review and diagnostic summaries

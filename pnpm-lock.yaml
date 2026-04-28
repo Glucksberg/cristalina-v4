@@ -15,6 +15,18 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  packages/cli:
+    dependencies:
+      '@cristalina-v4/core':
+        specifier: workspace:*
+        version: link:../core
+      '@cristalina-v4/hermes-adapter':
+        specifier: workspace:*
+        version: link:../hermes-adapter
+      '@cristalina-v4/openclaw-adapter':
+        specifier: workspace:*
+        version: link:../openclaw-adapter
+
   packages/core: {}
 
   packages/hermes-adapter:

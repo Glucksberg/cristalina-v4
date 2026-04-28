@@ -1,0 +1,27 @@
+{
+  "name": "@cristalina-v4/cli",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Cristalina v4 command line and runtime bridge surface",
+  "bin": {
+    "cristalina": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/with-runtime-dists.mjs -- tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/with-runtime-dists.mjs -- tsc -p tsconfig.json --noEmit",
+    "test": "node ../../scripts/with-runtime-dists.mjs -- pnpm run test:local",
+    "test:local": "tsc -p tsconfig.json && node --test dist/**/*.test.js",
+    "cristalina": "node dist/index.js"
+  },
+  "dependencies": {
+    "@cristalina-v4/core": "workspace:*",
+    "@cristalina-v4/hermes-adapter": "workspace:*",
+    "@cristalina-v4/openclaw-adapter": "workspace:*"
+  }
+}
