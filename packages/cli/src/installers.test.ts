@@ -78,3 +78,22 @@ test("Hermes one-liner documents the public installer shape", () => {
     "curl -fsSL https://example.invalid/install-hermes.sh | sh",
   );
 });
+
+test("installer defaults metadata under runtimeRoot when metadata path is not explicit", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-runtime-root-install-"));
+  const runtimeRoot = join(root, "openclaw-runtime");
+  const configPath = join(root, "config.json");
+
+  const result = await installRuntime({
+    runtime: "openclaw",
+    configPath,
+    runtimeRoot,
+    nonInteractive: true,
+  });
+
+  assert.equal(result.metadata_path, join(runtimeRoot, ".cristalina-v4", "runtime-openclaw.json"));
+  const metadata = JSON.parse(await readFile(result.metadata_path, "utf8")) as {
+    runtime_root: string;
+  };
+  assert.equal(metadata.runtime_root, runtimeRoot);
+});

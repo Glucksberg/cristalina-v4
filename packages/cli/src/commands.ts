@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -70,12 +71,12 @@ async function loadStatus(command: Extract<CristalinaCommand, { name: "doctor" |
   });
 }
 
-async function loadRequiredConfig(configPath: string | undefined): Promise<{ config: CristalinaConfig; storeRoot: string }> {
+async function loadRequiredConfig(configPath: string | undefined, storeRootOverride?: string): Promise<{ config: CristalinaConfig; storeRoot: string }> {
   const loaded = await loadCristalinaConfig({ configPath });
   if (loaded.diagnostics.length > 0) {
     throw new Error(loaded.diagnostics.join("; "));
   }
-  const storeRoot = resolveStoreRoot(loaded.config);
+  const storeRoot = resolveStoreRoot(loaded.config, storeRootOverride);
   if (!storeRoot) {
     throw new Error("Config store_root is required");
   }
@@ -191,13 +192,15 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
     const { config } = await loadRequiredConfig(command.configPath);
     const principal = commandPrincipal(config);
     const result = await handleRuntimeBridgeEvent(config, {
-      event_id: `cli_checkpoint_${command.runtime}`,
+      event_id: `cli_checkpoint_${command.runtime}_${randomUUID()}`,
       event_type: "checkpoint_requested",
       runtime: command.runtime,
       occurred_at: new Date().toISOString(),
       actor_ref: principal.actor_ref ?? "system:cristalina-cli",
       authenticated_principal: principal,
       runtime_instance_ref: config.runtimes?.[command.runtime]?.runtime_instance_ref,
+      runtime_session_ref: config.runtimes?.[command.runtime]?.default_session_ref ?? `session_cli_${command.runtime}`,
+      conversation_thread_ref: config.runtimes?.[command.runtime]?.default_thread_ref ?? `thread_cli_${command.runtime}`,
     });
     return { exitCode: 0, stdout: `${JSON.stringify(result, null, 2)}\n`, stderr: "" };
   }
@@ -212,6 +215,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
         artifact_id: `part_session_resume_cli_${command.runtime}`,
         now: new Date().toISOString(),
         adapter: command.runtime,
+        checkpoint_id: command.checkpointId,
       });
       return {
         exitCode: 0,
@@ -232,6 +236,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
       now: new Date().toISOString(),
       receipt_status: command.action === "consume" ? "consumed" : "applied",
       adapter: command.runtime,
+      checkpoint_id: command.checkpointId,
       authenticated_principal: principal,
     });
     return {
@@ -276,7 +281,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
           stderr: "reviews apply requires --runtime and --queue-id\n",
         };
       }
-      const loaded = await loadRequiredConfig(command.configPath);
+      const loaded = await loadRequiredConfig(command.configPath, command.storeRoot);
       const principal = commandPrincipal(loaded.config);
       const input = {
         rootDir: loaded.storeRoot,

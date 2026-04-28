@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 
 import type {
@@ -47,6 +48,7 @@ export interface CompileSessionPackToStoreInput {
   now: string;
   adapter: AdapterRuntime;
   checkpoint_id?: string;
+  checkpoint_filter?: Partial<Pick<WorkingMemoryCheckpoint, "runtime_instance_ref" | "runtime_session_ref" | "conversation_thread_ref">>;
   audience?: string;
 }
 
@@ -91,11 +93,73 @@ function compareManifest(left: ProjectionManifest, right: ProjectionManifest): n
   return Date.parse(right.updated_at ?? right.created_at) - Date.parse(left.updated_at ?? left.created_at) || right.id.localeCompare(left.id);
 }
 
+function sameRefs(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function compactRecordId(prefix: string, stableKey: string): string {
+  return `${prefix}_${createHash("sha256").update(stableKey).digest("hex").slice(0, 24)}`;
+}
+
+function checkpointMatchesFilter(
+  checkpoint: WorkingMemoryCheckpoint,
+  filter: CompileSessionPackToStoreInput["checkpoint_filter"],
+): boolean {
+  return (
+    checkpoint.status === "active" &&
+    (filter?.runtime_instance_ref === undefined || checkpoint.runtime_instance_ref === filter.runtime_instance_ref) &&
+    (filter?.runtime_session_ref === undefined || checkpoint.runtime_session_ref === filter.runtime_session_ref) &&
+    (filter?.conversation_thread_ref === undefined || checkpoint.conversation_thread_ref === filter.conversation_thread_ref)
+  );
+}
+
+function selectSessionPackCheckpoint(
+  input: CompileSessionPackToStoreInput,
+  checkpoints: WorkingMemoryCheckpoint[],
+): WorkingMemoryCheckpoint {
+  if (input.checkpoint_id) {
+    const checkpoint = checkpoints.find((entry) => entry.id === input.checkpoint_id && entry.status === "active");
+    if (!checkpoint) {
+      throw new Error(`Cannot compile session pack without active checkpoint ${input.checkpoint_id}`);
+    }
+    return checkpoint;
+  }
+
+  const matches = checkpoints
+    .filter((entry) => checkpointMatchesFilter(entry, input.checkpoint_filter))
+    .sort(compareCheckpoint);
+  if (matches.length === 0) {
+    throw new Error("Cannot compile session pack without an active checkpoint");
+  }
+  if (matches.length > 1) {
+    throw new Error("Cannot compile session pack because multiple active checkpoints match; provide checkpoint_id or a narrower checkpoint_filter");
+  }
+  return matches[0]!;
+}
+
 export async function createWorkingMemoryCheckpointToStore(
   input: CreateWorkingMemoryCheckpointInput,
 ): Promise<WorkingMemoryCheckpoint> {
   const upstream_refs = input.upstream_refs ?? [input.runtime_session_ref, input.conversation_thread_ref];
   const existing = await loadWorkingMemoryCheckpoints(input.rootDir);
+  const existingSameId = existing.find((checkpoint) => checkpoint.id === input.id);
+  if (existingSameId) {
+    if (
+      existingSameId.status === "active" &&
+      existingSameId.runtime_instance_ref === input.runtime_instance_ref &&
+      existingSameId.runtime_session_ref === input.runtime_session_ref &&
+      existingSameId.conversation_thread_ref === input.conversation_thread_ref &&
+      existingSameId.continuity_epoch === input.continuity_epoch &&
+      existingSameId.read_policy_version === input.read_policy_version &&
+      existingSameId.policy_snapshot_ref === (input.policy_snapshot_ref ?? null) &&
+      existingSameId.summary === (input.summary ?? null) &&
+      sameRefs(existingSameId.upstream_refs, upstream_refs)
+    ) {
+      return existingSameId;
+    }
+    throw new Error(`Working memory checkpoint id ${input.id} already exists with a different checkpoint contract`);
+  }
+
   const previous = existing
     .filter((checkpoint) =>
       checkpoint.status === "active" &&
@@ -104,6 +168,7 @@ export async function createWorkingMemoryCheckpointToStore(
       checkpoint.conversation_thread_ref === input.conversation_thread_ref &&
       checkpoint.continuity_epoch === input.continuity_epoch)
     .sort(compareCheckpoint)[0];
+  const generation = previous ? Math.max(input.generation, previous.generation + 1) : input.generation;
 
   const checkpoint: WorkingMemoryCheckpoint = {
     id: input.id,
@@ -127,7 +192,7 @@ export async function createWorkingMemoryCheckpointToStore(
     runtime_session_ref: input.runtime_session_ref,
     conversation_thread_ref: input.conversation_thread_ref,
     continuity_epoch: input.continuity_epoch,
-    generation: input.generation,
+    generation,
     read_policy_version: input.read_policy_version,
     policy_snapshot_ref: input.policy_snapshot_ref ?? null,
     upstream_refs,
@@ -162,12 +227,8 @@ export async function loadLatestWorkingMemoryCheckpoint(
 }
 
 export async function compileSessionPackToStore(input: CompileSessionPackToStoreInput): Promise<StoredSessionPack> {
-  const checkpoint = input.checkpoint_id
-    ? (await loadWorkingMemoryCheckpoints(input.rootDir)).find((entry) => entry.id === input.checkpoint_id) ?? null
-    : await loadLatestWorkingMemoryCheckpoint(input.rootDir);
-  if (!checkpoint) {
-    throw new Error("Cannot compile session pack without an active checkpoint");
-  }
+  const checkpoints = await loadWorkingMemoryCheckpoints(input.rootDir);
+  const checkpoint = selectSessionPackCheckpoint(input, checkpoints);
 
   const upstream_records: CoreRecord[] = checkpoint.upstream_refs.map((upstreamRef) => ({
     id: upstreamRef,
@@ -252,13 +313,17 @@ export async function recordSessionResumeReceiptToStore(
     checkpoint,
     authenticated_principal: input.authenticated_principal,
   });
+  const persistedReceipt = {
+    ...receipt,
+    id: compactRecordId("session_resume_receipt", receipt.receipt_key),
+  };
 
   const existing = await loadSessionResumeReceipts(input.rootDir);
-  const reused = existing.find((entry) => entry.receipt_key === receipt.receipt_key);
+  const reused = existing.find((entry) => entry.receipt_key === persistedReceipt.receipt_key);
   if (reused) {
     return reused;
   }
 
-  await writeCoreRecord(input.rootDir, receipt);
-  return receipt;
+  await writeCoreRecord(input.rootDir, persistedReceipt);
+  return persistedReceipt;
 }

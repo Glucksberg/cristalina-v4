@@ -21,7 +21,7 @@ export type CristalinaCommand =
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
-  | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes" }
+  | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
   | { name: "projection"; action: "list" | "show" | "refresh"; configPath?: string; storeRoot?: string; manifestId?: string }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string }
   | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
@@ -181,12 +181,13 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
     rejectUnknownOptions(rest, new Map([
       ["--config", "value"],
       ["--runtime", "value"],
+      ["--checkpoint-id", "value"],
     ]));
     const runtime = readOption(argv, "--runtime");
     if (runtime !== "openclaw" && runtime !== "hermes") {
       throw new CommandUsageError("session-pack requires --runtime openclaw or hermes");
     }
-    return { name: "session-pack", action: subcommand, configPath: readOption(argv, "--config"), runtime };
+    return { name: "session-pack", action: subcommand, configPath: readOption(argv, "--config"), runtime, checkpointId: readOption(argv, "--checkpoint-id") };
   }
 
   if (command === "projection") {
@@ -283,10 +284,10 @@ export function helpText(): string {
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",
-    "  session-pack compile --runtime openclaw|hermes [--config PATH]",
+    "  session-pack compile --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
     "  session-pack latest --runtime openclaw|hermes [--config PATH]",
-    "  session-pack consume --runtime openclaw|hermes [--config PATH]",
-    "  session-pack apply --runtime openclaw|hermes [--config PATH]",
+    "  session-pack consume --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
+    "  session-pack apply --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
     "  projection list [--config PATH] [--store-root PATH]",
     "  projection show --manifest ID [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",

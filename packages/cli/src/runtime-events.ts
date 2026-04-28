@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 
 import {
   compileSessionPackToStore,
@@ -107,6 +108,7 @@ export interface RuntimeProjectionRefreshRequestedEvent extends Omit<RuntimeBrid
 
 export interface RuntimeSessionResumeRequestedEvent extends Omit<RuntimeBridgeEventBase, "event_type"> {
   event_type: "session_resume_requested";
+  checkpoint_id?: string;
 }
 
 export interface RuntimeBridgeEventResult {
@@ -130,7 +132,12 @@ interface ResolvedRuntimeEventContext {
 }
 
 function safeIdPart(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "event";
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "event";
+  if (normalized.length <= 64) {
+    return normalized;
+  }
+  const digest = createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+  return `${normalized.slice(0, 51)}_${digest}`;
 }
 
 function id(prefix: string, event: RuntimeBridgeEvent, suffix?: string): string {
@@ -470,6 +477,7 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
       artifact_id: id("part_session_resume", event),
       now: event.occurred_at,
       adapter: event.runtime,
+      checkpoint_id: event.checkpoint_id,
     });
     const receipt = await recordSessionResumeReceiptToStore({
       rootDir: context.storeRoot,

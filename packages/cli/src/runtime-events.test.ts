@@ -126,5 +126,69 @@ test("runtime bridge compiles cross-runtime session resume pack from checkpoint"
 
   assert.equal(resume.status, "applied");
   assert.match(resume.projection_manifest_ref!, /^pmf_session_resume_hermes_/);
-  assert.ok(resume.record_refs.some((ref) => ref.startsWith("session_resume_receipt_consumed_hermes_")));
+  assert.ok(resume.record_refs.some((ref) => ref.startsWith("session_resume_receipt_")));
+});
+
+test("runtime bridge rejects ambiguous session resume checkpoints unless checkpoint_id is explicit", async () => {
+  const { config } = await buildConfiguredStore();
+  const openclawCheckpoint = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_openclaw_checkpoint_ambiguous_001",
+    event_type: "checkpoint_requested",
+    runtime: "openclaw",
+    occurred_at: "2026-04-28T12:05:00.000Z",
+    actor_ref: "system:runtime-events-checkpoint",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-checkpoint",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_openclaw_runtime_events_001",
+  });
+  await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_checkpoint_ambiguous_001",
+    event_type: "checkpoint_requested",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:06:00.000Z",
+    actor_ref: "system:runtime-events-checkpoint",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-checkpoint",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+  });
+
+  await assert.rejects(
+    handleRuntimeBridgeEvent(config, {
+      event_id: "evt_hermes_resume_ambiguous_001",
+      event_type: "session_resume_requested",
+      runtime: "hermes",
+      occurred_at: "2026-04-28T12:07:00.000Z",
+      actor_ref: "system:runtime-events-resume",
+      authenticated_principal: {
+        kind: "system",
+        actor_ref: "system:runtime-events-resume",
+        system_scope: "runtime-events",
+      },
+      runtime_instance_ref: "runtime_hermes_runtime_events_001",
+    }),
+    /multiple active checkpoints match/,
+  );
+
+  const resume = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_resume_explicit_001",
+    event_type: "session_resume_requested",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:08:00.000Z",
+    actor_ref: "system:runtime-events-resume",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:runtime-events-resume",
+      system_scope: "runtime-events",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+    checkpoint_id: openclawCheckpoint.record_refs[0],
+  });
+  assert.equal(resume.status, "applied");
+  assert.match(resume.projection_manifest_ref!, /^pmf_session_resume_hermes_/);
 });

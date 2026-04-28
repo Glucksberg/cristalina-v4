@@ -38,6 +38,16 @@ function runtimeInstanceRef(config: CristalinaConfig, runtime: "openclaw" | "her
   return ref;
 }
 
+function resolveMetadataPath(input: RuntimeInstallInput, config: CristalinaConfig): string {
+  if (input.metadataPath) {
+    return resolve(input.metadataPath);
+  }
+  const relativeMetadataPath = defaultMetadataPath(config, input.runtime);
+  return input.runtimeRoot
+    ? resolve(input.runtimeRoot, relativeMetadataPath)
+    : resolve(relativeMetadataPath);
+}
+
 async function loadOrCreateConfig(input: RuntimeInstallInput): Promise<{
   config: CristalinaConfig;
   configPath: string;
@@ -75,7 +85,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     await initializeCristalinaStore(storeRoot);
   }
 
-  const metadataPath = resolve(input.metadataPath ?? defaultMetadataPath(loaded.config, input.runtime));
+  const metadataPath = resolveMetadataPath(input, loaded.config);
   const runtimeRef = runtimeInstanceRef(loaded.config, input.runtime);
   const bridgeCommand = `cristalina bridge event --config ${loaded.configPath} --event <event.json>`;
   const projectionCommand = `cristalina projection list --config ${loaded.configPath}`;
