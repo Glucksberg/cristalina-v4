@@ -1,0 +1,22 @@
+{
+  "event_id": "evt_openclaw_runtime_wiring_preference_001",
+  "event_type": "conversation_preference_signal",
+  "runtime": "openclaw",
+  "occurred_at": "2026-04-28T16:00:00.000Z",
+  "actor_ref": "actor_participant_runtime_wiring_001",
+  "authenticated_principal": {
+    "kind": "participant",
+    "actor_ref": "actor_participant_runtime_wiring_001"
+  },
+  "runtime_instance_ref": "runtime_openclaw_runtime_wiring_001",
+  "runtime_session_ref": "session_openclaw_runtime_wiring_001",
+  "conversation_thread_ref": "thread_openclaw_runtime_wiring_001",
+  "source_ref": "runtime/openclaw/session/runtime-wiring/preference-001",
+  "speaker_ref": "actor_participant_runtime_wiring_001",
+  "message_refs": [
+    "msg_openclaw_runtime_wiring_preference_001"
+  ],
+  "statement": "The owner prefers runtime wiring tests to preserve explicit review boundaries.",
+  "message": "A collaborator says the owner prefers runtime wiring tests to preserve explicit review boundaries.",
+  "preference_topic_label": "Runtime Wiring Preferences"
+}

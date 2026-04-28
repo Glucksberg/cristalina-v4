@@ -18,6 +18,10 @@ test("CLI parser recognizes the planned command surface", () => {
     name: "smoke",
     target: "dual-runtime",
   });
+  assert.deepEqual(parseCristalinaCommand(["smoke", "runtime-wiring"]), {
+    name: "smoke",
+    target: "runtime-wiring",
+  });
   assert.deepEqual(parseCristalinaCommand(["install", "openclaw"]), {
     name: "install",
     target: "openclaw",

@@ -63,17 +63,22 @@ What runs today:
 - Initial `cristalina` CLI package with help, init, config, doctor, status, and smoke command boundaries
 - Versioned config writer for store root, identity refs, runtime refs, projection policy, review behavior, and hook metadata paths
 - Runtime-neutral bridge event handler shared by OpenClaw and Hermes events
-- Local OpenClaw installer metadata command
-- Local Hermes installer metadata command using the same bridge contract
+- Local OpenClaw installer metadata command with generated hook descriptor and
+  hook script
+- Local Hermes installer metadata command using the same bridge contract and
+  generated hook shape
 - Session continuity helpers for checkpoint, session-pack, and resume receipt flows
 - Operator commands for projections, reviews, diagnostics, store inspection, and recovery planning
+- Runtime-wiring smoke fixture proving install hooks, fixture events,
+  projection reads, and OpenClaw-to-Hermes session continuity
 
 What's planned:
-- installable `cristalina` CLI and runtime bridge package
-- configuration menu in the style of `openclaw config`
-- one-line OpenClaw and Hermes installers
-- session-pack consumption through the runtime bridge
-- operator commands for status, review, diagnostics, projection refresh, and recovery
+- wiring the generated hook descriptors into real OpenClaw and Hermes config
+  files
+- running the fixture event contract from live OpenClaw and Hermes sessions
+- deciding whether live operation remains hook-driven or grows a daemon
+- production-style operator docs for install, inspect, review, recover, and
+  handoff
 
 ## Quick start
 
@@ -87,9 +92,11 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm smoke:dual-runtime
+pnpm smoke:runtime-wiring
 pnpm cristalina --help
 pnpm cristalina config --init --non-interactive
 pnpm cristalina smoke dual-runtime
+pnpm cristalina smoke runtime-wiring
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
@@ -106,6 +113,12 @@ pnpm fixture:mvp-flow-003   # contradiction detection → resolution → project
 After running a fixture, inspect `examples/mvp-flow-00X/.cristalina-v4/` to see the materialized store layout — every layer, every record, every audit entry.
 
 After running `pnpm smoke:dual-runtime`, inspect `examples/dual-runtime-smoke/.cristalina-v4/smoke-summary.json` for the shared store root, OpenClaw/Hermes projection manifests, stable runtime refs, review action count, and audit/validation log counts.
+
+After running `pnpm smoke:runtime-wiring`, inspect
+`examples/runtime-wiring/generated/runtime-wiring-summary.json` and the
+generated hook descriptors under each generated runtime root. The versioned
+event fixtures in `examples/runtime-wiring/events/` are the current bridge
+contract for the first OpenClaw/Hermes live-session tests.
 
 ## Repository layout
 

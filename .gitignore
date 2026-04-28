@@ -7,3 +7,4 @@ coverage/
 docs/diario-dev/
 .serena/
 examples/dual-runtime-smoke/.cristalina-v4/
+examples/runtime-wiring/generated/

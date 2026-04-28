@@ -17,7 +17,7 @@ export type CristalinaCommand =
     }
   | { name: "doctor"; configPath?: string; storeRoot?: string }
   | { name: "status"; configPath?: string; storeRoot?: string }
-  | { name: "smoke"; target: "dual-runtime" }
+  | { name: "smoke"; target: "dual-runtime" | "runtime-wiring" }
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
@@ -134,11 +134,11 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "smoke") {
-    if (subcommand !== "dual-runtime") {
-      throw new CommandUsageError("smoke requires target dual-runtime");
+    if (subcommand !== "dual-runtime" && subcommand !== "runtime-wiring") {
+      throw new CommandUsageError("smoke requires target dual-runtime or runtime-wiring");
     }
     rejectUnknownOptions(rest, new Set());
-    return { name: "smoke", target: "dual-runtime" };
+    return { name: "smoke", target: subcommand };
   }
 
   if (command === "bridge") {
@@ -281,6 +281,7 @@ export function helpText(): string {
     "  doctor [--config PATH] [--store-root PATH]",
     "  status [--config PATH] [--store-root PATH]",
     "  smoke dual-runtime",
+    "  smoke runtime-wiring",
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",

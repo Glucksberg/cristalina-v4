@@ -19,15 +19,26 @@ export interface RuntimeInstallResult {
   config_path: string;
   store_root: string;
   metadata_path: string;
+  hook_path: string;
+  hook_script_path: string;
   runtime_root: string | null;
   bridge_command: string;
   projection_command: string;
+  session_pack_command: string;
   uninstall_hint: string;
   diagnostics: string[];
 }
 
 function defaultMetadataPath(config: CristalinaConfig, runtime: "openclaw" | "hermes"): string {
   return config.hooks?.[runtime]?.install_metadata_path ?? `.cristalina-v4/runtime-${runtime}.json`;
+}
+
+function defaultHookPath(config: CristalinaConfig, runtime: "openclaw" | "hermes"): string {
+  return config.hooks?.[runtime]?.runtime_hook_path ?? `.cristalina-v4/hooks/${runtime}-cristalina-hook.json`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function runtimeInstanceRef(config: CristalinaConfig, runtime: "openclaw" | "hermes"): string {
@@ -46,6 +57,13 @@ function resolveMetadataPath(input: RuntimeInstallInput, config: CristalinaConfi
   return input.runtimeRoot
     ? resolve(input.runtimeRoot, relativeMetadataPath)
     : resolve(relativeMetadataPath);
+}
+
+function resolveHookPath(input: RuntimeInstallInput, config: CristalinaConfig): string {
+  const relativeHookPath = defaultHookPath(config, input.runtime);
+  return input.runtimeRoot
+    ? resolve(input.runtimeRoot, relativeHookPath)
+    : resolve(relativeHookPath);
 }
 
 async function loadOrCreateConfig(input: RuntimeInstallInput): Promise<{
@@ -86,9 +104,12 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   }
 
   const metadataPath = resolveMetadataPath(input, loaded.config);
+  const hookPath = resolveHookPath(input, loaded.config);
+  const hookScriptPath = resolve(dirname(hookPath), "cristalina-bridge-event.sh");
   const runtimeRef = runtimeInstanceRef(loaded.config, input.runtime);
   const bridgeCommand = `cristalina bridge event --config ${loaded.configPath} --event <event.json>`;
   const projectionCommand = `cristalina projection list --config ${loaded.configPath}`;
+  const sessionPackCommand = `cristalina session-pack latest --runtime ${input.runtime} --config ${loaded.configPath}`;
   const metadata = {
     schema_version: 1,
     runtime: input.runtime,
@@ -97,15 +118,49 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     store_root: storeRoot,
     runtime_root: input.runtimeRoot ?? null,
     runtime_instance_ref: runtimeRef,
+    hook_path: hookPath,
+    hook_script_path: hookScriptPath,
     bridge_command: bridgeCommand,
     projection_command: projectionCommand,
+    session_pack_command: sessionPackCommand,
     event_contract: "cristalina.runtime_bridge_event.v1",
     authority_note: "Installer metadata is operational state and does not grant owner authority.",
     disable_hint: `Remove this metadata file or remove the ${input.runtime} hook that calls cristalina bridge event.`,
   };
+  const hook = {
+    schema_version: 1,
+    runtime: input.runtime,
+    hook_contract: "cristalina.runtime_hook.v1",
+    event_contract: metadata.event_contract,
+    installed_at: metadata.installed_at,
+    config_path: loaded.configPath,
+    store_root: storeRoot,
+    runtime_root: input.runtimeRoot ?? null,
+    runtime_instance_ref: runtimeRef,
+    event_path_env: "CRISTALINA_EVENT_PATH",
+    bridge_command: bridgeCommand,
+    bridge_command_argv: ["cristalina", "bridge", "event", "--config", loaded.configPath, "--event", "$CRISTALINA_EVENT_PATH"],
+    projection_command: projectionCommand,
+    session_pack_command: sessionPackCommand,
+    hook_script_path: hookScriptPath,
+    authority_note: metadata.authority_note,
+  };
+  const hookScript = [
+    "#!/bin/sh",
+    "set -eu",
+    "if [ \"${CRISTALINA_EVENT_PATH:-}\" = \"\" ]; then",
+    `  echo "CRISTALINA_EVENT_PATH is required for ${input.runtime} Cristalina bridge hook" >&2`,
+    "  exit 2",
+    "fi",
+    `exec cristalina bridge event --config ${shellQuote(loaded.configPath)} --event "$CRISTALINA_EVENT_PATH"`,
+    "",
+  ].join("\n");
 
   await mkdir(dirname(metadataPath), { recursive: true });
   await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+  await mkdir(dirname(hookPath), { recursive: true });
+  await writeFile(hookPath, `${JSON.stringify(hook, null, 2)}\n`);
+  await writeFile(hookScriptPath, hookScript, { mode: 0o755 });
 
   return {
     runtime: input.runtime,
@@ -113,9 +168,12 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     config_path: loaded.configPath,
     store_root: storeRoot,
     metadata_path: metadataPath,
+    hook_path: hookPath,
+    hook_script_path: hookScriptPath,
     runtime_root: input.runtimeRoot ?? null,
     bridge_command: bridgeCommand,
     projection_command: projectionCommand,
+    session_pack_command: sessionPackCommand,
     uninstall_hint: metadata.disable_hint,
     diagnostics: loaded.diagnostics,
   };

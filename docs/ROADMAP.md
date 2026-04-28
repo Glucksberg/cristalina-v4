@@ -4,7 +4,8 @@
 **Status:** Active Draft
 **Updated:** 2026-04-28
 **Current posture:** executable memory kernel with thin Hermes and OpenClaw
-boundaries; planning the installable runtime bridge
+boundaries; beginning controlled real-runtime wiring tests through generated
+hook contracts
 
 ---
 
@@ -22,14 +23,9 @@ The build order still remains:
 
 `docs -> types -> schemas -> fixtures -> kernel code -> adapters`
 
-For the next phase, that means:
-
-1. finish this roadmap-level master plan
-2. create an independent detailed plan for each master-plan step
-3. only then execute the steps
-
-No implementation should begin until the planning pass for the relevant step is
-explicit enough to define contracts, tests, and exit criteria.
+For the current phase, that means the already implemented bridge and installer
+surface should be tested against real OpenClaw and Hermes sessions before any
+new memory semantics are added.
 
 ---
 
@@ -71,28 +67,21 @@ product loop.
 
 ---
 
-## 3. Current Blocking Gaps
+## 3. Current Runtime-Wiring Gaps
 
-The main gaps before a seamless OpenClaw/Hermes experience are operational, not
-architectural:
+The main gaps before a seamless OpenClaw/Hermes experience are now integration
+gaps, not kernel gaps:
 
-- no installable public package or `bin` entrypoint
-- no `cristalina` CLI
-- no one-line installer for OpenClaw
-- no one-line installer for Hermes
-- no runtime bridge or daemon translating real runtime events into adapter calls
-- no configuration menu in the style of `openclaw config`
-- no stable runtime config schema for store root, owner, agent, authenticated
-  principal, runtime instance, session, thread, projection policy, and review
-  behavior
-- no shared dual-runtime smoke command proving one OpenClaw session and one
-  Hermes session against the same store
-- session resume objects exist in the core, but runtime projection loaders still
-  focus on bootstrap projections rather than session-pack consumption
-- workspace typecheck currently depends on `packages/core/dist` existing before
-  adapter typecheck runs
-- operator docs are still aimed at developers inspecting store internals rather
-  than at running a local Cristalina installation
+- the generated OpenClaw hook descriptor still needs to be pointed at the real
+  OpenClaw hook/config location
+- the generated Hermes hook descriptor still needs to be pointed at the real
+  Hermes hook/config location
+- fixture event files prove the bridge contract, but live OpenClaw and Hermes
+  sessions still need to emit those events
+- the first live bridge is hook-driven; a daemon is still deferred until a live
+  runtime proves it is needed
+- production-style operator docs still need to cover install, inspect, review,
+  recover, projection refresh, and handoff against real runtimes
 
 ---
 
@@ -108,11 +97,16 @@ curl -fsSL https://.../install-hermes.sh | sh
 After installation:
 
 - Cristalina is available as a local command named `cristalina`
-- each installer can discover or ask for the relevant runtime location
+- each installer can write metadata, a hook descriptor, and a hook script under
+  the relevant runtime location
 - if required configuration is missing, the installer opens `cristalina config`
 - the config menu writes a validated local config
 - OpenClaw and Hermes can write runtime evidence through their adapters
 - OpenClaw and Hermes can load their latest compatible Cristalina projection
+- OpenClaw and Hermes can emit event files matching
+  `cristalina.runtime_bridge_event.v1`
+- generated hook scripts can invoke `cristalina bridge event` with
+  `CRISTALINA_EVENT_PATH`
 - pending reviews and diagnostics are visible without manually browsing the
   store
 - queue actions still require explicit authenticated owner/system authority
@@ -949,19 +943,25 @@ The operational layer must detect:
 
 ## 14. Execution Rule
 
-Planning and execution must stay separate.
+The master-plan implementation pass is complete enough to start controlled
+runtime wiring tests.
 
-For each master-plan step:
+The next implementation phase is:
 
-1. update or confirm the detailed step plan
-2. define contracts and test cases
-3. implement only that step's scoped work
-4. verify with targeted tests and the relevant smoke command
-5. update docs/status before moving to the next step
+**Phase 2. Real Runtime Wiring.**
 
-The next implementation step, after this roadmap is accepted, is:
+Phase 2 should proceed in this order:
 
-**Step 1. Operational Foundation.**
+1. run `pnpm smoke:runtime-wiring` and inspect the generated hook descriptors
+2. map the generated OpenClaw hook descriptor to the real OpenClaw config path
+3. map the generated Hermes hook descriptor to the real Hermes config path
+4. make each runtime emit one event file matching the fixture contract
+5. verify `cristalina bridge event` writes both runtime events into the same
+   store
+6. verify `cristalina projection list/show` returns compatible projections for
+   both runtimes
+7. verify OpenClaw checkpoint -> Hermes session-pack -> Hermes resume receipt
+8. document the final install, inspect, review, recover, and handoff runbook
 
 ---
 

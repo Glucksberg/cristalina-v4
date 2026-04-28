@@ -1,0 +1,22 @@
+{
+  "event_id": "evt_hermes_runtime_wiring_preference_001",
+  "event_type": "conversation_preference_signal",
+  "runtime": "hermes",
+  "occurred_at": "2026-04-28T16:10:00.000Z",
+  "actor_ref": "actor_owner_runtime_wiring_001",
+  "authenticated_principal": {
+    "kind": "owner",
+    "actor_ref": "actor_owner_runtime_wiring_001"
+  },
+  "runtime_instance_ref": "runtime_hermes_runtime_wiring_001",
+  "runtime_session_ref": "session_hermes_runtime_wiring_001",
+  "conversation_thread_ref": "thread_hermes_runtime_wiring_001",
+  "source_ref": "runtime/hermes/session/runtime-wiring/preference-001",
+  "speaker_ref": "actor_owner_runtime_wiring_001",
+  "message_refs": [
+    "msg_hermes_runtime_wiring_preference_001"
+  ],
+  "statement": "The owner prefers Hermes and OpenClaw runtime hooks to share the same Cristalina event contract.",
+  "message": "The owner says Hermes and OpenClaw runtime hooks should share the same Cristalina event contract.",
+  "preference_topic_label": "Runtime Wiring Preferences"
+}

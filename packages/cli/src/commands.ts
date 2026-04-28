@@ -156,7 +156,11 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   }
 
   if (command.name === "smoke") {
-    return runNodeScript(join(REPO_ROOT, "scripts", "smoke-dual-runtime.mjs"));
+    return runNodeScript(join(
+      REPO_ROOT,
+      "scripts",
+      command.target === "dual-runtime" ? "smoke-dual-runtime.mjs" : "smoke-runtime-wiring.mjs",
+    ));
   }
 
   if (command.name === "bridge") {

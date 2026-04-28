@@ -1,6 +1,6 @@
 # Project Status
 
-**Current status:** Executable kernel baseline with thin authenticated Hermes and OpenClaw boundaries; ready for a controlled first live-session bridge
+**Current status:** Executable kernel baseline with thin authenticated Hermes and OpenClaw boundaries; ready for controlled runtime wiring tests through generated hook contracts
 
 What already exists:
 
@@ -37,6 +37,13 @@ What already exists:
   diagnostic, review, projection-refresh, and declared continuity events
 - local OpenClaw installer command and metadata writer
 - local Hermes installer command sharing the OpenClaw metadata contract
+- generated OpenClaw and Hermes hook descriptors plus hook scripts that call
+  `cristalina bridge event` through `CRISTALINA_EVENT_PATH`
+- versioned OpenClaw and Hermes runtime-event fixtures for the shared bridge
+  contract
+- runtime-wiring smoke fixture that installs both runtimes locally, sends
+  OpenClaw and Hermes events through the CLI bridge, validates projection reads,
+  and exercises checkpoint -> session-pack -> resume receipt continuity
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
 - operator inspection commands for projections, reviews, diagnostics, store
@@ -44,8 +51,10 @@ What already exists:
 
 What is next:
 
-- richer runtime-specific hook registration against real OpenClaw/Hermes config
-  files
+- point the generated hook descriptors at real OpenClaw/Hermes config files
+  once the runtime-side hook locations are known
+- run the runtime-wiring smoke against a local OpenClaw session and a local
+  Hermes session instead of the fixture event files
 - richer proposal operations only after the first live loop proves the need
 
 What does not exist yet:
@@ -54,4 +63,7 @@ What does not exist yet:
 - a live-session bridge/daemon that translates real Hermes and OpenClaw events into adapter calls
 - production-style operator docs for start, inspect, review, recover, and handoff
 
-This project is now close to first wiring. The main remaining work is runtime glue and operator ergonomics, not a new memory law.
+This project is now ready for controlled runtime wiring tests. The main
+remaining work is connecting the generated hook contract to the real
+OpenClaw/Hermes hook points and deciding whether the first live bridge should
+stay hook-driven or become a daemon.

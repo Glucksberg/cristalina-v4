@@ -1,0 +1,22 @@
+{
+  "event_id": "evt_hermes_runtime_wiring_diagnostic_001",
+  "event_type": "runtime_diagnostic",
+  "runtime": "hermes",
+  "occurred_at": "2026-04-28T16:20:00.000Z",
+  "actor_ref": "system:hermes-runtime-wiring",
+  "authenticated_principal": {
+    "kind": "system",
+    "actor_ref": "system:hermes-runtime-wiring",
+    "system_scope": "runtime-wiring-smoke"
+  },
+  "runtime_instance_ref": "runtime_hermes_runtime_wiring_001",
+  "runtime_session_ref": "session_hermes_runtime_wiring_001",
+  "conversation_thread_ref": "thread_hermes_runtime_wiring_001",
+  "source_ref": "runtime/hermes/session/runtime-wiring/diagnostic-001",
+  "message_refs": [
+    "msg_hermes_runtime_wiring_diagnostic_001"
+  ],
+  "code": "runtime_wiring_smoke",
+  "severity": "info",
+  "message": "Hermes runtime wiring smoke reached the Cristalina bridge event contract."
+}
