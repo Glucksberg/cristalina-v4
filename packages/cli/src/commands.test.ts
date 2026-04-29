@@ -112,6 +112,82 @@ test("runtime preflight reports concrete hook install commands for selected root
   assert.equal(payload.fixture_contract.event_path_env, "CRISTALINA_EVENT_PATH");
 });
 
+test("runtime hook-map writes an operational mapping for an installed hook", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-hook-map-"));
+  const configPath = join(root, "config.json");
+  const runtimeRoot = join(root, "openclaw-runtime");
+  const targetConfigPath = join(runtimeRoot, "config", "hooks.json");
+  const install = await executeCristalinaCommand({
+    name: "install",
+    target: "openclaw",
+    configPath,
+    nonInteractive: true,
+    runtimeRoot,
+  });
+  assert.equal(install.exitCode, 0);
+
+  const result = await executeCristalinaCommand({
+    name: "runtime",
+    action: "hook-map",
+    runtime: "openclaw",
+    runtimeRoot,
+    targetConfigPath,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    map_path: string;
+    target_config_path: string;
+    runtime_config_patch: {
+      descriptor_path: string;
+      script_path: string;
+      event_path_env: string;
+      invocation: { command: string; env: Record<string, string> };
+      authority_note: string;
+    };
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "mapped");
+  assert.equal(payload.target_config_path, targetConfigPath);
+  assert.match(payload.map_path, /openclaw-cristalina-hook-map\.json$/);
+  assert.match(payload.runtime_config_patch.descriptor_path, /openclaw-cristalina-hook\.json$/);
+  assert.match(payload.runtime_config_patch.script_path, /cristalina-bridge-event\.sh$/);
+  assert.equal(payload.runtime_config_patch.invocation.command, payload.runtime_config_patch.script_path);
+  assert.equal(payload.runtime_config_patch.invocation.env.CRISTALINA_EVENT_PATH, "<runtime-produced-event.json>");
+  assert.match(payload.runtime_config_patch.authority_note, /does not grant owner authority/);
+});
+
+test("runtime hook-map refuses to write a mapping for an invalid descriptor", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-hook-map-invalid-"));
+  const configPath = join(root, "config.json");
+  const runtimeRoot = join(root, "hermes-runtime");
+  const install = await executeCristalinaCommand({
+    name: "install",
+    target: "hermes",
+    configPath,
+    nonInteractive: true,
+    runtimeRoot,
+  });
+  const installed = JSON.parse(install.stdout) as { hook_path: string };
+  await writeFile(installed.hook_path, "{ invalid json\n");
+
+  const result = await executeCristalinaCommand({
+    name: "runtime",
+    action: "hook-map",
+    runtime: "hermes",
+    runtimeRoot,
+    targetConfigPath: join(runtimeRoot, "config", "hooks.json"),
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    mapping_written: boolean;
+    diagnostics: string[];
+  };
+  assert.equal(result.exitCode, 1);
+  assert.equal(payload.status, "blocked");
+  assert.equal(payload.mapping_written, false);
+  assert.ok(payload.diagnostics.some((entry) => entry.includes("not valid JSON")));
+});
+
 test("reviews apply writes to the explicit store-root override", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-review-override-"));
   const storeA = join(root, "store-a");

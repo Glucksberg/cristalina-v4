@@ -19,6 +19,7 @@ export type CristalinaCommand =
   | { name: "status"; configPath?: string; storeRoot?: string }
   | { name: "smoke"; target: "dual-runtime" | "runtime-wiring" }
   | { name: "runtime"; action: "preflight"; configPath?: string; openclawRoot?: string; hermesRoot?: string }
+  | { name: "runtime"; action: "hook-map"; runtime: "openclaw" | "hermes"; runtimeRoot: string; targetConfigPath?: string; mapPath?: string }
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
@@ -143,8 +144,32 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "runtime") {
-    if (subcommand !== "preflight") {
-      throw new CommandUsageError("runtime requires action preflight");
+    if (subcommand !== "preflight" && subcommand !== "hook-map") {
+      throw new CommandUsageError("runtime requires action preflight or hook-map");
+    }
+    if (subcommand === "hook-map") {
+      rejectUnknownOptions(rest, new Map([
+        ["--runtime", "value"],
+        ["--runtime-root", "value"],
+        ["--target-config", "value"],
+        ["--map", "value"],
+      ]));
+      const runtime = readOption(argv, "--runtime");
+      if (runtime !== "openclaw" && runtime !== "hermes") {
+        throw new CommandUsageError("runtime hook-map requires --runtime openclaw or hermes");
+      }
+      const runtimeRoot = readOption(argv, "--runtime-root");
+      if (!runtimeRoot) {
+        throw new CommandUsageError("runtime hook-map requires --runtime-root PATH");
+      }
+      return {
+        name: "runtime",
+        action: "hook-map",
+        runtime,
+        runtimeRoot,
+        targetConfigPath: readOption(argv, "--target-config"),
+        mapPath: readOption(argv, "--map"),
+      };
     }
     rejectUnknownOptions(rest, new Map([
       ["--config", "value"],
@@ -302,6 +327,7 @@ export function helpText(): string {
     "  smoke dual-runtime",
     "  smoke runtime-wiring",
     "  runtime preflight [--config PATH] [--openclaw-root PATH] [--hermes-root PATH]",
+    "  runtime hook-map --runtime openclaw|hermes --runtime-root PATH [--target-config PATH] [--map PATH]",
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",

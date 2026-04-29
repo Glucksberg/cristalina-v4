@@ -99,6 +99,8 @@ pnpm cristalina config --init --non-interactive
 pnpm cristalina smoke dual-runtime
 pnpm cristalina smoke runtime-wiring
 pnpm cristalina runtime preflight --openclaw-root /path/to/openclaw --hermes-root /path/to/hermes --config path/to/config.json
+pnpm cristalina runtime hook-map --runtime openclaw --runtime-root /path/to/openclaw --target-config /path/to/openclaw/config.json
+pnpm cristalina runtime hook-map --runtime hermes --runtime-root /path/to/hermes --target-config /path/to/hermes/config.json
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
@@ -121,6 +123,13 @@ After running `pnpm smoke:runtime-wiring`, inspect
 generated hook descriptors under each generated runtime root. The versioned
 event fixtures in `examples/runtime-wiring/events/` are the current bridge
 contract for the first OpenClaw/Hermes live-session tests.
+
+Use `cristalina runtime hook-map` after install to write a Cristalina-owned
+mapping manifest next to the generated hook descriptor. The map does not edit
+OpenClaw or Hermes config directly; it records the descriptor path, executable
+hook script, target runtime config path, and required `CRISTALINA_EVENT_PATH`
+invocation so the real runtime config can reference the generated hook without
+inventing runtime-specific memory semantics.
 
 ## Repository layout
 

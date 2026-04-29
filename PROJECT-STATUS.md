@@ -47,6 +47,9 @@ What already exists:
 - runtime preflight command that reports config validity, available local
   commands, selected OpenClaw/Hermes roots, generated hook targets, and concrete
   install commands before touching real runtime config
+- runtime hook-map command that turns an installed descriptor and executable
+  hook script into a Cristalina-owned mapping manifest for the real runtime
+  config path
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
 - operator inspection commands for projections, reviews, diagnostics, store
@@ -54,10 +57,10 @@ What already exists:
 
 What is next:
 
-- point the generated hook descriptors at real OpenClaw/Hermes config files
-  once the runtime-side hook locations are known
 - run `cristalina runtime preflight` with the selected OpenClaw/Hermes runtime
   roots before installing hooks into those locations
+- run `cristalina runtime hook-map` with the real OpenClaw/Hermes config files
+  once the runtime-side hook locations are known
 - run the runtime-wiring smoke against a local OpenClaw session and a local
   Hermes session instead of the fixture event files
 - richer proposal operations only after the first live loop proves the need

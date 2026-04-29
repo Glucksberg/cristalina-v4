@@ -955,8 +955,12 @@ Phase 2 should proceed in this order:
 1. run `pnpm smoke:runtime-wiring` and inspect the generated hook descriptors
 2. run `cristalina runtime preflight --openclaw-root <path> --hermes-root
    <path> --config <path>` once the candidate runtime roots are known
-3. map the generated OpenClaw hook descriptor to the real OpenClaw config path
-4. map the generated Hermes hook descriptor to the real Hermes config path
+3. run `cristalina runtime hook-map --runtime openclaw --runtime-root <path>
+   --target-config <path>` to record the generated OpenClaw descriptor,
+   executable hook script, and real OpenClaw config target
+4. run `cristalina runtime hook-map --runtime hermes --runtime-root <path>
+   --target-config <path>` to record the generated Hermes descriptor,
+   executable hook script, and real Hermes config target
 5. make each runtime emit one event file matching the fixture contract
 6. verify `cristalina bridge event` writes both runtime events into the same
    store

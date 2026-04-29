@@ -29,6 +29,8 @@ const STORE_ROOT = join(GENERATED_ROOT, "store");
 const CONFIG_PATH = join(GENERATED_ROOT, "config.json");
 const OPENCLAW_ROOT = join(GENERATED_ROOT, "openclaw-runtime");
 const HERMES_ROOT = join(GENERATED_ROOT, "hermes-runtime");
+const OPENCLAW_TARGET_CONFIG = join(OPENCLAW_ROOT, "config", "hooks.json");
+const HERMES_TARGET_CONFIG = join(HERMES_ROOT, "config", "hooks.json");
 const OPENCLAW_EVENT = join(EXAMPLE_ROOT, "events", "openclaw-preference.json");
 const HERMES_EVENT = join(EXAMPLE_ROOT, "events", "hermes-preference.json");
 const HERMES_DIAGNOSTIC_EVENT = join(EXAMPLE_ROOT, "events", "hermes-diagnostic.json");
@@ -116,6 +118,24 @@ const hermesInstall = parseJsonResult(await command({
   nonInteractive: true,
   runtimeRoot: HERMES_ROOT,
 }));
+const openclawHookMap = parseJsonResult(await command({
+  name: "runtime",
+  action: "hook-map",
+  runtime: "openclaw",
+  runtimeRoot: OPENCLAW_ROOT,
+  targetConfigPath: OPENCLAW_TARGET_CONFIG,
+}));
+const hermesHookMap = parseJsonResult(await command({
+  name: "runtime",
+  action: "hook-map",
+  runtime: "hermes",
+  runtimeRoot: HERMES_ROOT,
+  targetConfigPath: HERMES_TARGET_CONFIG,
+}));
+assert.equal(openclawHookMap.status, "mapped");
+assert.equal(hermesHookMap.status, "mapped");
+assert.equal(openclawHookMap.runtime_config_patch.event_path_env, "CRISTALINA_EVENT_PATH");
+assert.equal(hermesHookMap.runtime_config_patch.event_path_env, "CRISTALINA_EVENT_PATH");
 const openclawHook = JSON.parse(await readFile(openclawInstall.hook_path, "utf8"));
 const hermesHook = JSON.parse(await readFile(hermesInstall.hook_path, "utf8"));
 assert.equal(openclawHook.hook_contract, "cristalina.runtime_hook.v1");
@@ -205,11 +225,15 @@ const summary = {
     openclaw: {
       hook_path: openclawInstall.hook_path,
       hook_script_path: openclawInstall.hook_script_path,
+      hook_map_path: openclawHookMap.map_path,
+      target_config_path: openclawHookMap.target_config_path,
       hook_contract: openclawHook.hook_contract,
     },
     hermes: {
       hook_path: hermesInstall.hook_path,
       hook_script_path: hermesInstall.hook_script_path,
+      hook_map_path: hermesHookMap.map_path,
+      target_config_path: hermesHookMap.target_config_path,
       hook_contract: hermesHook.hook_contract,
     },
   },
