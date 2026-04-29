@@ -28,7 +28,7 @@ import { handleRuntimeBridgeEvent } from "./runtime-events.js";
 import { installRuntime } from "./installers.js";
 import { runRuntimePreflight } from "./runtime-preflight.js";
 import { mapRuntimeHook } from "./runtime-hook-map.js";
-import { checkRuntimeBridgeEventFile, writeRuntimeBridgeEventTemplate } from "./runtime-event-contract.js";
+import { checkRuntimeBridgeEventFile, verifyRuntimeBridgeEventPair, writeRuntimeBridgeEventTemplate } from "./runtime-event-contract.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -205,6 +205,19 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
       });
       return {
         exitCode: result.status === "valid" ? 0 : 1,
+        stdout: `${JSON.stringify(result, null, 2)}\n`,
+        stderr: "",
+      };
+    }
+    if (command.action === "event-verify") {
+      const result = await verifyRuntimeBridgeEventPair({
+        configPath: command.configPath,
+        openclawEventPath: command.openclawEventPath,
+        hermesEventPath: command.hermesEventPath,
+        cwd: process.env.INIT_CWD ?? process.cwd(),
+      });
+      return {
+        exitCode: result.status === "verified" ? 0 : 1,
         stdout: `${JSON.stringify(result, null, 2)}\n`,
         stderr: "",
       };

@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 
 import type { CristalinaConfig } from "./config.js";
 import { loadCristalinaConfig, resolveStoreRoot } from "./config.js";
-import type { RuntimeBridgeEvent } from "./runtime-events.js";
+import { handleRuntimeBridgeEventFile, type RuntimeBridgeEvent, type RuntimeBridgeEventResult } from "./runtime-events.js";
 
 type RuntimeName = "openclaw" | "hermes";
 type TemplateEventType = "message_observed" | "conversation_preference_signal" | "runtime_diagnostic" | "checkpoint_requested";
@@ -23,6 +23,13 @@ export interface RuntimeEventTemplateInput {
 export interface RuntimeEventCheckInput {
   configPath?: string;
   eventPath: string;
+  cwd?: string;
+}
+
+export interface RuntimeEventVerifyInput {
+  configPath?: string;
+  openclawEventPath: string;
+  hermesEventPath: string;
   cwd?: string;
 }
 
@@ -45,6 +52,23 @@ export interface RuntimeEventTemplateReport {
   event_path: string;
   event: RuntimeBridgeEvent;
   validation: RuntimeEventValidationReport;
+}
+
+export interface RuntimeEventVerifyReport {
+  schema_version: 1;
+  status: "verified" | "blocked";
+  event_contract: "cristalina.runtime_bridge_event.v1";
+  config_path: string | null;
+  store_root: string | null;
+  validations: {
+    openclaw: RuntimeEventValidationReport;
+    hermes: RuntimeEventValidationReport;
+  };
+  bridge_results: {
+    openclaw: RuntimeBridgeEventResult | null;
+    hermes: RuntimeBridgeEventResult | null;
+  };
+  diagnostics: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -311,5 +335,97 @@ export async function checkRuntimeBridgeEventFile(input: RuntimeEventCheckInput)
     ...report,
     status: diagnostics.length === 0 && report.status === "valid" ? "valid" : "invalid",
     diagnostics: [...diagnostics, ...report.diagnostics],
+  };
+}
+
+async function readRuntimeEventFile(path: string): Promise<{ parsed: unknown; diagnostics: string[] }> {
+  try {
+    return {
+      parsed: JSON.parse(await readFile(path, "utf8")) as unknown,
+      diagnostics: [],
+    };
+  } catch (error) {
+    return {
+      parsed: null,
+      diagnostics: [`Cannot read runtime bridge event file: ${(error as Error).message}`],
+    };
+  }
+}
+
+function mergeValidationDiagnostics(report: RuntimeEventValidationReport, diagnostics: string[]): RuntimeEventValidationReport {
+  return {
+    ...report,
+    status: diagnostics.length === 0 && report.status === "valid" ? "valid" : "invalid",
+    diagnostics: [...diagnostics, ...report.diagnostics],
+  };
+}
+
+export async function verifyRuntimeBridgeEventPair(input: RuntimeEventVerifyInput): Promise<RuntimeEventVerifyReport> {
+  const cwd = input.cwd ?? process.cwd();
+  const loaded = await loadCristalinaConfig({ configPath: input.configPath, cwd });
+  const configDiagnostics = [...loaded.diagnostics];
+  const storeRoot = resolveStoreRoot(loaded.config, undefined, cwd);
+  const openclawEventPath = resolve(cwd, input.openclawEventPath);
+  const hermesEventPath = resolve(cwd, input.hermesEventPath);
+  const [openclawRead, hermesRead] = await Promise.all([
+    readRuntimeEventFile(openclawEventPath),
+    readRuntimeEventFile(hermesEventPath),
+  ]);
+  const openclawValidation = mergeValidationDiagnostics(
+    validateRuntimeBridgeEventContract(openclawRead.parsed, loaded.config, loaded.path, cwd),
+    [...configDiagnostics, ...openclawRead.diagnostics],
+  );
+  const hermesValidation = mergeValidationDiagnostics(
+    validateRuntimeBridgeEventContract(hermesRead.parsed, loaded.config, loaded.path, cwd),
+    [...configDiagnostics, ...hermesRead.diagnostics],
+  );
+  const diagnostics: string[] = [
+    ...openclawValidation.diagnostics.map((entry) => `openclaw: ${entry}`),
+    ...hermesValidation.diagnostics.map((entry) => `hermes: ${entry}`),
+  ];
+
+  if (openclawValidation.runtime !== "openclaw") {
+    diagnostics.push("openclaw event file must declare runtime openclaw");
+  }
+  if (hermesValidation.runtime !== "hermes") {
+    diagnostics.push("hermes event file must declare runtime hermes");
+  }
+
+  let openclawResult: RuntimeBridgeEventResult | null = null;
+  let hermesResult: RuntimeBridgeEventResult | null = null;
+  if (diagnostics.length === 0 && openclawValidation.status === "valid" && hermesValidation.status === "valid") {
+    try {
+      openclawResult = await handleRuntimeBridgeEventFile(loaded.config, openclawEventPath);
+    } catch (error) {
+      diagnostics.push(`openclaw bridge event failed: ${(error as Error).message}`);
+    }
+    try {
+      hermesResult = await handleRuntimeBridgeEventFile(loaded.config, hermesEventPath);
+    } catch (error) {
+      diagnostics.push(`hermes bridge event failed: ${(error as Error).message}`);
+    }
+    if (openclawResult && openclawResult.record_refs.length === 0) {
+      diagnostics.push("openclaw bridge event produced no durable record refs");
+    }
+    if (hermesResult && hermesResult.record_refs.length === 0) {
+      diagnostics.push("hermes bridge event produced no durable record refs");
+    }
+  }
+
+  return {
+    schema_version: 1,
+    status: diagnostics.length === 0 ? "verified" : "blocked",
+    event_contract: "cristalina.runtime_bridge_event.v1",
+    config_path: loaded.path,
+    store_root: storeRoot,
+    validations: {
+      openclaw: openclawValidation,
+      hermes: hermesValidation,
+    },
+    bridge_results: {
+      openclaw: openclawResult,
+      hermes: hermesResult,
+    },
+    diagnostics,
   };
 }

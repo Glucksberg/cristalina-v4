@@ -53,6 +53,8 @@ What already exists:
 - runtime event-template and event-check commands that generate or validate
   `cristalina.runtime_bridge_event.v1` files before a runtime hook calls the
   bridge
+- runtime event-verify command that validates one OpenClaw event and one Hermes
+  event, sends both through the bridge, and reports the shared store writes
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
 - operator inspection commands for projections, reviews, diagnostics, store

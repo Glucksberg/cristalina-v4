@@ -103,6 +103,7 @@ pnpm cristalina runtime hook-map --runtime openclaw --runtime-root /path/to/open
 pnpm cristalina runtime hook-map --runtime hermes --runtime-root /path/to/hermes --target-config /path/to/hermes/config.json
 pnpm cristalina runtime event-template --runtime openclaw --event-type message_observed --output /tmp/openclaw-event.json --config path/to/config.json
 pnpm cristalina runtime event-check --event /tmp/openclaw-event.json --config path/to/config.json
+pnpm cristalina runtime event-verify --openclaw-event /tmp/openclaw-event.json --hermes-event /tmp/hermes-event.json --config path/to/config.json
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
@@ -137,6 +138,9 @@ Use `cristalina runtime event-template` and `cristalina runtime event-check` to
 generate or validate the event JSON a runtime must write before invoking the
 hook script. The bridge contract remains `cristalina.runtime_bridge_event.v1`;
 template generation is only an operational aid for live wiring tests.
+Use `cristalina runtime event-verify` when both runtime event files are
+available; it validates the OpenClaw and Hermes events and sends both through
+the bridge against the same configured store.
 
 ## Repository layout
 

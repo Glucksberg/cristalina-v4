@@ -964,8 +964,9 @@ Phase 2 should proceed in this order:
 5. use `cristalina runtime event-template` and `cristalina runtime event-check`
    to prove each runtime can produce one event file matching
    `cristalina.runtime_bridge_event.v1`
-6. verify `cristalina bridge event` writes both runtime events into the same
-   store
+6. run `cristalina runtime event-verify --openclaw-event <path>
+   --hermes-event <path> --config <path>` to verify `cristalina bridge event`
+   writes both runtime events into the same store
 7. verify `cristalina projection list/show` returns compatible projections for
    both runtimes
 8. verify OpenClaw checkpoint -> Hermes session-pack -> Hermes resume receipt

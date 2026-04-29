@@ -170,15 +170,23 @@ assert.equal(parseJsonResult(await command({
   configPath: CONFIG_PATH,
   eventPath: HERMES_GENERATED_EVENT,
 })).status, "valid");
+const generatedEventVerify = parseJsonResult(await command({
+  name: "runtime",
+  action: "event-verify",
+  configPath: CONFIG_PATH,
+  openclawEventPath: OPENCLAW_GENERATED_EVENT,
+  hermesEventPath: HERMES_GENERATED_EVENT,
+}));
+assert.equal(generatedEventVerify.status, "verified");
+assert.equal(generatedEventVerify.store_root, STORE_ROOT);
+assert.equal(generatedEventVerify.bridge_results.openclaw.status, "applied");
+assert.equal(generatedEventVerify.bridge_results.hermes.status, "diagnostic_recorded");
 const openclawHook = JSON.parse(await readFile(openclawInstall.hook_path, "utf8"));
 const hermesHook = JSON.parse(await readFile(hermesInstall.hook_path, "utf8"));
 assert.equal(openclawHook.hook_contract, "cristalina.runtime_hook.v1");
 assert.equal(hermesHook.hook_contract, "cristalina.runtime_hook.v1");
 assert.match(await readFile(openclawInstall.hook_script_path, "utf8"), /bridge event/);
 assert.match(await readFile(hermesInstall.hook_script_path, "utf8"), /bridge event/);
-
-const openclawObserved = await runHook(openclawInstall.hook_script_path, OPENCLAW_GENERATED_EVENT);
-assert.equal(openclawObserved.status, "applied");
 
 const openclawWrite = await runHook(openclawInstall.hook_script_path, OPENCLAW_EVENT);
 assert.equal(openclawWrite.status, "deferred");
@@ -196,9 +204,6 @@ assert.equal(reviewApply.status, "applied");
 
 const hermesWrite = await runHook(hermesInstall.hook_script_path, HERMES_EVENT);
 assert.equal(hermesWrite.status, "applied");
-
-const hermesDiagnostic = await runHook(hermesInstall.hook_script_path, HERMES_GENERATED_EVENT);
-assert.equal(hermesDiagnostic.status, "diagnostic_recorded");
 
 const projectionList = parseJsonResult(await command({
   name: "projection",
@@ -279,6 +284,11 @@ const summary = {
     hermes_preference: HERMES_EVENT,
     openclaw_generated: OPENCLAW_GENERATED_EVENT,
     hermes_generated: HERMES_GENERATED_EVENT,
+  },
+  bridge_event_verify: {
+    status: generatedEventVerify.status,
+    openclaw_status: generatedEventVerify.bridge_results.openclaw.status,
+    hermes_status: generatedEventVerify.bridge_results.hermes.status,
   },
   projections: {
     openclaw: openclawProjection.manifest.id,

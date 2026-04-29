@@ -288,6 +288,74 @@ test("runtime event-check rejects events with runtime identity drift", async () 
   assert.ok(payload.diagnostics.some((entry) => entry.includes("runtime_instance_ref")));
 });
 
+test("runtime event-verify writes OpenClaw and Hermes events into one store", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-event-verify-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const openclawEventPath = join(root, "openclaw-message.json");
+  const hermesEventPath = join(root, "hermes-diagnostic.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_event_verify_001",
+      agentIdentityRef: "actor_agent_cli_event_verify_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_event_verify_001",
+      hermesRuntimeRef: "runtime_hermes_cli_event_verify_001",
+    }), null, 2)}\n`,
+  );
+  await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-template",
+    configPath,
+    runtime: "openclaw",
+    eventType: "message_observed",
+    outputPath: openclawEventPath,
+  });
+  await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-template",
+    configPath,
+    runtime: "hermes",
+    eventType: "runtime_diagnostic",
+    outputPath: hermesEventPath,
+  });
+
+  const result = await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-verify",
+    configPath,
+    openclawEventPath,
+    hermesEventPath,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    store_root: string;
+    validations: {
+      openclaw: { status: string; runtime: string };
+      hermes: { status: string; runtime: string };
+    };
+    bridge_results: {
+      openclaw: { status: string; record_refs: string[] };
+      hermes: { status: string; record_refs: string[] };
+    };
+    diagnostics: string[];
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "verified");
+  assert.equal(payload.store_root, storeRoot);
+  assert.equal(payload.validations.openclaw.status, "valid");
+  assert.equal(payload.validations.openclaw.runtime, "openclaw");
+  assert.equal(payload.validations.hermes.status, "valid");
+  assert.equal(payload.validations.hermes.runtime, "hermes");
+  assert.equal(payload.bridge_results.openclaw.status, "applied");
+  assert.equal(payload.bridge_results.hermes.status, "diagnostic_recorded");
+  assert.ok(payload.bridge_results.openclaw.record_refs.length > 0);
+  assert.ok(payload.bridge_results.hermes.record_refs.length > 0);
+  assert.deepEqual(payload.diagnostics, []);
+});
+
 test("reviews apply writes to the explicit store-root override", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-review-override-"));
   const storeA = join(root, "store-a");

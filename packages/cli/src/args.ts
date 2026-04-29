@@ -31,6 +31,7 @@ export type CristalinaCommand =
       message?: string;
     }
   | { name: "runtime"; action: "event-check"; configPath?: string; eventPath: string }
+  | { name: "runtime"; action: "event-verify"; configPath?: string; openclawEventPath: string; hermesEventPath: string }
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
@@ -155,8 +156,8 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "runtime") {
-    if (subcommand !== "preflight" && subcommand !== "hook-map" && subcommand !== "event-template" && subcommand !== "event-check") {
-      throw new CommandUsageError("runtime requires action preflight, hook-map, event-template, or event-check");
+    if (subcommand !== "preflight" && subcommand !== "hook-map" && subcommand !== "event-template" && subcommand !== "event-check" && subcommand !== "event-verify") {
+      throw new CommandUsageError("runtime requires action preflight, hook-map, event-template, event-check, or event-verify");
     }
     if (subcommand === "hook-map") {
       rejectUnknownOptions(rest, new Map([
@@ -233,6 +234,25 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
         action: "event-check",
         configPath: readOption(argv, "--config"),
         eventPath,
+      };
+    }
+    if (subcommand === "event-verify") {
+      rejectUnknownOptions(rest, new Map([
+        ["--config", "value"],
+        ["--openclaw-event", "value"],
+        ["--hermes-event", "value"],
+      ]));
+      const openclawEventPath = readOption(argv, "--openclaw-event");
+      const hermesEventPath = readOption(argv, "--hermes-event");
+      if (!openclawEventPath || !hermesEventPath) {
+        throw new CommandUsageError("runtime event-verify requires --openclaw-event PATH and --hermes-event PATH");
+      }
+      return {
+        name: "runtime",
+        action: "event-verify",
+        configPath: readOption(argv, "--config"),
+        openclawEventPath,
+        hermesEventPath,
       };
     }
     rejectUnknownOptions(rest, new Map([
@@ -394,6 +414,7 @@ export function helpText(): string {
     "  runtime hook-map --runtime openclaw|hermes --runtime-root PATH [--target-config PATH] [--map PATH]",
     "  runtime event-template --runtime openclaw|hermes --event-type TYPE --output PATH [--config PATH]",
     "  runtime event-check --event PATH [--config PATH]",
+    "  runtime event-verify --openclaw-event PATH --hermes-event PATH [--config PATH]",
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",
