@@ -212,6 +212,28 @@ const projectionList = parseJsonResult(await command({
 }));
 assert.ok(projectionList.projections.openclaw.length > 0);
 assert.ok(projectionList.projections.hermes.length > 0);
+const projectionVerify = parseJsonResult(await command({
+  name: "projection",
+  action: "verify",
+  configPath: CONFIG_PATH,
+}));
+assert.equal(projectionVerify.status, "verified");
+assert.equal(projectionVerify.runtimes.openclaw.status, "compatible");
+assert.equal(projectionVerify.runtimes.hermes.status, "compatible");
+const openclawShow = parseJsonResult(await command({
+  name: "projection",
+  action: "show",
+  configPath: CONFIG_PATH,
+  manifestId: projectionVerify.runtimes.openclaw.summary.manifest_id,
+}));
+const hermesShow = parseJsonResult(await command({
+  name: "projection",
+  action: "show",
+  configPath: CONFIG_PATH,
+  manifestId: projectionVerify.runtimes.hermes.summary.manifest_id,
+}));
+assert.equal(openclawShow.manifest.adapter, "openclaw");
+assert.equal(hermesShow.manifest.adapter, "hermes");
 
 const openclawProjection = await loadLatestOpenClawProjectionRuntimeView(STORE_ROOT, {
   consistency_requirement: "allow_mixed_state",
@@ -293,6 +315,7 @@ const summary = {
   projections: {
     openclaw: openclawProjection.manifest.id,
     hermes: hermesProjection.manifest.id,
+    verify_status: projectionVerify.status,
   },
   session_continuity: {
     openclaw_checkpoint_ref: openclawCheckpointRef,

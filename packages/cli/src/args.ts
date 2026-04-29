@@ -36,7 +36,7 @@ export type CristalinaCommand =
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
-  | { name: "projection"; action: "list" | "show" | "refresh"; configPath?: string; storeRoot?: string; manifestId?: string }
+  | { name: "projection"; action: "list" | "show" | "refresh" | "verify"; configPath?: string; storeRoot?: string; manifestId?: string }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string }
   | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
   | { name: "store"; action: "inspect" | "recover"; configPath?: string; storeRoot?: string }
@@ -319,8 +319,8 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "projection") {
-    if (subcommand !== "list" && subcommand !== "show" && subcommand !== "refresh") {
-      throw new CommandUsageError("projection requires action list, show, or refresh");
+    if (subcommand !== "list" && subcommand !== "show" && subcommand !== "refresh" && subcommand !== "verify") {
+      throw new CommandUsageError("projection requires action list, show, refresh, or verify");
     }
     rejectUnknownOptions(rest, new Map([
       ["--config", "value"],
@@ -425,6 +425,7 @@ export function helpText(): string {
     "  projection list [--config PATH] [--store-root PATH]",
     "  projection show --manifest ID [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",
+    "  projection verify [--config PATH] [--store-root PATH]",
     "  reviews list [--config PATH] [--store-root PATH]",
     "  reviews apply --runtime openclaw|hermes --queue-id ID [--config PATH] [--store-root PATH]",
     "  diagnostics list [--config PATH] [--store-root PATH]",

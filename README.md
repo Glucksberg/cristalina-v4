@@ -105,6 +105,7 @@ pnpm cristalina runtime event-template --runtime openclaw --event-type message_o
 pnpm cristalina runtime event-check --event /tmp/openclaw-event.json --config path/to/config.json
 pnpm cristalina runtime event-verify --openclaw-event /tmp/openclaw-event.json --hermes-event /tmp/hermes-event.json --config path/to/config.json
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
+pnpm cristalina projection verify --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
 pnpm cristalina checkpoint create --runtime openclaw --config path/to/config.json
@@ -141,6 +142,9 @@ template generation is only an operational aid for live wiring tests.
 Use `cristalina runtime event-verify` when both runtime event files are
 available; it validates the OpenClaw and Hermes events and sends both through
 the bridge against the same configured store.
+Use `cristalina projection verify` after event ingestion to prove that
+`projection list` and `projection show` can load compatible runtime bootstrap
+manifests for both OpenClaw and Hermes from that same store.
 
 ## Repository layout
 

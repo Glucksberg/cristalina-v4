@@ -356,6 +356,82 @@ test("runtime event-verify writes OpenClaw and Hermes events into one store", as
   assert.deepEqual(payload.diagnostics, []);
 });
 
+test("projection verify loads compatible OpenClaw and Hermes runtime manifests", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-projection-verify-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const openclawEventPath = join(root, "openclaw-preference.json");
+  const hermesEventPath = join(root, "hermes-preference.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_projection_verify_001",
+      agentIdentityRef: "actor_agent_cli_projection_verify_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_projection_verify_001",
+      hermesRuntimeRef: "runtime_hermes_cli_projection_verify_001",
+    }), null, 2)}\n`,
+  );
+  await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-template",
+    configPath,
+    runtime: "openclaw",
+    eventType: "conversation_preference_signal",
+    outputPath: openclawEventPath,
+  });
+  await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-template",
+    configPath,
+    runtime: "hermes",
+    eventType: "conversation_preference_signal",
+    outputPath: hermesEventPath,
+  });
+  const bridge = await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-verify",
+    configPath,
+    openclawEventPath,
+    hermesEventPath,
+  });
+  assert.equal(bridge.exitCode, 0);
+
+  const result = await executeCristalinaCommand({
+    name: "projection",
+    action: "verify",
+    configPath,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    runtimes: {
+      openclaw: {
+        status: string;
+        manifest: { adapter: string; projection_profile: string; audience: string; runtime_instance_ref: string };
+      };
+      hermes: {
+        status: string;
+        manifest: { adapter: string; projection_profile: string; audience: string; runtime_instance_ref: string };
+      };
+    };
+    diagnostics: string[];
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "verified");
+  assert.equal(payload.runtimes.openclaw.status, "compatible");
+  assert.equal(payload.runtimes.openclaw.manifest.adapter, "openclaw");
+  assert.equal(payload.runtimes.openclaw.manifest.projection_profile, "bootstrap");
+  assert.equal(payload.runtimes.openclaw.manifest.audience, "runtime");
+  assert.equal(payload.runtimes.openclaw.manifest.runtime_instance_ref, "runtime_openclaw_cli_projection_verify_001");
+  assert.equal(payload.runtimes.hermes.status, "compatible");
+  assert.equal(payload.runtimes.hermes.manifest.adapter, "hermes");
+  assert.equal(payload.runtimes.hermes.manifest.projection_profile, "bootstrap");
+  assert.equal(payload.runtimes.hermes.manifest.audience, "runtime");
+  assert.equal(payload.runtimes.hermes.manifest.runtime_instance_ref, "runtime_hermes_cli_projection_verify_001");
+  assert.deepEqual(payload.diagnostics, []);
+});
+
 test("reviews apply writes to the explicit store-root override", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-review-override-"));
   const storeA = join(root, "store-a");

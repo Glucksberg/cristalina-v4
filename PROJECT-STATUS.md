@@ -55,6 +55,9 @@ What already exists:
   bridge
 - runtime event-verify command that validates one OpenClaw event and one Hermes
   event, sends both through the bridge, and reports the shared store writes
+- projection verify command that proves `projection list` and manifest loading
+  can see compatible OpenClaw and Hermes runtime bootstrap projections from the
+  same store
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
 - operator inspection commands for projections, reviews, diagnostics, store

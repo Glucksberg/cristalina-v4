@@ -29,6 +29,7 @@ import { installRuntime } from "./installers.js";
 import { runRuntimePreflight } from "./runtime-preflight.js";
 import { mapRuntimeHook } from "./runtime-hook-map.js";
 import { checkRuntimeBridgeEventFile, verifyRuntimeBridgeEventPair, writeRuntimeBridgeEventTemplate } from "./runtime-event-contract.js";
+import { verifyRuntimeProjections } from "./projection-verify.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -321,6 +322,17 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   }
 
   if (command.name === "projection") {
+    if (command.action === "verify") {
+      const result = await verifyRuntimeProjections({
+        configPath: command.configPath,
+        storeRoot: command.storeRoot,
+      });
+      return {
+        exitCode: result.status === "verified" ? 0 : 1,
+        stdout: `${JSON.stringify(result, null, 2)}\n`,
+        stderr: "",
+      };
+    }
     const status = await loadStatus(command);
     if (command.action === "show") {
       const storeRoot = status.store_root;
