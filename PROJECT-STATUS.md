@@ -58,6 +58,8 @@ What already exists:
 - projection verify command that proves `projection list` and manifest loading
   can see compatible OpenClaw and Hermes runtime bootstrap projections from the
   same store
+- session-pack verify-handoff command that proves OpenClaw checkpoint -> Hermes
+  session-pack manifest -> Hermes resume receipt continuity
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
 - operator inspection commands for projections, reviews, diagnostics, store

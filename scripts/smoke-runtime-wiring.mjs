@@ -244,36 +244,22 @@ const hermesProjection = await loadLatestHermesProjectionRuntimeView(STORE_ROOT,
 assert.equal(openclawProjection.manifest.adapter, "openclaw");
 assert.equal(hermesProjection.manifest.adapter, "hermes");
 
-const openclawCheckpoint = parseJsonResult(await command({
-  name: "checkpoint",
-  action: "create",
-  configPath: CONFIG_PATH,
-  runtime: "openclaw",
-}));
-const openclawCheckpointRef = openclawCheckpoint.record_refs[0];
-assert.ok(openclawCheckpointRef);
-
-const hermesSessionPack = parseJsonResult(await command({
+const sessionHandoff = parseJsonResult(await command({
   name: "session-pack",
-  action: "compile",
+  action: "verify-handoff",
   configPath: CONFIG_PATH,
-  runtime: "hermes",
-  checkpointId: openclawCheckpointRef,
 }));
-assert.ok(hermesSessionPack.manifest);
-
-const consumed = parseJsonResult(await command({
-  name: "session-pack",
-  action: "consume",
-  configPath: CONFIG_PATH,
-  runtime: "hermes",
-  checkpointId: openclawCheckpointRef,
-}));
-assert.equal(consumed.receipt.receipt_status, "consumed");
+assert.equal(sessionHandoff.status, "verified");
+assert.equal(sessionHandoff.source_runtime, "openclaw");
+assert.equal(sessionHandoff.target_runtime, "hermes");
+assert.equal(sessionHandoff.session_pack_manifest.adapter, "hermes");
+assert.equal(sessionHandoff.session_pack_manifest.source_checkpoint_ref, sessionHandoff.checkpoint_ref);
+assert.equal(sessionHandoff.resume_receipt.receipt_status, "consumed");
+assert.equal(sessionHandoff.resume_receipt.checkpoint_ref, sessionHandoff.checkpoint_ref);
 
 const latestHermesPack = await loadLatestSessionPackManifest(STORE_ROOT, "hermes");
-assert.equal(latestHermesPack?.id, hermesSessionPack.manifest);
-assert.equal(latestHermesPack?.source_checkpoint_ref, openclawCheckpointRef);
+assert.equal(latestHermesPack?.id, sessionHandoff.session_pack_manifest.id);
+assert.equal(latestHermesPack?.source_checkpoint_ref, sessionHandoff.checkpoint_ref);
 
 const diagnostics = await listStoreDiagnostics(STORE_ROOT);
 const manifests = await listStoreProjectionManifests(STORE_ROOT);
@@ -318,9 +304,10 @@ const summary = {
     verify_status: projectionVerify.status,
   },
   session_continuity: {
-    openclaw_checkpoint_ref: openclawCheckpointRef,
-    hermes_session_pack_manifest_ref: hermesSessionPack.manifest,
-    hermes_resume_receipt_ref: consumed.receipt.id,
+    verify_status: sessionHandoff.status,
+    openclaw_checkpoint_ref: sessionHandoff.checkpoint_ref,
+    hermes_session_pack_manifest_ref: sessionHandoff.session_pack_manifest.id,
+    hermes_resume_receipt_ref: sessionHandoff.resume_receipt.id,
   },
   counts: {
     projection_manifest_count: manifests.length,

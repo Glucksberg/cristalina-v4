@@ -30,6 +30,7 @@ import { runRuntimePreflight } from "./runtime-preflight.js";
 import { mapRuntimeHook } from "./runtime-hook-map.js";
 import { checkRuntimeBridgeEventFile, verifyRuntimeBridgeEventPair, writeRuntimeBridgeEventTemplate } from "./runtime-event-contract.js";
 import { verifyRuntimeProjections } from "./projection-verify.js";
+import { verifyOpenClawToHermesHandoff } from "./session-handoff-verify.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -283,6 +284,17 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   }
 
   if (command.name === "session-pack") {
+    if (command.action === "verify-handoff") {
+      const result = await verifyOpenClawToHermesHandoff({
+        configPath: command.configPath,
+        checkpointId: command.checkpointId,
+      });
+      return {
+        exitCode: result.status === "verified" ? 0 : 1,
+        stdout: `${JSON.stringify(result, null, 2)}\n`,
+        stderr: "",
+      };
+    }
     const { config, storeRoot } = await loadRequiredConfig(command.configPath);
     const principal = commandPrincipal(config);
     if (command.action === "compile") {

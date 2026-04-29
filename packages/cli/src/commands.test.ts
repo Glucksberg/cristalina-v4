@@ -615,3 +615,67 @@ test("session-pack compile preserves distinct packs for explicit checkpoint ids"
     [openclawCheckpointRef, hermesCheckpointRef].sort(),
   );
 });
+
+test("session-pack verify-handoff proves OpenClaw checkpoint to Hermes resume receipt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-session-handoff-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_session_handoff_001",
+      agentIdentityRef: "actor_agent_cli_session_handoff_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_session_handoff_001",
+      hermesRuntimeRef: "runtime_hermes_cli_session_handoff_001",
+    }), null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "session-pack",
+    action: "verify-handoff",
+    configPath,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    source_runtime: string;
+    target_runtime: string;
+    checkpoint_ref: string;
+    session_pack_manifest: {
+      id: string;
+      adapter: string;
+      projection_profile: string;
+      snapshot_strategy: string;
+      source_checkpoint_ref: string;
+      runtime_instance_ref: string;
+      artifact_refs: string[];
+    };
+    resume_receipt: {
+      receipt_status: string;
+      adapter: string;
+      projection_manifest_ref: string;
+      checkpoint_ref: string;
+      runtime_instance_ref: string;
+      projection_artifact_refs: string[];
+    };
+    diagnostics: string[];
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "verified");
+  assert.equal(payload.source_runtime, "openclaw");
+  assert.equal(payload.target_runtime, "hermes");
+  assert.equal(payload.session_pack_manifest.adapter, "hermes");
+  assert.equal(payload.session_pack_manifest.projection_profile, "session_resume_v2");
+  assert.equal(payload.session_pack_manifest.snapshot_strategy, "checkpoint_consistent");
+  assert.equal(payload.session_pack_manifest.source_checkpoint_ref, payload.checkpoint_ref);
+  assert.equal(payload.session_pack_manifest.runtime_instance_ref, "runtime_openclaw_cli_session_handoff_001");
+  assert.ok(payload.session_pack_manifest.artifact_refs.length > 0);
+  assert.equal(payload.resume_receipt.receipt_status, "consumed");
+  assert.equal(payload.resume_receipt.adapter, "hermes");
+  assert.equal(payload.resume_receipt.projection_manifest_ref, payload.session_pack_manifest.id);
+  assert.equal(payload.resume_receipt.checkpoint_ref, payload.checkpoint_ref);
+  assert.equal(payload.resume_receipt.runtime_instance_ref, "runtime_openclaw_cli_session_handoff_001");
+  assert.ok(payload.resume_receipt.projection_artifact_refs.length > 0);
+  assert.deepEqual(payload.diagnostics, []);
+});

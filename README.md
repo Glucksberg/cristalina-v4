@@ -106,6 +106,7 @@ pnpm cristalina runtime event-check --event /tmp/openclaw-event.json --config pa
 pnpm cristalina runtime event-verify --openclaw-event /tmp/openclaw-event.json --hermes-event /tmp/hermes-event.json --config path/to/config.json
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 pnpm cristalina projection verify --config path/to/config.json
+pnpm cristalina session-pack verify-handoff --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
 pnpm cristalina checkpoint create --runtime openclaw --config path/to/config.json
@@ -145,6 +146,8 @@ the bridge against the same configured store.
 Use `cristalina projection verify` after event ingestion to prove that
 `projection list` and `projection show` can load compatible runtime bootstrap
 manifests for both OpenClaw and Hermes from that same store.
+Use `cristalina session-pack verify-handoff` to prove the continuity path:
+OpenClaw checkpoint, Hermes session-pack manifest, and Hermes resume receipt.
 
 ## Repository layout
 

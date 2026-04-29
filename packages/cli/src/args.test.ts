@@ -88,6 +88,12 @@ test("CLI parser recognizes the planned command surface", () => {
     runtime: "hermes",
     checkpointId: "wmc_001",
   });
+  assert.deepEqual(parseCristalinaCommand(["session-pack", "verify-handoff", "--config", "config.json", "--checkpoint-id", "wmc_001"]), {
+    name: "session-pack",
+    action: "verify-handoff",
+    configPath: "config.json",
+    checkpointId: "wmc_001",
+  });
   assert.deepEqual(parseCristalinaCommand(["diagnostics", "list"]), {
     name: "diagnostics",
     action: "list",

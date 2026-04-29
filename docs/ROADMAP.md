@@ -970,7 +970,8 @@ Phase 2 should proceed in this order:
 7. run `cristalina projection verify --config <path>` to verify
    `cristalina projection list/show` returns compatible runtime bootstrap
    projections for both runtimes
-8. verify OpenClaw checkpoint -> Hermes session-pack -> Hermes resume receipt
+8. run `cristalina session-pack verify-handoff --config <path>` to verify
+   OpenClaw checkpoint -> Hermes session-pack -> Hermes resume receipt
 9. document the final install, inspect, review, recover, and handoff runbook
 
 ---
