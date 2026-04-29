@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -168,6 +168,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   await mkdir(dirname(hookPath), { recursive: true });
   await writeFile(hookPath, `${JSON.stringify(hook, null, 2)}\n`);
   await writeFile(hookScriptPath, hookScript, { mode: 0o755 });
+  await chmod(hookScriptPath, 0o755);
 
   return {
     runtime: input.runtime,

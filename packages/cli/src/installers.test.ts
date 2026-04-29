@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import { hermesInstallOneLiner, installRuntime, openClawInstallOneLiner } from "./installers.js";
@@ -117,4 +117,31 @@ test("installer defaults metadata under runtimeRoot when metadata path is not ex
   };
   assert.equal(metadata.runtime_root, runtimeRoot);
   assert.equal(metadata.hook_script_path, result.hook_script_path);
+});
+
+test("installer repairs executable mode when hook script already exists", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-hook-mode-repair-"));
+  const runtimeRoot = join(root, "openclaw-runtime");
+  const hookScriptPath = join(runtimeRoot, ".cristalina-v4", "hooks", "cristalina-bridge-event.sh");
+  const configPath = join(root, "config.json");
+
+  await installRuntime({
+    runtime: "openclaw",
+    configPath,
+    runtimeRoot,
+    nonInteractive: true,
+  });
+  await mkdir(dirname(hookScriptPath), { recursive: true });
+  await writeFile(hookScriptPath, "#!/bin/sh\nexit 99\n", { mode: 0o644 });
+  await chmod(hookScriptPath, 0o644);
+
+  const result = await installRuntime({
+    runtime: "openclaw",
+    configPath,
+    runtimeRoot,
+    nonInteractive: true,
+  });
+  const mode = (await stat(result.hook_script_path)).mode & 0o777;
+  assert.equal(mode, 0o755);
+  assert.match(await readFile(result.hook_script_path, "utf8"), /bridge event/);
 });
