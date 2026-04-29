@@ -68,6 +68,50 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
   assert.deepEqual(payload.projections.hermes, []);
 });
 
+test("runtime preflight reports concrete hook install commands for selected roots", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-preflight-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const openclawRoot = join(root, "openclaw-runtime");
+  const hermesRoot = join(root, "hermes-runtime");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await mkdir(openclawRoot, { recursive: true });
+  await mkdir(hermesRoot, { recursive: true });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_runtime_preflight_001",
+      agentIdentityRef: "actor_agent_cli_runtime_preflight_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_runtime_preflight_001",
+      hermesRuntimeRef: "runtime_hermes_cli_runtime_preflight_001",
+    }), null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "runtime",
+    action: "preflight",
+    configPath,
+    openclawRoot,
+    hermesRoot,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    runtime_roots: {
+      openclaw: { hook_descriptor_path: string; install_command: string };
+      hermes: { hook_script_path: string; install_command: string };
+    };
+    fixture_contract: { event_path_env: string };
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "ready_for_hook_install");
+  assert.match(payload.runtime_roots.openclaw.hook_descriptor_path, /openclaw-cristalina-hook\.json$/);
+  assert.match(payload.runtime_roots.openclaw.install_command, /install openclaw/);
+  assert.match(payload.runtime_roots.hermes.hook_script_path, /cristalina-bridge-event\.sh$/);
+  assert.match(payload.runtime_roots.hermes.install_command, /install hermes/);
+  assert.equal(payload.fixture_contract.event_path_env, "CRISTALINA_EVENT_PATH");
+});
+
 test("reviews apply writes to the explicit store-root override", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-review-override-"));
   const storeA = join(root, "store-a");

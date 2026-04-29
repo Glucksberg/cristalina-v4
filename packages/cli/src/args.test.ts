@@ -22,6 +22,13 @@ test("CLI parser recognizes the planned command surface", () => {
     name: "smoke",
     target: "runtime-wiring",
   });
+  assert.deepEqual(parseCristalinaCommand(["runtime", "preflight", "--config", "config.json", "--openclaw-root", "openclaw", "--hermes-root", "hermes"]), {
+    name: "runtime",
+    action: "preflight",
+    configPath: "config.json",
+    openclawRoot: "openclaw",
+    hermesRoot: "hermes",
+  });
   assert.deepEqual(parseCristalinaCommand(["install", "openclaw"]), {
     name: "install",
     target: "openclaw",

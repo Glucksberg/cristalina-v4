@@ -26,6 +26,7 @@ import {
 import { handleRuntimeBridgeEventFile } from "./runtime-events.js";
 import { handleRuntimeBridgeEvent } from "./runtime-events.js";
 import { installRuntime } from "./installers.js";
+import { runRuntimePreflight } from "./runtime-preflight.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -161,6 +162,20 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
       "scripts",
       command.target === "dual-runtime" ? "smoke-dual-runtime.mjs" : "smoke-runtime-wiring.mjs",
     ));
+  }
+
+  if (command.name === "runtime") {
+    const result = await runRuntimePreflight({
+      configPath: command.configPath,
+      openclawRoot: command.openclawRoot,
+      hermesRoot: command.hermesRoot,
+      cwd: process.env.INIT_CWD ?? process.cwd(),
+    });
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+    };
   }
 
   if (command.name === "bridge") {

@@ -93,10 +93,12 @@ pnpm test
 pnpm build
 pnpm smoke:dual-runtime
 pnpm smoke:runtime-wiring
+pnpm preflight:runtime-wiring
 pnpm cristalina --help
 pnpm cristalina config --init --non-interactive
 pnpm cristalina smoke dual-runtime
 pnpm cristalina smoke runtime-wiring
+pnpm cristalina runtime preflight --openclaw-root /path/to/openclaw --hermes-root /path/to/hermes --config path/to/config.json
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive

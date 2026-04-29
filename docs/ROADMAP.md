@@ -953,15 +953,17 @@ The next implementation phase is:
 Phase 2 should proceed in this order:
 
 1. run `pnpm smoke:runtime-wiring` and inspect the generated hook descriptors
-2. map the generated OpenClaw hook descriptor to the real OpenClaw config path
-3. map the generated Hermes hook descriptor to the real Hermes config path
-4. make each runtime emit one event file matching the fixture contract
-5. verify `cristalina bridge event` writes both runtime events into the same
+2. run `cristalina runtime preflight --openclaw-root <path> --hermes-root
+   <path> --config <path>` once the candidate runtime roots are known
+3. map the generated OpenClaw hook descriptor to the real OpenClaw config path
+4. map the generated Hermes hook descriptor to the real Hermes config path
+5. make each runtime emit one event file matching the fixture contract
+6. verify `cristalina bridge event` writes both runtime events into the same
    store
-6. verify `cristalina projection list/show` returns compatible projections for
+7. verify `cristalina projection list/show` returns compatible projections for
    both runtimes
-7. verify OpenClaw checkpoint -> Hermes session-pack -> Hermes resume receipt
-8. document the final install, inspect, review, recover, and handoff runbook
+8. verify OpenClaw checkpoint -> Hermes session-pack -> Hermes resume receipt
+9. document the final install, inspect, review, recover, and handoff runbook
 
 ---
 

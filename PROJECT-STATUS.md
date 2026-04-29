@@ -44,6 +44,9 @@ What already exists:
 - runtime-wiring smoke fixture that installs both runtimes locally, sends
   OpenClaw and Hermes events through the CLI bridge, validates projection reads,
   and exercises checkpoint -> session-pack -> resume receipt continuity
+- runtime preflight command that reports config validity, available local
+  commands, selected OpenClaw/Hermes roots, generated hook targets, and concrete
+  install commands before touching real runtime config
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
 - operator inspection commands for projections, reviews, diagnostics, store
@@ -53,6 +56,8 @@ What is next:
 
 - point the generated hook descriptors at real OpenClaw/Hermes config files
   once the runtime-side hook locations are known
+- run `cristalina runtime preflight` with the selected OpenClaw/Hermes runtime
+  roots before installing hooks into those locations
 - run the runtime-wiring smoke against a local OpenClaw session and a local
   Hermes session instead of the fixture event files
 - richer proposal operations only after the first live loop proves the need

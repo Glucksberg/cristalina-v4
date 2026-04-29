@@ -30,6 +30,7 @@
     "typecheck": "pnpm -r typecheck",
     "smoke:dual-runtime": "pnpm --filter @cristalina-v4/openclaw-adapter build && pnpm --filter @cristalina-v4/hermes-adapter build && node scripts/smoke-dual-runtime.mjs",
     "smoke:runtime-wiring": "pnpm --filter @cristalina-v4/cli build && node scripts/smoke-runtime-wiring.mjs",
+    "preflight:runtime-wiring": "pnpm --filter @cristalina-v4/cli build && pnpm --filter @cristalina-v4/cli run cristalina -- runtime preflight",
     "fixture:mvp-flow-001": "pnpm --filter @cristalina-v4/core build && node packages/core/dist/fixtures/write-mvp-flow-001.js examples/mvp-flow-001/.cristalina-v4",
     "fixture:mvp-flow-002": "pnpm --filter @cristalina-v4/core build && node packages/core/dist/fixtures/write-mvp-flow-002.js examples/mvp-flow-002/.cristalina-v4",
     "fixture:mvp-flow-003": "pnpm --filter @cristalina-v4/core build && node packages/core/dist/fixtures/write-mvp-flow-003.js examples/mvp-flow-003/.cristalina-v4",

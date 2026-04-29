@@ -18,6 +18,7 @@ export type CristalinaCommand =
   | { name: "doctor"; configPath?: string; storeRoot?: string }
   | { name: "status"; configPath?: string; storeRoot?: string }
   | { name: "smoke"; target: "dual-runtime" | "runtime-wiring" }
+  | { name: "runtime"; action: "preflight"; configPath?: string; openclawRoot?: string; hermesRoot?: string }
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
@@ -139,6 +140,24 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
     }
     rejectUnknownOptions(rest, new Set());
     return { name: "smoke", target: subcommand };
+  }
+
+  if (command === "runtime") {
+    if (subcommand !== "preflight") {
+      throw new CommandUsageError("runtime requires action preflight");
+    }
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--openclaw-root", "value"],
+      ["--hermes-root", "value"],
+    ]));
+    return {
+      name: "runtime",
+      action: "preflight",
+      configPath: readOption(argv, "--config"),
+      openclawRoot: readOption(argv, "--openclaw-root"),
+      hermesRoot: readOption(argv, "--hermes-root"),
+    };
   }
 
   if (command === "bridge") {
@@ -282,6 +301,7 @@ export function helpText(): string {
     "  status [--config PATH] [--store-root PATH]",
     "  smoke dual-runtime",
     "  smoke runtime-wiring",
+    "  runtime preflight [--config PATH] [--openclaw-root PATH] [--hermes-root PATH]",
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",
