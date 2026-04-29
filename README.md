@@ -101,6 +101,8 @@ pnpm cristalina smoke runtime-wiring
 pnpm cristalina runtime preflight --openclaw-root /path/to/openclaw --hermes-root /path/to/hermes --config path/to/config.json
 pnpm cristalina runtime hook-map --runtime openclaw --runtime-root /path/to/openclaw --target-config /path/to/openclaw/config.json
 pnpm cristalina runtime hook-map --runtime hermes --runtime-root /path/to/hermes --target-config /path/to/hermes/config.json
+pnpm cristalina runtime event-template --runtime openclaw --event-type message_observed --output /tmp/openclaw-event.json --config path/to/config.json
+pnpm cristalina runtime event-check --event /tmp/openclaw-event.json --config path/to/config.json
 pnpm cristalina bridge event --event path/to/event.json --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
@@ -130,6 +132,11 @@ OpenClaw or Hermes config directly; it records the descriptor path, executable
 hook script, target runtime config path, and required `CRISTALINA_EVENT_PATH`
 invocation so the real runtime config can reference the generated hook without
 inventing runtime-specific memory semantics.
+
+Use `cristalina runtime event-template` and `cristalina runtime event-check` to
+generate or validate the event JSON a runtime must write before invoking the
+hook script. The bridge contract remains `cristalina.runtime_bridge_event.v1`;
+template generation is only an operational aid for live wiring tests.
 
 ## Repository layout
 

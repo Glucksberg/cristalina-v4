@@ -37,6 +37,22 @@ test("CLI parser recognizes the planned command surface", () => {
     targetConfigPath: "openclaw/config.json",
     mapPath: undefined,
   });
+  assert.deepEqual(parseCristalinaCommand(["runtime", "event-template", "--config", "config.json", "--runtime", "hermes", "--event-type", "conversation_preference_signal", "--output", "event.json"]), {
+    name: "runtime",
+    action: "event-template",
+    configPath: "config.json",
+    runtime: "hermes",
+    eventType: "conversation_preference_signal",
+    outputPath: "event.json",
+    statement: undefined,
+    message: undefined,
+  });
+  assert.deepEqual(parseCristalinaCommand(["runtime", "event-check", "--config", "config.json", "--event", "event.json"]), {
+    name: "runtime",
+    action: "event-check",
+    configPath: "config.json",
+    eventPath: "event.json",
+  });
   assert.deepEqual(parseCristalinaCommand(["install", "openclaw"]), {
     name: "install",
     target: "openclaw",

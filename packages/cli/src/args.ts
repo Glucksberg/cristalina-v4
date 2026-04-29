@@ -20,6 +20,17 @@ export type CristalinaCommand =
   | { name: "smoke"; target: "dual-runtime" | "runtime-wiring" }
   | { name: "runtime"; action: "preflight"; configPath?: string; openclawRoot?: string; hermesRoot?: string }
   | { name: "runtime"; action: "hook-map"; runtime: "openclaw" | "hermes"; runtimeRoot: string; targetConfigPath?: string; mapPath?: string }
+  | {
+      name: "runtime";
+      action: "event-template";
+      configPath?: string;
+      runtime: "openclaw" | "hermes";
+      eventType: "message_observed" | "conversation_preference_signal" | "runtime_diagnostic" | "checkpoint_requested";
+      outputPath: string;
+      statement?: string;
+      message?: string;
+    }
+  | { name: "runtime"; action: "event-check"; configPath?: string; eventPath: string }
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
@@ -144,8 +155,8 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "runtime") {
-    if (subcommand !== "preflight" && subcommand !== "hook-map") {
-      throw new CommandUsageError("runtime requires action preflight or hook-map");
+    if (subcommand !== "preflight" && subcommand !== "hook-map" && subcommand !== "event-template" && subcommand !== "event-check") {
+      throw new CommandUsageError("runtime requires action preflight, hook-map, event-template, or event-check");
     }
     if (subcommand === "hook-map") {
       rejectUnknownOptions(rest, new Map([
@@ -169,6 +180,59 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
         runtimeRoot,
         targetConfigPath: readOption(argv, "--target-config"),
         mapPath: readOption(argv, "--map"),
+      };
+    }
+    if (subcommand === "event-template") {
+      rejectUnknownOptions(rest, new Map([
+        ["--config", "value"],
+        ["--runtime", "value"],
+        ["--event-type", "value"],
+        ["--output", "value"],
+        ["--statement", "value"],
+        ["--message", "value"],
+      ]));
+      const runtime = readOption(argv, "--runtime");
+      if (runtime !== "openclaw" && runtime !== "hermes") {
+        throw new CommandUsageError("runtime event-template requires --runtime openclaw or hermes");
+      }
+      const eventType = readOption(argv, "--event-type");
+      if (
+        eventType !== "message_observed" &&
+        eventType !== "conversation_preference_signal" &&
+        eventType !== "runtime_diagnostic" &&
+        eventType !== "checkpoint_requested"
+      ) {
+        throw new CommandUsageError("runtime event-template requires --event-type message_observed, conversation_preference_signal, runtime_diagnostic, or checkpoint_requested");
+      }
+      const outputPath = readOption(argv, "--output");
+      if (!outputPath) {
+        throw new CommandUsageError("runtime event-template requires --output PATH");
+      }
+      return {
+        name: "runtime",
+        action: "event-template",
+        configPath: readOption(argv, "--config"),
+        runtime,
+        eventType,
+        outputPath,
+        statement: readOption(argv, "--statement"),
+        message: readOption(argv, "--message"),
+      };
+    }
+    if (subcommand === "event-check") {
+      rejectUnknownOptions(rest, new Map([
+        ["--config", "value"],
+        ["--event", "value"],
+      ]));
+      const eventPath = readOption(argv, "--event");
+      if (!eventPath) {
+        throw new CommandUsageError("runtime event-check requires --event PATH");
+      }
+      return {
+        name: "runtime",
+        action: "event-check",
+        configPath: readOption(argv, "--config"),
+        eventPath,
       };
     }
     rejectUnknownOptions(rest, new Map([
@@ -328,6 +392,8 @@ export function helpText(): string {
     "  smoke runtime-wiring",
     "  runtime preflight [--config PATH] [--openclaw-root PATH] [--hermes-root PATH]",
     "  runtime hook-map --runtime openclaw|hermes --runtime-root PATH [--target-config PATH] [--map PATH]",
+    "  runtime event-template --runtime openclaw|hermes --event-type TYPE --output PATH [--config PATH]",
+    "  runtime event-check --event PATH [--config PATH]",
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",

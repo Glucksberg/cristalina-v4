@@ -961,7 +961,9 @@ Phase 2 should proceed in this order:
 4. run `cristalina runtime hook-map --runtime hermes --runtime-root <path>
    --target-config <path>` to record the generated Hermes descriptor,
    executable hook script, and real Hermes config target
-5. make each runtime emit one event file matching the fixture contract
+5. use `cristalina runtime event-template` and `cristalina runtime event-check`
+   to prove each runtime can produce one event file matching
+   `cristalina.runtime_bridge_event.v1`
 6. verify `cristalina bridge event` writes both runtime events into the same
    store
 7. verify `cristalina projection list/show` returns compatible projections for

@@ -50,6 +50,9 @@ What already exists:
 - runtime hook-map command that turns an installed descriptor and executable
   hook script into a Cristalina-owned mapping manifest for the real runtime
   config path
+- runtime event-template and event-check commands that generate or validate
+  `cristalina.runtime_bridge_event.v1` files before a runtime hook calls the
+  bridge
 - public session-continuity helpers plus bridge/CLI checkpoint and session-pack
   commands
 - operator inspection commands for projections, reviews, diagnostics, store
@@ -61,8 +64,8 @@ What is next:
   roots before installing hooks into those locations
 - run `cristalina runtime hook-map` with the real OpenClaw/Hermes config files
   once the runtime-side hook locations are known
-- run the runtime-wiring smoke against a local OpenClaw session and a local
-  Hermes session instead of the fixture event files
+- run the runtime-wiring hook scripts from local OpenClaw and Hermes sessions
+  instead of the generated event-template files
 - richer proposal operations only after the first live loop proves the need
 
 What does not exist yet:

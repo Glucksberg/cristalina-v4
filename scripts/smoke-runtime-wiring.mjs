@@ -31,9 +31,11 @@ const OPENCLAW_ROOT = join(GENERATED_ROOT, "openclaw-runtime");
 const HERMES_ROOT = join(GENERATED_ROOT, "hermes-runtime");
 const OPENCLAW_TARGET_CONFIG = join(OPENCLAW_ROOT, "config", "hooks.json");
 const HERMES_TARGET_CONFIG = join(HERMES_ROOT, "config", "hooks.json");
+const GENERATED_EVENTS_ROOT = join(GENERATED_ROOT, "events");
+const OPENCLAW_GENERATED_EVENT = join(GENERATED_EVENTS_ROOT, "openclaw-message-observed.json");
+const HERMES_GENERATED_EVENT = join(GENERATED_EVENTS_ROOT, "hermes-runtime-diagnostic.json");
 const OPENCLAW_EVENT = join(EXAMPLE_ROOT, "events", "openclaw-preference.json");
 const HERMES_EVENT = join(EXAMPLE_ROOT, "events", "hermes-preference.json");
-const HERMES_DIAGNOSTIC_EVENT = join(EXAMPLE_ROOT, "events", "hermes-diagnostic.json");
 const OWNER_REF = "actor_owner_runtime_wiring_001";
 const AGENT_REF = "actor_agent_runtime_wiring_001";
 const OPENCLAW_RUNTIME_REF = "runtime_openclaw_runtime_wiring_001";
@@ -136,12 +138,47 @@ assert.equal(openclawHookMap.status, "mapped");
 assert.equal(hermesHookMap.status, "mapped");
 assert.equal(openclawHookMap.runtime_config_patch.event_path_env, "CRISTALINA_EVENT_PATH");
 assert.equal(hermesHookMap.runtime_config_patch.event_path_env, "CRISTALINA_EVENT_PATH");
+const openclawGeneratedEvent = parseJsonResult(await command({
+  name: "runtime",
+  action: "event-template",
+  configPath: CONFIG_PATH,
+  runtime: "openclaw",
+  eventType: "message_observed",
+  outputPath: OPENCLAW_GENERATED_EVENT,
+  message: "OpenClaw generated a Cristalina runtime bridge event file before hook execution.",
+}));
+const hermesGeneratedEvent = parseJsonResult(await command({
+  name: "runtime",
+  action: "event-template",
+  configPath: CONFIG_PATH,
+  runtime: "hermes",
+  eventType: "runtime_diagnostic",
+  outputPath: HERMES_GENERATED_EVENT,
+  message: "Hermes generated a Cristalina runtime bridge event file before hook execution.",
+}));
+assert.equal(openclawGeneratedEvent.validation.status, "valid");
+assert.equal(hermesGeneratedEvent.validation.status, "valid");
+assert.equal(parseJsonResult(await command({
+  name: "runtime",
+  action: "event-check",
+  configPath: CONFIG_PATH,
+  eventPath: OPENCLAW_GENERATED_EVENT,
+})).status, "valid");
+assert.equal(parseJsonResult(await command({
+  name: "runtime",
+  action: "event-check",
+  configPath: CONFIG_PATH,
+  eventPath: HERMES_GENERATED_EVENT,
+})).status, "valid");
 const openclawHook = JSON.parse(await readFile(openclawInstall.hook_path, "utf8"));
 const hermesHook = JSON.parse(await readFile(hermesInstall.hook_path, "utf8"));
 assert.equal(openclawHook.hook_contract, "cristalina.runtime_hook.v1");
 assert.equal(hermesHook.hook_contract, "cristalina.runtime_hook.v1");
 assert.match(await readFile(openclawInstall.hook_script_path, "utf8"), /bridge event/);
 assert.match(await readFile(hermesInstall.hook_script_path, "utf8"), /bridge event/);
+
+const openclawObserved = await runHook(openclawInstall.hook_script_path, OPENCLAW_GENERATED_EVENT);
+assert.equal(openclawObserved.status, "applied");
 
 const openclawWrite = await runHook(openclawInstall.hook_script_path, OPENCLAW_EVENT);
 assert.equal(openclawWrite.status, "deferred");
@@ -160,7 +197,7 @@ assert.equal(reviewApply.status, "applied");
 const hermesWrite = await runHook(hermesInstall.hook_script_path, HERMES_EVENT);
 assert.equal(hermesWrite.status, "applied");
 
-const hermesDiagnostic = await runHook(hermesInstall.hook_script_path, HERMES_DIAGNOSTIC_EVENT);
+const hermesDiagnostic = await runHook(hermesInstall.hook_script_path, HERMES_GENERATED_EVENT);
 assert.equal(hermesDiagnostic.status, "diagnostic_recorded");
 
 const projectionList = parseJsonResult(await command({
@@ -240,7 +277,8 @@ const summary = {
   events: {
     openclaw_preference: OPENCLAW_EVENT,
     hermes_preference: HERMES_EVENT,
-    hermes_diagnostic: HERMES_DIAGNOSTIC_EVENT,
+    openclaw_generated: OPENCLAW_GENERATED_EVENT,
+    hermes_generated: HERMES_GENERATED_EVENT,
   },
   projections: {
     openclaw: openclawProjection.manifest.id,

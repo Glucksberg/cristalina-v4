@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -186,6 +186,106 @@ test("runtime hook-map refuses to write a mapping for an invalid descriptor", as
   assert.equal(payload.status, "blocked");
   assert.equal(payload.mapping_written, false);
   assert.ok(payload.diagnostics.some((entry) => entry.includes("not valid JSON")));
+});
+
+test("runtime event-template writes a bridge event that event-check accepts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-event-template-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const eventPath = join(root, "hermes-event.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_event_template_001",
+      agentIdentityRef: "actor_agent_cli_event_template_001",
+      hermesRuntimeRef: "runtime_hermes_cli_event_template_001",
+    }), null, 2)}\n`,
+  );
+
+  const template = await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-template",
+    configPath,
+    runtime: "hermes",
+    eventType: "conversation_preference_signal",
+    outputPath: eventPath,
+    statement: "The owner prefers runtime event templates to be validated before bridge ingestion.",
+    message: "The owner says runtime event templates should validate before bridge ingestion.",
+  });
+  const templatePayload = JSON.parse(template.stdout) as {
+    status: string;
+    event_path: string;
+    validation: { status: string };
+  };
+  assert.equal(template.exitCode, 0);
+  assert.equal(templatePayload.status, "written");
+  assert.equal(templatePayload.event_path, eventPath);
+  assert.equal(templatePayload.validation.status, "valid");
+
+  const event = JSON.parse(await readFile(eventPath, "utf8")) as { runtime: string; event_type: string; runtime_instance_ref: string };
+  assert.equal(event.runtime, "hermes");
+  assert.equal(event.event_type, "conversation_preference_signal");
+  assert.equal(event.runtime_instance_ref, "runtime_hermes_cli_event_template_001");
+
+  const check = await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-check",
+    configPath,
+    eventPath,
+  });
+  const checkPayload = JSON.parse(check.stdout) as { status: string; diagnostics: string[] };
+  assert.equal(check.exitCode, 0);
+  assert.equal(checkPayload.status, "valid");
+  assert.deepEqual(checkPayload.diagnostics, []);
+});
+
+test("runtime event-check rejects events with runtime identity drift", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-event-check-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const eventPath = join(root, "openclaw-event.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_event_check_001",
+      agentIdentityRef: "actor_agent_cli_event_check_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_event_check_001",
+    }), null, 2)}\n`,
+  );
+  await writeFile(
+    eventPath,
+    `${JSON.stringify({
+      event_id: "evt_cli_runtime_event_check_drift_001",
+      event_type: "runtime_diagnostic",
+      runtime: "openclaw",
+      occurred_at: "2026-04-28T20:00:00.000Z",
+      actor_ref: "system:openclaw-event-check",
+      authenticated_principal: {
+        kind: "system",
+        actor_ref: "system:openclaw-event-check",
+        system_scope: "runtime-event-check",
+      },
+      runtime_instance_ref: "runtime_openclaw_wrong_001",
+      code: "event_check_drift",
+      severity: "info",
+      message: "This event intentionally declares the wrong runtime instance.",
+    }, null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-check",
+    configPath,
+    eventPath,
+  });
+  const payload = JSON.parse(result.stdout) as { status: string; diagnostics: string[] };
+  assert.equal(result.exitCode, 1);
+  assert.equal(payload.status, "invalid");
+  assert.ok(payload.diagnostics.some((entry) => entry.includes("runtime_instance_ref")));
 });
 
 test("reviews apply writes to the explicit store-root override", async () => {
