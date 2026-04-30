@@ -64,6 +64,7 @@ What already exists:
   commands
 - operator inspection commands for projections, reviews, diagnostics, store
   summary, and inspect-only recovery planning
+- runtime wiring runbook for install, inspect, review, recover, and handoff
 
 What is next:
 
@@ -79,7 +80,7 @@ What does not exist yet:
 
 - polished runtime-specific UX beyond the current thin authenticated write-through surfaces
 - a live-session bridge/daemon that translates real Hermes and OpenClaw events into adapter calls
-- production-style operator docs for start, inspect, review, recover, and handoff
+- native runtime config patching for OpenClaw and Hermes
 
 This project is now ready for controlled runtime wiring tests. The main
 remaining work is connecting the generated hook contract to the real

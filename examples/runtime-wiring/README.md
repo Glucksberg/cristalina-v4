@@ -20,9 +20,8 @@ The smoke command resets `examples/runtime-wiring/generated`, then:
 7. sends the Hermes preference fixture through the same bridge contract
 8. sends the Hermes diagnostic fixture through the same bridge contract
 9. reads both runtime projections from the same store
-10. creates an OpenClaw checkpoint
-11. compiles a Hermes session pack from that OpenClaw checkpoint
-12. records a Hermes resume receipt
+10. verifies OpenClaw checkpoint -> Hermes session-pack -> Hermes resume
+    receipt continuity
 
 Versioned event fixtures live under:
 
@@ -39,3 +38,6 @@ Generated output is intentionally ignored by git. After running the smoke, read:
 The hook descriptor contract is deliberately small. A real runtime only needs
 to write a JSON event file matching `cristalina.runtime_bridge_event.v1`, set
 `CRISTALINA_EVENT_PATH` to that file, and invoke the generated hook script.
+
+For the real-runtime operator sequence, read
+[`docs/RUNTIME-WIRING-RUNBOOK.md`](../../docs/RUNTIME-WIRING-RUNBOOK.md).

@@ -1,0 +1,397 @@
+# Cristalina Runtime Wiring Runbook
+
+**Status:** First controlled-runbook baseline
+**Scope:** local OpenClaw and Hermes wiring through the generated hook contract
+
+This runbook is the operator path for connecting one OpenClaw runtime and one
+Hermes runtime to the same Cristalina store.
+
+It assumes the current thin bridge model:
+
+- Cristalina owns memory semantics.
+- OpenClaw and Hermes emit bridge event files.
+- The generated hook script calls `cristalina bridge event`.
+- Runtime config only points at the generated hook; it does not define memory
+  law.
+
+The goal is a controlled first live loop, not a daemon or hosted service.
+
+---
+
+## 1. Prerequisites
+
+Required locally:
+
+- Node.js 20 or newer
+- pnpm 10 or newer
+- a checked-out `cristalina-v4` repository
+- candidate OpenClaw and Hermes runtime roots
+
+Install and verify Cristalina:
+
+```bash
+pnpm install
+pnpm -r typecheck
+pnpm -r test
+pnpm smoke:runtime-wiring
+```
+
+The smoke command proves the bridge without touching real OpenClaw or Hermes
+config. Inspect:
+
+```bash
+cat examples/runtime-wiring/generated/runtime-wiring-summary.json
+```
+
+Do not wire real runtimes until the smoke passes.
+
+---
+
+## 2. Initialize The Store And Config
+
+Create or select the Cristalina config:
+
+```bash
+pnpm cristalina config --init --non-interactive --config .cristalina-v4/config.json
+```
+
+For a real operator setup, set stable identities explicitly:
+
+```bash
+pnpm cristalina config --init --non-interactive \
+  --config .cristalina-v4/config.json \
+  --store-root .cristalina-v4/store \
+  --owner actor_owner_local_001 \
+  --agent actor_agent_local_001 \
+  --operator actor_operator_local_001 \
+  --principal-kind owner \
+  --principal-actor actor_owner_local_001 \
+  --openclaw-runtime runtime_openclaw_local_001 \
+  --hermes-runtime runtime_hermes_local_001
+```
+
+Check the config and store:
+
+```bash
+pnpm cristalina doctor --config .cristalina-v4/config.json
+pnpm cristalina store inspect --config .cristalina-v4/config.json
+```
+
+Identity refs should be stable across runs. Changing them creates a different
+authority/runtime story.
+
+---
+
+## 3. Preflight Runtime Roots
+
+Before installing hook metadata into real runtime roots:
+
+```bash
+pnpm cristalina runtime preflight \
+  --openclaw-root /path/to/openclaw \
+  --hermes-root /path/to/hermes \
+  --config .cristalina-v4/config.json
+```
+
+The preflight report should show:
+
+- the selected config path
+- the resolved store root
+- OpenClaw and Hermes runtime roots
+- expected hook descriptor paths
+- install commands for both runtimes
+- config diagnostics, if any
+
+Fix diagnostics before continuing.
+
+---
+
+## 4. Install Hook Metadata
+
+Install generated hook descriptors and hook scripts:
+
+```bash
+pnpm cristalina install openclaw \
+  --runtime-root /path/to/openclaw \
+  --config .cristalina-v4/config.json \
+  --non-interactive
+
+pnpm cristalina install hermes \
+  --runtime-root /path/to/hermes \
+  --config .cristalina-v4/config.json \
+  --non-interactive
+```
+
+Each install writes Cristalina-owned metadata under the runtime root. It does
+not directly edit the runtime's native config.
+
+Record where the real runtime config should point:
+
+```bash
+pnpm cristalina runtime hook-map \
+  --runtime openclaw \
+  --runtime-root /path/to/openclaw \
+  --target-config /path/to/openclaw/config/hooks.json
+
+pnpm cristalina runtime hook-map \
+  --runtime hermes \
+  --runtime-root /path/to/hermes \
+  --target-config /path/to/hermes/config/hooks.json
+```
+
+The generated map records:
+
+- hook descriptor path
+- executable hook script path
+- target runtime config path
+- required `CRISTALINA_EVENT_PATH` invocation
+
+Wire the real OpenClaw and Hermes config to invoke the generated hook script
+after writing an event file. The event file path must be exported as
+`CRISTALINA_EVENT_PATH`.
+
+---
+
+## 5. Validate Event Files Before Live Sessions
+
+Generate example events:
+
+```bash
+pnpm cristalina runtime event-template \
+  --runtime openclaw \
+  --event-type message_observed \
+  --output /tmp/openclaw-event.json \
+  --config .cristalina-v4/config.json
+
+pnpm cristalina runtime event-template \
+  --runtime hermes \
+  --event-type runtime_diagnostic \
+  --output /tmp/hermes-event.json \
+  --config .cristalina-v4/config.json
+```
+
+Validate them:
+
+```bash
+pnpm cristalina runtime event-check \
+  --event /tmp/openclaw-event.json \
+  --config .cristalina-v4/config.json
+
+pnpm cristalina runtime event-check \
+  --event /tmp/hermes-event.json \
+  --config .cristalina-v4/config.json
+```
+
+Verify one OpenClaw event and one Hermes event against the same store:
+
+```bash
+pnpm cristalina runtime event-verify \
+  --openclaw-event /tmp/openclaw-event.json \
+  --hermes-event /tmp/hermes-event.json \
+  --config .cristalina-v4/config.json
+```
+
+For the first live test, capture the real event JSON emitted by each runtime
+and run `event-check` on those files before letting hooks call the bridge
+automatically.
+
+---
+
+## 6. Start The First Live Loop
+
+The generated hook script expects:
+
+```bash
+CRISTALINA_EVENT_PATH=/path/to/event.json /path/to/cristalina-bridge-event.sh
+```
+
+The runtime-side integration should:
+
+1. write a complete `cristalina.runtime_bridge_event.v1` JSON file
+2. set `CRISTALINA_EVENT_PATH` to that file
+3. invoke the generated hook script
+4. leave the event file available for audit during the first tests
+
+Use event ids that are stable for retries. Re-sending the same logical event
+should converge instead of creating unrelated memory.
+
+---
+
+## 7. Inspect Projections And Store State
+
+List projections:
+
+```bash
+pnpm cristalina projection list --config .cristalina-v4/config.json
+```
+
+Show a projection manifest:
+
+```bash
+pnpm cristalina projection show \
+  --manifest <projection_manifest_id> \
+  --config .cristalina-v4/config.json
+```
+
+Verify both runtime projections:
+
+```bash
+pnpm cristalina projection verify --config .cristalina-v4/config.json
+```
+
+Inspect the store summary:
+
+```bash
+pnpm cristalina store inspect --config .cristalina-v4/config.json
+```
+
+List diagnostics:
+
+```bash
+pnpm cristalina diagnostics list --config .cristalina-v4/config.json
+```
+
+Projection artifacts are derived. If they look stale, refresh through the CLI
+instead of editing files by hand:
+
+```bash
+pnpm cristalina projection refresh --config .cristalina-v4/config.json
+```
+
+---
+
+## 8. Review Owner-Gated Writes
+
+List review queues:
+
+```bash
+pnpm cristalina reviews list \
+  --runtime openclaw \
+  --config .cristalina-v4/config.json
+
+pnpm cristalina reviews list \
+  --runtime hermes \
+  --config .cristalina-v4/config.json
+```
+
+Apply an explicit owner review item:
+
+```bash
+pnpm cristalina reviews apply \
+  --runtime openclaw \
+  --queue-id <queue_id> \
+  --config .cristalina-v4/config.json
+```
+
+Only use this command for a queue item the operator intends to approve. Review
+application goes through the adapter boundary and core authority checks; it is
+not a raw canon edit path.
+
+After applying a review:
+
+```bash
+pnpm cristalina projection verify --config .cristalina-v4/config.json
+pnpm cristalina store inspect --config .cristalina-v4/config.json
+```
+
+---
+
+## 9. Verify Handoff From OpenClaw To Hermes
+
+Run the continuity proof:
+
+```bash
+pnpm cristalina session-pack verify-handoff --config .cristalina-v4/config.json
+```
+
+The report should return `status: "verified"` and include:
+
+- OpenClaw checkpoint ref
+- Hermes session-pack manifest
+- Hermes resume receipt
+- empty diagnostics
+
+To verify a specific OpenClaw checkpoint:
+
+```bash
+pnpm cristalina session-pack verify-handoff \
+  --checkpoint-id <checkpoint_id> \
+  --config .cristalina-v4/config.json
+```
+
+Session packs are derived artifacts. Resume receipts prove that Hermes consumed
+the derived pack; they do not become a new truth source.
+
+---
+
+## 10. Recover And Diagnose
+
+Start with inspect-only recovery:
+
+```bash
+pnpm cristalina store recover --config .cristalina-v4/config.json
+```
+
+This command reports recovery posture without bypassing write-path law.
+
+For live-session failures, inspect in this order:
+
+1. `runtime event-check` on the event file
+2. `diagnostics list`
+3. `reviews list`
+4. `projection verify`
+5. `store inspect`
+6. `store recover`
+
+Common blocked states:
+
+- missing or unstable runtime refs
+- event file does not match `cristalina.runtime_bridge_event.v1`
+- event runtime differs from configured runtime binding
+- review queue item is waiting for owner authority
+- projection artifact is stale or context-incompatible
+- checkpoint id is ambiguous or not current enough for the requested handoff
+
+Do not repair by editing canon, projections, session packs, or resume receipts
+directly. Use bridge events, review actions, projection refresh, checkpoint
+creation, and handoff verification commands.
+
+---
+
+## 11. First-Live-Test Checklist
+
+Before a real OpenClaw/Hermes session:
+
+- `pnpm smoke:runtime-wiring` passes
+- `doctor` reports a valid config
+- `runtime preflight` names the intended OpenClaw and Hermes roots
+- both installers have written hook descriptors and executable hook scripts
+- `runtime hook-map` exists for both runtime config targets
+- captured OpenClaw and Hermes event files pass `event-check`
+- `runtime event-verify` writes both events into the same store
+- `projection verify` passes
+- `session-pack verify-handoff` passes
+- `diagnostics list` contains no unexplained blocking diagnostics
+
+After the session:
+
+- archive the event files used during the first run
+- inspect pending reviews before treating memory as accepted
+- verify projections again
+- verify handoff again if Hermes resumes from OpenClaw context
+
+---
+
+## 12. Current Limits
+
+This runbook does not yet provide:
+
+- a daemon that watches runtime event directories
+- automatic editing of native OpenClaw or Hermes config files
+- polished runtime-specific UI
+- hosted synchronization
+- hostile multi-tenant hardening as the main operating model
+
+Those can be added later without changing the current law: runtime convenience
+must remain downstream of Cristalina's store, authority checks, and projection
+contracts.

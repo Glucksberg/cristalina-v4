@@ -974,6 +974,23 @@ Phase 2 should proceed in this order:
    OpenClaw checkpoint -> Hermes session-pack -> Hermes resume receipt
 9. document the final install, inspect, review, recover, and handoff runbook
 
+### Phase 2 Implemented Slice
+
+- `pnpm smoke:runtime-wiring` proves generated hook descriptors, event
+  fixtures, projection reads, and OpenClaw-to-Hermes continuity
+- `runtime preflight` reports config/store/runtime-root readiness before
+  touching real runtime config
+- `runtime hook-map` records generated hook descriptors, executable hook
+  scripts, and target runtime config paths
+- `runtime event-template`, `runtime event-check`, and `runtime event-verify`
+  prove the bridge event contract before live hook invocation
+- `projection verify` proves both runtime projections are visible from the same
+  store
+- `session-pack verify-handoff` proves OpenClaw checkpoint -> Hermes
+  session-pack -> Hermes resume receipt
+- [RUNTIME-WIRING-RUNBOOK.md](RUNTIME-WIRING-RUNBOOK.md) documents install,
+  inspect, review, recover, and handoff operation
+
 ---
 
 ## 15. Deferred On Purpose

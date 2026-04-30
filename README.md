@@ -71,6 +71,7 @@ What runs today:
 - Operator commands for projections, reviews, diagnostics, store inspection, and recovery planning
 - Runtime-wiring smoke fixture proving install hooks, fixture events,
   projection reads, and OpenClaw-to-Hermes session continuity
+- Runtime wiring runbook for install, inspect, review, recover, and handoff
 
 What's planned:
 - wiring the generated hook descriptors into real OpenClaw and Hermes config
@@ -148,6 +149,8 @@ Use `cristalina projection verify` after event ingestion to prove that
 manifests for both OpenClaw and Hermes from that same store.
 Use `cristalina session-pack verify-handoff` to prove the continuity path:
 OpenClaw checkpoint, Hermes session-pack manifest, and Hermes resume receipt.
+For the full operator path, read
+[`docs/RUNTIME-WIRING-RUNBOOK.md`](docs/RUNTIME-WIRING-RUNBOOK.md).
 
 ## Repository layout
 
@@ -191,6 +194,7 @@ The docs are organized by purpose. Start with the first three if you're new.
 - [docs/ROADMAP.md](docs/ROADMAP.md), [docs/HARDENING-PLAN.md](docs/HARDENING-PLAN.md)
 - [docs/MODULARIZATION-PLAN.md](docs/MODULARIZATION-PLAN.md), [docs/REUSE-MATRIX.md](docs/REUSE-MATRIX.md)
 - [docs/MODEL-DEPENDENCY-MAP.md](docs/MODEL-DEPENDENCY-MAP.md), [docs/NEXT-KERNEL-EXTENSIONS.md](docs/NEXT-KERNEL-EXTENSIONS.md)
+- [docs/RUNTIME-WIRING-RUNBOOK.md](docs/RUNTIME-WIRING-RUNBOOK.md) — operator path for OpenClaw/Hermes install, inspect, review, recover, and handoff
 
 **Reference**
 - [docs/GLOSSARY.md](docs/GLOSSARY.md), [docs/DECISIONS.md](docs/DECISIONS.md), [docs/NON-GOALS.md](docs/NON-GOALS.md)
