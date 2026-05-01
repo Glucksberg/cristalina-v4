@@ -248,6 +248,7 @@ const sessionHandoff = parseJsonResult(await command({
   name: "session-pack",
   action: "verify-handoff",
   configPath: CONFIG_PATH,
+  createCheckpoint: true,
 }));
 assert.equal(sessionHandoff.status, "verified");
 assert.equal(sessionHandoff.source_runtime, "openclaw");

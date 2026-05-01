@@ -532,6 +532,58 @@ test("bridge event treats deferred review as successful event processing", async
   assert.equal(payload.status, "deferred");
 });
 
+test("bridge event validates event contract before writing memory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-bridge-invalid-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const eventPath = join(root, "event.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_bridge_invalid_001",
+      agentIdentityRef: "actor_agent_cli_bridge_invalid_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_bridge_invalid_001",
+      hermesRuntimeRef: "runtime_hermes_cli_bridge_invalid_001",
+    }), null, 2)}\n`,
+  );
+  await writeFile(
+    eventPath,
+    `${JSON.stringify({
+      event_id: "evt_cli_bridge_invalid_001",
+      event_type: "runtime_diagnostic",
+      runtime: "openclaw",
+      occurred_at: "not-a-date",
+      actor_ref: "system:bridge-invalid",
+      authenticated_principal: {
+        kind: "system",
+        actor_ref: "system:bridge-invalid",
+        system_scope: "bridge-invalid",
+      },
+      runtime_instance_ref: "runtime_openclaw_cli_bridge_invalid_001",
+      code: "bridge_invalid",
+      severity: "info",
+      message: "This event must fail validation before store writes.",
+      message_refs: ["ok", ""],
+    }, null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "bridge",
+    action: "event",
+    configPath,
+    eventPath,
+  });
+  const payload = JSON.parse(result.stdout) as { validation: { status: string }; diagnostics: string[] };
+  const inspection = await inspectCristalinaStore(storeRoot);
+  assert.equal(result.exitCode, 1);
+  assert.equal(payload.validation.status, "invalid");
+  assert.ok(payload.diagnostics.some((entry) => entry.includes("occurred_at")));
+  assert.ok(payload.diagnostics.some((entry) => entry.includes("message_refs")));
+  assert.equal(inspection.diagnostic_count, 0);
+});
+
 test("CLI checkpoint create emits a new generation instead of overwriting the previous checkpoint", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-checkpoint-"));
   const storeRoot = join(root, "store");
@@ -636,6 +688,7 @@ test("session-pack verify-handoff proves OpenClaw checkpoint to Hermes resume re
     name: "session-pack",
     action: "verify-handoff",
     configPath,
+    createCheckpoint: true,
   });
   const payload = JSON.parse(result.stdout) as {
     status: string;
@@ -678,4 +731,34 @@ test("session-pack verify-handoff proves OpenClaw checkpoint to Hermes resume re
   assert.equal(payload.resume_receipt.runtime_instance_ref, "runtime_openclaw_cli_session_handoff_001");
   assert.ok(payload.resume_receipt.projection_artifact_refs.length > 0);
   assert.deepEqual(payload.diagnostics, []);
+});
+
+test("session-pack verify-handoff requires an explicit checkpoint source", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-session-handoff-blocked-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_session_handoff_blocked_001",
+      agentIdentityRef: "actor_agent_cli_session_handoff_blocked_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_session_handoff_blocked_001",
+      hermesRuntimeRef: "runtime_hermes_cli_session_handoff_blocked_001",
+    }), null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "session-pack",
+    action: "verify-handoff",
+    configPath,
+  });
+  const payload = JSON.parse(result.stdout) as { status: string; diagnostics: string[] };
+  const inspection = await inspectCristalinaStore(storeRoot);
+  assert.equal(result.exitCode, 1);
+  assert.equal(payload.status, "blocked");
+  assert.ok(payload.diagnostics.some((entry) => entry.includes("--checkpoint-id")));
+  assert.equal(inspection.working_memory_checkpoint_count, 0);
+  assert.equal(inspection.session_resume_receipt_count, 0);
 });

@@ -33,6 +33,10 @@ export interface RuntimeEventVerifyInput {
   cwd?: string;
 }
 
+export interface RuntimeEventValidationOptions {
+  allowRuntimeInstanceDrift?: boolean;
+}
+
 export interface RuntimeEventValidationReport {
   schema_version: 1;
   status: "valid" | "invalid";
@@ -115,6 +119,7 @@ export function validateRuntimeBridgeEventContract(
   config: CristalinaConfig,
   configPath: string | null,
   cwd = process.cwd(),
+  options: RuntimeEventValidationOptions = {},
 ): RuntimeEventValidationReport {
   const diagnostics: string[] = [];
   const storeRoot = resolveStoreRoot(config, undefined, cwd);
@@ -149,6 +154,7 @@ export function validateRuntimeBridgeEventContract(
   const occurredAt = stringField(value, "occurred_at", diagnostics);
   stringField(value, "actor_ref", diagnostics);
   validateAuthenticatedPrincipal(value.authenticated_principal, diagnostics);
+  optionalStringField(value, "runtime_instance_ref", diagnostics);
   optionalStringField(value, "runtime_session_ref", diagnostics);
   optionalStringField(value, "conversation_thread_ref", diagnostics);
   optionalStringField(value, "source_ref", diagnostics);
@@ -161,7 +167,8 @@ export function validateRuntimeBridgeEventContract(
   } else if (
     typeof value.runtime_instance_ref === "string" &&
     config.runtimes?.[runtime]?.runtime_instance_ref &&
-    value.runtime_instance_ref !== config.runtimes[runtime]?.runtime_instance_ref
+    value.runtime_instance_ref !== config.runtimes[runtime]?.runtime_instance_ref &&
+    !options.allowRuntimeInstanceDrift
   ) {
     diagnostics.push(`runtime_instance_ref ${value.runtime_instance_ref} does not match config.runtimes.${runtime}.runtime_instance_ref`);
   }

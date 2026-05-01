@@ -298,20 +298,7 @@ pnpm cristalina store inspect --config .cristalina-v4/config.json
 
 ## 9. Verify Handoff From OpenClaw To Hermes
 
-Run the continuity proof:
-
-```bash
-pnpm cristalina session-pack verify-handoff --config .cristalina-v4/config.json
-```
-
-The report should return `status: "verified"` and include:
-
-- OpenClaw checkpoint ref
-- Hermes session-pack manifest
-- Hermes resume receipt
-- empty diagnostics
-
-To verify a specific OpenClaw checkpoint:
+Run the continuity proof against an existing OpenClaw checkpoint:
 
 ```bash
 pnpm cristalina session-pack verify-handoff \
@@ -319,8 +306,26 @@ pnpm cristalina session-pack verify-handoff \
   --config .cristalina-v4/config.json
 ```
 
+The report should return `status: "verified"` and include:
+
+- the checked OpenClaw checkpoint ref
+- Hermes session-pack manifest
+- Hermes resume receipt
+- empty diagnostics
+
+To let the proof command create a fresh OpenClaw checkpoint first, make that
+write explicit:
+
+```bash
+pnpm cristalina session-pack verify-handoff \
+  --create-checkpoint \
+  --config .cristalina-v4/config.json
+```
+
 Session packs are derived artifacts. Resume receipts prove that Hermes consumed
-the derived pack; they do not become a new truth source.
+the derived pack; they do not become a new truth source. `--create-checkpoint`
+also writes a new checkpoint, so do not use it as a read-only inspection
+command.
 
 ---
 

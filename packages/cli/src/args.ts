@@ -36,7 +36,7 @@ export type CristalinaCommand =
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
-  | { name: "session-pack"; action: "verify-handoff"; configPath?: string; checkpointId?: string }
+  | { name: "session-pack"; action: "verify-handoff"; configPath?: string; checkpointId?: string; createCheckpoint?: boolean }
   | { name: "projection"; action: "list" | "show" | "refresh" | "verify"; configPath?: string; storeRoot?: string; manifestId?: string }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string }
   | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
@@ -311,12 +311,14 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       rejectUnknownOptions(rest, new Map([
         ["--config", "value"],
         ["--checkpoint-id", "value"],
+        ["--create-checkpoint", "flag"],
       ]));
       return {
         name: "session-pack",
         action: "verify-handoff",
         configPath: readOption(argv, "--config"),
         checkpointId: readOption(argv, "--checkpoint-id"),
+        createCheckpoint: hasFlag(argv, "--create-checkpoint"),
       };
     }
     rejectUnknownOptions(rest, new Map([
@@ -435,7 +437,7 @@ export function helpText(): string {
     "  session-pack latest --runtime openclaw|hermes [--config PATH]",
     "  session-pack consume --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
     "  session-pack apply --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
-    "  session-pack verify-handoff [--checkpoint-id ID] [--config PATH]",
+    "  session-pack verify-handoff (--checkpoint-id ID|--create-checkpoint) [--config PATH]",
     "  projection list [--config PATH] [--store-root PATH]",
     "  projection show --manifest ID [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",

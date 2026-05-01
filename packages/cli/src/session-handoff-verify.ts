@@ -14,6 +14,7 @@ import { handleRuntimeBridgeEvent } from "./runtime-events.js";
 export interface SessionHandoffVerifyInput {
   configPath?: string;
   checkpointId?: string;
+  createCheckpoint?: boolean;
 }
 
 export interface SessionHandoffVerifyReport {
@@ -118,6 +119,9 @@ export async function verifyOpenClawToHermesHandoff(input: SessionHandoffVerifyI
   }
   if (!loaded.config.runtimes?.hermes?.runtime_instance_ref) {
     diagnostics.push("Hermes runtime binding is missing runtimes.hermes.runtime_instance_ref");
+  }
+  if (!input.checkpointId && !input.createCheckpoint) {
+    diagnostics.push("session handoff verification requires --checkpoint-id or explicit --create-checkpoint");
   }
   if (diagnostics.length > 0 || !storeRoot) {
     return {

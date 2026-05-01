@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,12 +24,11 @@ import {
 import {
   ratifyHermesQueuedConversationPreference,
 } from "@cristalina-v4/hermes-adapter";
-import { handleRuntimeBridgeEventFile } from "./runtime-events.js";
-import { handleRuntimeBridgeEvent } from "./runtime-events.js";
+import { handleRuntimeBridgeEvent, type RuntimeBridgeEvent } from "./runtime-events.js";
 import { installRuntime } from "./installers.js";
 import { runRuntimePreflight } from "./runtime-preflight.js";
 import { mapRuntimeHook } from "./runtime-hook-map.js";
-import { checkRuntimeBridgeEventFile, verifyRuntimeBridgeEventPair, writeRuntimeBridgeEventTemplate } from "./runtime-event-contract.js";
+import { checkRuntimeBridgeEventFile, validateRuntimeBridgeEventContract, verifyRuntimeBridgeEventPair, writeRuntimeBridgeEventTemplate } from "./runtime-event-contract.js";
 import { verifyRuntimeProjections } from "./projection-verify.js";
 import { verifyOpenClawToHermesHandoff } from "./session-handoff-verify.js";
 
@@ -247,7 +247,31 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
           stderr: "",
         };
       }
-      const result = await handleRuntimeBridgeEventFile(loaded.config, command.eventPath);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await readFile(resolve(process.env.INIT_CWD ?? process.cwd(), command.eventPath), "utf8")) as unknown;
+      } catch (error) {
+        return {
+          exitCode: 1,
+          stdout: `${JSON.stringify({ diagnostics: [`Cannot read runtime bridge event file: ${(error as Error).message}`] }, null, 2)}\n`,
+          stderr: "",
+        };
+      }
+      const validation = validateRuntimeBridgeEventContract(
+        parsed,
+        loaded.config,
+        loaded.path,
+        process.env.INIT_CWD ?? process.cwd(),
+        { allowRuntimeInstanceDrift: true },
+      );
+      if (validation.status !== "valid") {
+        return {
+          exitCode: 1,
+          stdout: `${JSON.stringify({ validation, diagnostics: validation.diagnostics }, null, 2)}\n`,
+          stderr: "",
+        };
+      }
+      const result = await handleRuntimeBridgeEvent(loaded.config, parsed as RuntimeBridgeEvent);
       return {
         exitCode: 0,
         stdout: `${JSON.stringify(result, null, 2)}\n`,
@@ -288,6 +312,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
       const result = await verifyOpenClawToHermesHandoff({
         configPath: command.configPath,
         checkpointId: command.checkpointId,
+        createCheckpoint: command.createCheckpoint,
       });
       return {
         exitCode: result.status === "verified" ? 0 : 1,
