@@ -10,7 +10,7 @@ Cristalina is being tested with a Hermes agent named Cristal. Hermes emits
 runtime evidence through the `cristalina-bridge` plugin; Cristalina owns memory
 semantics, projection, diagnostics, review queues, and authority legality.
 
-The monitor is the external observation center for this phase:
+The external monitor for this phase is called Farol:
 
 ```bash
 node scripts/monitor-cristal-hermes.mjs
@@ -52,6 +52,34 @@ blocker, accumulating corruption, repeated invalid events, stuck processing, or
 a misleading operator assumption. Keep interventions short and factual; avoid
 feeding Cristal monitor internals unless those facts are necessary for the next
 action.
+
+## Farol Test Journal
+
+This file also carries a small external journey log for the live test. This is
+separate from Cristalina memory: it records operator-visible progress, lessons,
+fixed problems, and behaviors to watch, but it must not be treated as store
+truth, authority, or evidence by Cristalina.
+
+Keep entries short, dated, and high-signal. Prefer a few impact sentences over
+long transcripts. Update this journal when the live test reaches a meaningful
+milestone, uncovers a repeated behavior, fixes a real defect, or changes the
+monitoring posture. If details matter, point to commits, docs, monitor
+artifacts, or issue notes instead of copying large logs here.
+
+Current entries:
+
+- 2026-05-03: Cristal entered the first live Hermes/Cristalina test with Farol
+  observing externally instead of steering the agent's normal loop.
+- 2026-05-03: The Hermes bridge is running seamless post-turn capture with
+  background dispatch; Farol's healthy baseline is plugin enabled, dispatch on,
+  Cristalina status OK, zero diagnostics, and zero pending owner reviews.
+- 2026-05-03: Cristal's X/Twitter research path uses `bird` in read-only mode
+  with credentials loaded from the Hermes home `.env`; account mutation is out
+  of scope unless Markus explicitly changes the test.
+- 2026-05-03: Test interpretation must distinguish Cristal self-regulation from
+  outside repair; Farol intervenes only for blockers, accumulating failures,
+  invalid events, stuck reviews, misleading operator assumptions, or code-layer
+  defects.
 
 ## Investigation Loop
 
@@ -96,6 +124,7 @@ The old session-phrase memory was moved to:
 AGENTS-LEGACY-PHRASES.md
 ```
 
-Do not add new session phrases to `AGENTS.md`. During this phase, summarize
-important durable lessons in normal docs, tests, roadmap notes, or explicit
-proposals for Markus to approve.
+Do not resume the old generic session-phrase ritual in `AGENTS.md`. During this
+phase, use the Farol Test Journal above for live-test milestones and put durable
+architecture lessons in normal docs, tests, roadmap notes, or explicit proposals
+for Markus to approve.
