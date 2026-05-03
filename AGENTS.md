@@ -1,8 +1,8 @@
 # Cristalina v4 Agent Instructions
 
 This repository is now in the first live Hermes/Cristalina observation phase.
-Work with Markus through the monitoring workspace instead of maintaining session
-phrases in this file.
+Use this workspace as an external observation and intervention layer for Markus,
+not as an instruction channel that the Hermes agent depends on.
 
 ## Current Operating Mode
 
@@ -10,7 +10,7 @@ Cristalina is being tested with a Hermes agent named Cristal. Hermes emits
 runtime evidence through the `cristalina-bridge` plugin; Cristalina owns memory
 semantics, projection, diagnostics, review queues, and authority legality.
 
-The monitor is the shared observation center for this phase:
+The monitor is the external observation center for this phase:
 
 ```bash
 node scripts/monitor-cristal-hermes.mjs
@@ -28,7 +28,13 @@ monitor observes Hermes bridge events, per-event bridge logs, Cristalina status,
 diagnostics, projections, reviews, and store shape. It is read-only and must not
 be treated as a memory writer.
 
-## Collaboration With Markus
+Cristal should not be trained to coordinate with this monitor as part of its
+normal loop. The test is more valuable when Cristal mostly attempts to
+self-regulate through Cristalina itself. The monitor exists to catch accumulated
+failures, blocked bridge flow, broken projections, stuck reviews, or code-level
+defects that cannot be repaired from inside the running agent.
+
+## External Oversight With Markus
 
 When Markus is testing Cristal, help from this repository by:
 
@@ -40,6 +46,12 @@ When Markus is testing Cristal, help from this repository by:
 
 Do not guess from chat context when a monitor artifact can answer the question.
 Prefer concrete files, command output, and durable record refs.
+
+Intervene in Cristal's live session only when the outside view shows a real
+blocker, accumulating corruption, repeated invalid events, stuck processing, or
+a misleading operator assumption. Keep interventions short and factual; avoid
+feeding Cristal monitor internals unless those facts are necessary for the next
+action.
 
 ## Investigation Loop
 
