@@ -154,6 +154,23 @@ test("installer defaults metadata under runtimeRoot when metadata path is not ex
   assert.equal(metadata.hook_script_path, result.hook_script_path);
 });
 
+test("installer does not nest store root when config lives under .cristalina-v4", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-config-store-root-"));
+  const configDir = join(root, ".cristalina-v4");
+  const configPath = join(configDir, "config.json");
+
+  const result = await installRuntime({
+    runtime: "hermes",
+    configPath,
+    runtimeRoot: join(root, "hermes-runtime"),
+    nonInteractive: true,
+  });
+
+  const config = JSON.parse(await readFile(configPath, "utf8")) as { store_root: string };
+  assert.equal(config.store_root, configDir);
+  assert.equal(result.store_root, configDir);
+});
+
 test("installer repairs executable mode when hook script already exists", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-hook-mode-repair-"));
   const runtimeRoot = join(root, "openclaw-runtime");

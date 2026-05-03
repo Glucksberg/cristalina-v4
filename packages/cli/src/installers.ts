@@ -1,5 +1,5 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadCristalinaConfig, resolveStoreRoot, type CristalinaConfig } from "./config.js";
@@ -208,6 +208,14 @@ function resolveHookPath(input: RuntimeInstallInput, config: CristalinaConfig): 
     : resolve(relativeHookPath);
 }
 
+function defaultStoreRootForConfigPath(configPath: string | undefined): string | undefined {
+  if (!configPath) {
+    return undefined;
+  }
+  const configDir = dirname(resolve(configPath));
+  return basename(configDir) === ".cristalina-v4" ? configDir : join(configDir, ".cristalina-v4");
+}
+
 async function loadOrCreateConfig(input: RuntimeInstallInput): Promise<{
   config: CristalinaConfig;
   configPath: string;
@@ -225,7 +233,7 @@ async function loadOrCreateConfig(input: RuntimeInstallInput): Promise<{
   const created = await runConfigMenu({
     configPath: input.configPath,
     nonInteractive: input.nonInteractive ?? true,
-    storeRoot: input.configPath ? join(dirname(resolve(input.configPath)), ".cristalina-v4") : undefined,
+    storeRoot: defaultStoreRootForConfigPath(input.configPath),
   });
   return {
     config: created.config,
