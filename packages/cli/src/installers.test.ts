@@ -64,13 +64,17 @@ test("Hermes installer uses the same metadata contract as OpenClaw", async () =>
   const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-install-"));
   const configPath = join(root, "config.json");
   const metadataPath = join(root, ".cristalina-v4", "runtime-hermes.json");
+  const runtimeRoot = join(root, "hermes");
+  const hermesConfigPath = join(runtimeRoot, "config.yaml");
+  await mkdir(runtimeRoot, { recursive: true });
+  await writeFile(hermesConfigPath, "model:\n  provider: test\nhooks: {}\n");
 
   const result = await installRuntime({
     runtime: "hermes",
     configPath,
     metadataPath,
     nonInteractive: true,
-    runtimeRoot: join(root, "hermes"),
+    runtimeRoot,
   });
 
   assert.equal(result.runtime, "hermes");
@@ -82,12 +86,41 @@ test("Hermes installer uses the same metadata contract as OpenClaw", async () =>
     event_contract: string;
     bridge_command: string;
     projection_command: string;
+    plugin_path: string;
+    plugin_manifest_path: string;
+    plugin_entrypoint_path: string;
+    plugin_config_path: string;
+    plugin_enable_hint: string;
   };
   assert.equal(metadata.runtime, "hermes");
   assert.equal(metadata.event_contract, "cristalina.runtime_bridge_event.v1");
   assert.match(metadata.bridge_command, /cristalina bridge event/);
   assert.match(metadata.projection_command, /cristalina projection list/);
+  assert.equal(metadata.plugin_path, join(root, "hermes", "plugins", "cristalina-bridge"));
+  assert.equal(metadata.plugin_manifest_path, join(metadata.plugin_path, "plugin.yaml"));
+  assert.equal(metadata.plugin_entrypoint_path, join(metadata.plugin_path, "__init__.py"));
+  assert.equal(metadata.plugin_config_path, hermesConfigPath);
+  assert.match(metadata.plugin_enable_hint, /cristalina-bridge/);
   assert.match(await readFile(result.hook_path, "utf8"), /cristalina.runtime_hook.v1/);
+  assert.equal(result.plugin_path, metadata.plugin_path);
+  assert.equal(result.plugin_manifest_path, metadata.plugin_manifest_path);
+  assert.equal(result.plugin_entrypoint_path, metadata.plugin_entrypoint_path);
+  assert.equal(result.plugin_config_path, metadata.plugin_config_path);
+  assert.match(result.plugin_enable_hint!, /post_llm_call/);
+  assert.ok(result.diagnostics.some((entry) => entry.includes("plugins.enabled")));
+
+  const pluginManifest = await readFile(metadata.plugin_manifest_path, "utf8");
+  assert.match(pluginManifest, /name: cristalina-bridge/);
+  assert.match(pluginManifest, /post_llm_call/);
+
+  const pluginEntrypoint = await readFile(metadata.plugin_entrypoint_path, "utf8");
+  assert.match(pluginEntrypoint, /def register\(ctx/);
+  assert.match(pluginEntrypoint, /ctx.register_hook\('post_llm_call'/);
+  assert.match(pluginEntrypoint, /CRISTALINA_EVENT_PATH/);
+  assert.match(pluginEntrypoint, /message_observed/);
+
+  const hermesConfig = await readFile(hermesConfigPath, "utf8");
+  assert.match(hermesConfig, /plugins:\n  enabled:\n  - cristalina-bridge/);
 });
 
 test("Hermes one-liner documents the public installer shape", () => {

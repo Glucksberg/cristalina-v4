@@ -106,7 +106,7 @@ Fix diagnostics before continuing.
 
 ---
 
-## 4. Install Hook Metadata
+## 4. Install Hook Metadata And Hermes Auto-Emitter
 
 Install generated hook descriptors and hook scripts:
 
@@ -122,8 +122,21 @@ pnpm cristalina install hermes \
   --non-interactive
 ```
 
-Each install writes Cristalina-owned metadata under the runtime root. It does
-not directly edit the runtime's native config.
+Each install writes Cristalina-owned metadata under the runtime root. For
+Hermes, the installer also enables the generated user plugin in
+`/path/to/hermes/config.yaml` when that file exists.
+
+For Hermes, the installer also writes a general hook plugin under:
+
+```text
+/path/to/hermes/plugins/cristalina-bridge/plugin.yaml
+/path/to/hermes/plugins/cristalina-bridge/__init__.py
+```
+
+This plugin is not a native Hermes memory provider. It is a thin post-turn event
+emitter: when Hermes loads it and calls its `post_llm_call` hook, it writes a
+`cristalina.runtime_bridge_event.v1` JSON file under the Hermes runtime root and
+invokes the generated `cristalina-bridge-event.sh` script.
 
 Record where the real runtime config should point:
 
@@ -146,9 +159,12 @@ The generated map records:
 - target runtime config path
 - required `CRISTALINA_EVENT_PATH` invocation
 
-Wire the real OpenClaw and Hermes config to invoke the generated hook script
-after writing an event file. The event file path must be exported as
-`CRISTALINA_EVENT_PATH`.
+Wire the real OpenClaw config to invoke the generated hook script after writing
+an event file. For Hermes, restart the session/gateway after installation so the
+`cristalina-bridge` plugin is loaded from `plugins.enabled` and its
+`post_llm_call` hook is registered. If Hermes does not load the plugin, use the
+same event-file plus `CRISTALINA_EVENT_PATH` fallback while fixing plugin
+discovery.
 
 ---
 
@@ -220,6 +236,17 @@ not apply owner review queue items directly.
 
 Use event ids that are stable for retries. Re-sending the same logical event
 should converge instead of creating unrelated memory.
+
+For the seamless Hermes test path, restart Hermes after installation, send a
+normal message, and then inspect the generated files under:
+
+```text
+/path/to/hermes/.cristalina-v4/events/
+```
+
+If no event appears, Hermes did not load the generated general plugin yet. In
+that case, enable `cristalina-bridge` in Hermes' plugin mechanism and retry
+before falling back to manual `CRISTALINA_EVENT_PATH` invocation.
 
 ---
 
@@ -402,7 +429,9 @@ After the session:
 This runbook does not yet provide:
 
 - a daemon that watches runtime event directories
-- automatic editing of native OpenClaw or Hermes config files
+- automatic editing of native OpenClaw config files
+- full Hermes native config management beyond enabling `cristalina-bridge`
+- a native Hermes memory-provider plugin
 - polished runtime-specific UI
 - hosted synchronization
 - hostile multi-tenant hardening as the main operating model

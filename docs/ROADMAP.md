@@ -2,7 +2,7 @@
 ## Roadmap
 
 **Status:** Active Draft
-**Updated:** 2026-04-28
+**Updated:** 2026-05-03
 **Current posture:** executable memory kernel with thin Hermes and OpenClaw
 boundaries; beginning controlled real-runtime wiring tests through generated
 hook contracts
@@ -26,6 +26,11 @@ The build order still remains:
 For the current phase, that means the already implemented bridge and installer
 surface should be tested against real OpenClaw and Hermes sessions before any
 new memory semantics are added.
+
+For Hermes specifically, the current integration target is a bridge/runtime
+hook, not a native Hermes memory-provider plugin. A future native plugin may be
+valuable, but it must be built as a thin consumer of the proven bridge and core
+contracts after the first live Hermes bridge loop is validated.
 
 ---
 
@@ -80,6 +85,10 @@ gaps, not kernel gaps:
   sessions still need to emit those events
 - the first live bridge is hook-driven; a daemon is still deferred until a live
   runtime proves it is needed
+- a native Hermes memory-provider plugin is intentionally deferred until the
+  bridge and generated Hermes general hook plugin have proven event writeback,
+  projection consumption, review behavior, diagnostics, and handoff against a
+  real Hermes instance
 - production-style operator docs still need to cover install, inspect, review,
   recover, projection refresh, and handoff against real runtimes
 
@@ -745,6 +754,9 @@ Hermes integration must support:
   disable hint
 - `scripts/install-hermes.sh` provides the local one-line installer shape for
   development
+- the Hermes installer writes a general `plugins/cristalina-bridge` auto-emitter
+  that can register `post_llm_call` and call the same runtime bridge hook; this
+  is not a native Hermes memory provider
 - tests prove Hermes/OpenClaw installer metadata parity
 
 ### Explicit Non-Goals
@@ -752,10 +764,65 @@ Hermes integration must support:
 - no Hermes-specific governance semantics
 - no runtime-authored canonical memory
 - no hidden proposal extraction from session summaries
+- no native Hermes memory-provider plugin in the first bridge validation slice
 
 ---
 
-## 12. Step 7 Plan: Session Continuity
+## 12. Future Plan: Native Hermes Memory Plugin
+
+**Execution status:** deferred until the bridge has been validated against a real
+Hermes instance.
+
+### Purpose
+
+Add a native Hermes memory-provider plugin only after the bridge proves the
+runtime contract in live use. The plugin should improve Hermes ergonomics, not
+move memory law into Hermes.
+
+### Entry Criteria
+
+- a fresh Hermes instance can install the current bridge with one command
+- Hermes can emit valid `cristalina.runtime_bridge_event.v1` files during a real
+  conversation
+- bridge writes preserve authenticated authority boundaries: event JSON remains
+  evidence, and owner ratification remains explicit
+- Hermes can consume compatible bootstrap projections without inventing
+  adapter-specific retrieval, canon, or review semantics
+- diagnostics, projection verification, review listing/application, and
+  OpenClaw-to-Hermes handoff have been exercised through the documented runbook
+
+### Plugin Shape To Explore
+
+- package as the native Hermes memory-provider/plugin format, for example
+  `plugins/memory/<name>/plugin.yaml` if that remains the Hermes convention
+- call public Cristalina CLI/API surfaces only
+- read latest compatible Hermes projections and session packs from Cristalina
+- emit bridge events or call an equivalent public bridge endpoint for evidence,
+  diagnostics, and runtime observations
+- surface pending reviews without applying owner authority from runtime payloads
+- preserve Cristalina store root, runtime instance identity, projection manifest
+  refs, and checkpoint/session-pack lineage
+
+### Non-Goals
+
+- no Hermes-side canon mutation
+- no plugin-specific governance or review semantics
+- no treating Hermes memory-provider callbacks as owner authority by default
+- no replacing the runtime-neutral bridge until parity and rollback are proven
+
+### Exit Criteria
+
+- bridge mode and plugin mode produce equivalent durable Cristalina state for the
+  same Hermes conversation fixtures
+- plugin installation can be disabled without corrupting store state or derived
+  artifacts
+- tests prove plugin parity against bridge behavior for event intake, projection
+  reads, diagnostics, review visibility, and session continuity
+- docs clearly distinguish bridge install, native plugin install, and rollback
+
+---
+
+## 13. Step 7 Plan: Session Continuity
 
 **Execution status:** implemented as public core continuity helpers, bridge
 events, and CLI checkpoint/session-pack commands.
@@ -848,7 +915,7 @@ future hardening item before rich production resume packs.
 
 ---
 
-## 13. Step 8 Plan: Seamless Operation
+## 14. Step 8 Plan: Seamless Operation
 
 **Execution status:** implemented as the first operator command surface.
 
@@ -941,7 +1008,7 @@ The operational layer must detect:
 
 ---
 
-## 14. Execution Rule
+## 15. Execution Rule
 
 The master-plan implementation pass is complete enough to start controlled
 runtime wiring tests.
@@ -994,7 +1061,7 @@ Phase 2 should proceed in this order:
 
 ---
 
-## 15. Deferred On Purpose
+## 16. Deferred On Purpose
 
 Still intentionally deferred:
 
@@ -1006,6 +1073,7 @@ Still intentionally deferred:
 - treating session packs, wiki pages, retrieval results, projections, or
   summaries as direct truth sources
 - runtime-specific memory semantics
+- native Hermes memory-provider plugin before live bridge parity is proven
 
 These are deferred because the shortest path to value is now an installable
 local runtime bridge over the existing core.
