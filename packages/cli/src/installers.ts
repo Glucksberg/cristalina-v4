@@ -99,6 +99,10 @@ function nextPluginSubKey(lines: string[], start: number, end: number): number {
 
 function pluginListContains(lines: string[], keyIndex: number, blockEnd: number, pluginName: string): boolean {
   const end = nextPluginSubKey(lines, keyIndex, blockEnd);
+  const inline = /^  enabled:\s*\[(.*)\]\s*(?:#.*)?$/.exec(lines[keyIndex]);
+  if (inline) {
+    return parseInlineYamlList(inline[1] ?? "").includes(pluginName);
+  }
   return lines.slice(keyIndex + 1, end).some((line) => hermesPluginIsListed(line, pluginName));
 }
 
@@ -117,6 +121,25 @@ function removePluginFromList(lines: string[], keyIndex: number, blockEnd: numbe
   return changed;
 }
 
+function parseInlineYamlList(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ""))
+    .filter(Boolean);
+}
+
+function formatYamlList(key: string, values: string[]): string[] {
+  return [`  ${key}:`, ...values.map((value) => `  - ${value}`)];
+}
+
+function normalizeInlinePluginsMap(line: string): string[] | null {
+  const match = /^plugins:\s*\{\s*enabled:\s*\[(.*)\]\s*\}\s*(?:#.*)?$/.exec(line);
+  if (!match) {
+    return null;
+  }
+  return ["plugins:", ...formatYamlList("enabled", parseInlineYamlList(match[1] ?? ""))];
+}
+
 function addHermesPluginToConfigYaml(source: string, pluginName: string): { text: string; changed: boolean } {
   const lines = source.split(/\r?\n/);
   const hadTrailingNewline = lines.length > 0 && lines[lines.length - 1] === "";
@@ -129,6 +152,13 @@ function addHermesPluginToConfigYaml(source: string, pluginName: string): { text
   if (pluginsIndex === -1 && inlineEmptyPluginsIndex !== -1) {
     lines.splice(inlineEmptyPluginsIndex, 1, "plugins:");
     pluginsIndex = inlineEmptyPluginsIndex;
+  }
+  if (pluginsIndex === -1) {
+    const inlinePluginsIndex = lines.findIndex((line) => normalizeInlinePluginsMap(line) !== null);
+    if (inlinePluginsIndex !== -1) {
+      lines.splice(inlinePluginsIndex, 1, ...normalizeInlinePluginsMap(lines[inlinePluginsIndex])!);
+      pluginsIndex = inlinePluginsIndex;
+    }
   }
   let changed = false;
 
@@ -148,6 +178,14 @@ function addHermesPluginToConfigYaml(source: string, pluginName: string): { text
   }
 
   const enabledIndex = lines.findIndex((line, index) => index > pluginsIndex && index < pluginsEnd && /^  enabled:\s*(?:#.*)?$/.test(line));
+  const inlineEnabledIndex = lines.findIndex((line, index) => index > pluginsIndex && index < pluginsEnd && /^  enabled:\s*\[.*\]\s*(?:#.*)?$/.test(line));
+  if (inlineEnabledIndex !== -1) {
+    const match = /^  enabled:\s*\[(.*)\]\s*(?:#.*)?$/.exec(lines[inlineEnabledIndex]);
+    const enabled = [...new Set([...parseInlineYamlList(match?.[1] ?? ""), pluginName])];
+    lines.splice(inlineEnabledIndex, 1, ...formatYamlList("enabled", enabled));
+    return { text: `${lines.join("\n")}\n`, changed: true };
+  }
+
   if (enabledIndex !== -1 && pluginListContains(lines, enabledIndex, pluginsEnd, pluginName)) {
     return { text: `${lines.join("\n")}${changed || hadTrailingNewline ? "\n" : ""}`, changed };
   }
@@ -477,7 +515,7 @@ function buildHermesBridgePluginEntrypoint(): string {
     "        'message': message,",
     "    }",
     "    if isinstance(speaker_ref, str) and speaker_ref.strip():",
-    "        event['speaker_ref'] = speaker_ref",
+    "        event['speaker_ref'] = speaker_ref.strip()",
     "    return event",
     "",
     "",
@@ -489,12 +527,20 @@ function buildHermesBridgePluginEntrypoint(): string {
     "    event_path.write_text(json.dumps(event, indent=2, ensure_ascii=False) + '\\n', encoding='utf-8')",
     "    env = os.environ.copy()",
     "    env['CRISTALINA_EVENT_PATH'] = str(event_path)",
-    "    completed = subprocess.run([str(HOOK_SCRIPT)], env=env, text=True, capture_output=True, check=False)",
-    "    if completed.returncode != 0:",
-    "        raise RuntimeError(completed.stderr or completed.stdout or f'Cristalina bridge exited with {completed.returncode}')",
+    "    bridge_log_path = EVENT_DIR / f\"{event['event_id']}.bridge.log\"",
+    "    with bridge_log_path.open('ab') as bridge_log:",
+    "        process = subprocess.Popen(",
+    "            [str(HOOK_SCRIPT)],",
+    "            env=env,",
+    "            stdin=subprocess.DEVNULL,",
+    "            stdout=bridge_log,",
+    "            stderr=subprocess.STDOUT,",
+    "            start_new_session=True,",
+    "        )",
     "    return {",
     "        'event_path': str(event_path),",
-    "        'bridge_stdout': completed.stdout,",
+    "        'bridge_log_path': str(bridge_log_path),",
+    "        'bridge_pid': process.pid,",
     "    }",
     "",
     "",

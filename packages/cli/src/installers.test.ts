@@ -120,9 +120,42 @@ test("Hermes installer uses the same metadata contract as OpenClaw", async () =>
   assert.match(pluginEntrypoint, /message_observed/);
   assert.match(pluginEntrypoint, /if isinstance\(speaker_ref, str\) and speaker_ref\.strip\(\):/);
   assert.doesNotMatch(pluginEntrypoint, /'speaker_ref': _get/);
+  assert.match(pluginEntrypoint, /subprocess\.Popen/);
+  assert.match(pluginEntrypoint, /start_new_session=True/);
+  assert.doesNotMatch(pluginEntrypoint, /subprocess\.run/);
 
   const hermesConfig = await readFile(hermesConfigPath, "utf8");
   assert.match(hermesConfig, /plugins:\n  enabled:\n  - cristalina-bridge/);
+});
+
+test("Hermes installer enables plugin across common config yaml shapes", async () => {
+  const cases = [
+    "plugins:\n  enabled: []\n",
+    "plugins:\n  enabled: [foo]\n",
+    "plugins:\n  enabled:\n  - foo\n",
+    "plugins: { enabled: [] }\n",
+  ];
+
+  for (const source of cases) {
+    const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-config-shape-"));
+    const runtimeRoot = join(root, "hermes");
+    const hermesConfigPath = join(runtimeRoot, "config.yaml");
+    await mkdir(runtimeRoot, { recursive: true });
+    await writeFile(hermesConfigPath, source);
+
+    await installRuntime({
+      runtime: "hermes",
+      configPath: join(root, "config.json"),
+      nonInteractive: true,
+      runtimeRoot,
+    });
+
+    const updated = await readFile(hermesConfigPath, "utf8");
+    assert.match(updated, /^plugins:\n/m);
+    assert.match(updated, /^  enabled:\n/m);
+    assert.match(updated, /^  - cristalina-bridge$/m);
+    assert.equal([...updated.matchAll(/^  enabled:/gm)].length, 1);
+  }
 });
 
 test("Hermes one-liner documents the public installer shape", () => {
