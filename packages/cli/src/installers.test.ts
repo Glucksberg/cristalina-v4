@@ -118,6 +118,8 @@ test("Hermes installer uses the same metadata contract as OpenClaw", async () =>
   assert.match(pluginEntrypoint, /ctx.register_hook\('post_llm_call'/);
   assert.match(pluginEntrypoint, /CRISTALINA_EVENT_PATH/);
   assert.match(pluginEntrypoint, /message_observed/);
+  assert.match(pluginEntrypoint, /if isinstance\(speaker_ref, str\) and speaker_ref\.strip\(\):/);
+  assert.doesNotMatch(pluginEntrypoint, /'speaker_ref': _get/);
 
   const hermesConfig = await readFile(hermesConfigPath, "utf8");
   assert.match(hermesConfig, /plugins:\n  enabled:\n  - cristalina-bridge/);
