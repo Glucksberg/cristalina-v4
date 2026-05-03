@@ -212,6 +212,12 @@ The runtime-side integration should:
 3. invoke the generated hook script
 4. leave the event file available for audit during the first tests
 
+The event file is evidence and operational input, not an authority boundary.
+The bridge derives the effective authenticated principal from trusted local
+config or explicit operator commands. A runtime event that declares owner
+authority in JSON does not become owner authority, and runtime hook events do
+not apply owner review queue items directly.
+
 Use event ids that are stable for retries. Re-sending the same logical event
 should converge instead of creating unrelated memory.
 
@@ -286,6 +292,10 @@ pnpm cristalina reviews apply \
 Only use this command for a queue item the operator intends to approve. Review
 application goes through the adapter boundary and core authority checks; it is
 not a raw canon edit path.
+
+Do not approve owner-gated writes through a `review_action_requested` runtime
+event. Runtime hook events may surface evidence and diagnostics, but owner
+ratification remains an explicit operator/owner action.
 
 After applying a review:
 

@@ -288,6 +288,52 @@ test("runtime event-check rejects events with runtime identity drift", async () 
   assert.ok(payload.diagnostics.some((entry) => entry.includes("runtime_instance_ref")));
 });
 
+test("runtime event-check rejects mismatched declared event principal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-event-principal-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const eventPath = join(root, "hermes-event.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_event_principal_001",
+      agentIdentityRef: "actor_agent_cli_event_principal_001",
+      hermesRuntimeRef: "runtime_hermes_cli_event_principal_001",
+    }), null, 2)}\n`,
+  );
+  await writeFile(
+    eventPath,
+    `${JSON.stringify({
+      event_id: "evt_cli_runtime_event_principal_001",
+      event_type: "runtime_diagnostic",
+      runtime: "hermes",
+      occurred_at: "2026-04-28T20:05:00.000Z",
+      actor_ref: "system:hermes-event-check",
+      authenticated_principal: {
+        kind: "owner",
+        actor_ref: "actor_owner_cli_event_principal_001",
+      },
+      runtime_instance_ref: "runtime_hermes_cli_event_principal_001",
+      code: "event_check_principal",
+      severity: "info",
+      message: "This event intentionally mismatches actor_ref and declared principal.",
+    }, null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "runtime",
+    action: "event-check",
+    configPath,
+    eventPath,
+  });
+  const payload = JSON.parse(result.stdout) as { status: string; diagnostics: string[] };
+  assert.equal(result.exitCode, 1);
+  assert.equal(payload.status, "invalid");
+  assert.ok(payload.diagnostics.some((entry) => entry.includes("authenticated_principal.actor_ref")));
+});
+
 test("runtime event-verify writes OpenClaw and Hermes events into one store", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-event-verify-"));
   const storeRoot = join(root, "store");
@@ -455,6 +501,8 @@ test("reviews apply writes to the explicit store-root override", async () => {
     agentIdentityRef: "actor_agent_cli_review_001",
     openclawRuntimeRef: "runtime_openclaw_cli_review_001",
     hermesRuntimeRef: "runtime_hermes_cli_review_001",
+    principalKind: "participant",
+    principalActorRef: "actor_participant_cli_review_001",
   });
   await handleRuntimeBridgeEvent(configB, {
     event_id: "evt_cli_review_override_001",
@@ -500,6 +548,8 @@ test("bridge event treats deferred review as successful event processing", async
       agentIdentityRef: "actor_agent_cli_bridge_deferred_001",
       openclawRuntimeRef: "runtime_openclaw_cli_bridge_deferred_001",
       hermesRuntimeRef: "runtime_hermes_cli_bridge_deferred_001",
+      principalKind: "participant",
+      principalActorRef: "actor_participant_cli_bridge_deferred_001",
     }), null, 2)}\n`,
   );
   await writeFile(

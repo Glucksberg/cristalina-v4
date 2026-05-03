@@ -11,7 +11,6 @@ import {
 import {
   loadLatestOpenClawProjectionRuntimeView,
   listOpenClawConversationPreferenceOwnerRatificationQueue,
-  ratifyOpenClawQueuedConversationPreference,
   writeOpenClawAdapterDriftDiagnosticToStore,
   writeOpenClawConversationPreferenceToStore,
   writeOpenClawNonCanonicalIntakeToStore,
@@ -23,7 +22,6 @@ import {
 import {
   loadLatestHermesProjectionRuntimeView,
   listHermesConversationPreferenceOwnerRatificationQueue,
-  ratifyHermesQueuedConversationPreference,
   writeHermesAdapterDriftDiagnosticToStore,
   writeHermesConversationPreferenceToStore,
   writeHermesNonCanonicalIntakeToStore,
@@ -183,17 +181,33 @@ function hasRuntimeDrift(config: CristalinaConfig, event: RuntimeBridgeEvent): b
   return Boolean(configured && event.runtime_instance_ref && configured !== event.runtime_instance_ref);
 }
 
+function bridgeAuthenticatedPrincipal(config: CristalinaConfig): AuthenticatedPrincipal {
+  const principal = config.authenticated_principal;
+  if ((principal?.kind === "owner" || principal?.kind === "participant") && principal.actor_ref?.trim()) {
+    return { kind: principal.kind, actor_ref: principal.actor_ref };
+  }
+  if (principal?.kind === "system" && principal.actor_ref?.trim() && principal.system_scope?.trim()) {
+    return { kind: "system", actor_ref: principal.actor_ref, system_scope: principal.system_scope };
+  }
+  return {
+    kind: "system",
+    actor_ref: "system:cristalina-runtime-bridge",
+    system_scope: "cristalina-runtime-bridge",
+  };
+}
+
 function buildPreferenceInput(
   event: RuntimeConversationPreferenceSignalEvent | RuntimeProjectionFeedbackEvent,
   context: ResolvedRuntimeEventContext,
+  authenticated_principal: AuthenticatedPrincipal,
 ): PreferenceInput {
   const topic = event.preference_topic_label ?? "Runtime Bridge Preferences";
   return {
     rootDir: context.storeRoot,
     now: event.occurred_at,
-    actor: event.actor_ref,
+    actor: authenticated_principal.actor_ref,
     statement: event.statement,
-    authenticated_principal: event.authenticated_principal,
+    authenticated_principal,
     identity_context: {
       runtime: event.runtime,
       ids: {
@@ -256,13 +270,14 @@ function buildNonCanonicalInput(
   event: RuntimeMessageObservedEvent | RuntimeDiagnosticEvent,
   context: ResolvedRuntimeEventContext,
   mode: NonCanonicalInput["mode"],
+  authenticated_principal: AuthenticatedPrincipal,
   diagnostic?: NonNullable<NonCanonicalInput["diagnostic"]>,
 ): NonCanonicalInput {
   return {
     rootDir: context.storeRoot,
     now: event.occurred_at,
-    actor: event.actor_ref,
-    authenticated_principal: event.authenticated_principal,
+    actor: authenticated_principal.actor_ref,
+    authenticated_principal,
     mode,
     ids: {
       source: id("src", event),
@@ -322,11 +337,14 @@ async function recordRuntimeDriftDiagnostic(
     severity: "warning",
     message: `${event.runtime} event ${event.event_id} declared runtime_instance_ref ${event.runtime_instance_ref} but config expects ${context.runtimeInstanceRef}`,
   };
-  const input = buildNonCanonicalInput(diagnosticEvent, context, "diagnostic_only", {
+  const input = buildNonCanonicalInput(diagnosticEvent, context, "diagnostic_only", bridgeAuthenticatedPrincipal(config), {
     code: "runtime_context_drift",
     severity: "warning",
     message: diagnosticEvent.message,
   });
+  if (event.runtime_instance_ref) {
+    input.source.runtime_ref = event.runtime_instance_ref;
+  }
 
   const result = event.runtime === "openclaw"
     ? await writeOpenClawAdapterDriftDiagnosticToStore(input as OpenClawAdapterDriftDiagnosticInput)
@@ -344,6 +362,7 @@ async function recordRuntimeDriftDiagnostic(
 }
 
 export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: RuntimeBridgeEvent): Promise<RuntimeBridgeEventResult> {
+  const authenticated_principal = bridgeAuthenticatedPrincipal(config);
   if (hasRuntimeDrift(config, event)) {
     return recordRuntimeDriftDiagnostic(config, event);
   }
@@ -351,7 +370,7 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
   const context = resolveContext(config, event);
 
   if (event.event_type === "conversation_preference_signal" || event.event_type === "projection_feedback") {
-    const input = buildPreferenceInput(event, context);
+    const input = buildPreferenceInput(event, context, authenticated_principal);
     const result = event.runtime === "openclaw"
       ? event.event_type === "projection_feedback"
         ? await writeOpenClawProjectionFeedbackToStore(input as OpenClawConversationPreferenceWriteInput)
@@ -385,6 +404,7 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
       event,
       context,
       event.event_type === "runtime_diagnostic" ? "diagnostic_only" : "runtime_only",
+      authenticated_principal,
       diagnostic,
     );
     const result = event.runtime === "openclaw"
@@ -402,33 +422,7 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
   }
 
   if (event.event_type === "review_action_requested") {
-    const result = event.runtime === "openclaw"
-      ? await ratifyOpenClawQueuedConversationPreference({
-          rootDir: context.storeRoot,
-          queue_id: event.queue_id,
-          now: event.occurred_at,
-          actor: event.actor_ref,
-          authenticated_principal: event.authenticated_principal,
-          validation_scope: `runtime-bridge:${event.event_type}:${event.runtime}`,
-        })
-      : await ratifyHermesQueuedConversationPreference({
-          rootDir: context.storeRoot,
-          queue_id: event.queue_id,
-          now: event.occurred_at,
-          actor: event.actor_ref,
-          authenticated_principal: event.authenticated_principal,
-          validation_scope: `runtime-bridge:${event.event_type}:${event.runtime}`,
-        });
-    return {
-      event_id: event.event_id,
-      event_type: event.event_type,
-      runtime: event.runtime,
-      status: "applied",
-      record_refs: [result.records.owner_ratification_queue?.id, result.records.canonical_record?.id].filter((value): value is string => Boolean(value)),
-      projection_manifest_ref: result.records.projection_manifest.id,
-      pending_owner_review_count: await pendingOwnerReviewCount(event.runtime, context.storeRoot),
-      diagnostics: result.validation_issues.map((issue) => issue.message),
-    };
+    throw new Error("Runtime bridge review_action_requested is blocked; use cristalina reviews apply with an explicit operator principal");
   }
 
   if (event.event_type === "projection_refresh_requested") {
@@ -457,7 +451,7 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
       generation: 1,
       read_policy_version: "projection-read-v2",
       summary: "Runtime requested a handoff checkpoint through the bridge.",
-      authenticated_principal: event.authenticated_principal,
+      authenticated_principal,
     });
     return {
       event_id: event.event_id,
@@ -484,7 +478,7 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
       adapter: event.runtime,
       manifest_id: stored.pack.manifest.id,
       checkpoint_id: stored.pack.manifest.source_checkpoint_ref ?? undefined,
-      authenticated_principal: event.authenticated_principal,
+      authenticated_principal,
     });
     return {
       event_id: event.event_id,

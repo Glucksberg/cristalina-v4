@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { listStoreProjectionManifests } from "@cristalina-v4/core";
+import { listHermesConversationPreferenceOwnerRatificationQueue } from "@cristalina-v4/hermes-adapter";
 
 import { initializeCristalinaStore } from "./bridge.js";
 import { buildDefaultCristalinaConfig } from "./config.js";
 import { handleRuntimeBridgeEvent, type RuntimeBridgeEvent } from "./runtime-events.js";
 
-async function buildConfiguredStore() {
+async function buildConfiguredStore(input: {
+  principalKind?: "owner" | "participant" | "system";
+  principalActorRef?: string;
+} = {}) {
   const root = await mkdtemp(join(tmpdir(), "cristalina-runtime-events-"));
   const storeRoot = join(root, "store");
   await initializeCristalinaStore(storeRoot, "2026-04-28T12:00:00.000Z");
@@ -20,6 +24,8 @@ async function buildConfiguredStore() {
     agentIdentityRef: "actor_agent_runtime_events_001",
     openclawRuntimeRef: "runtime_openclaw_runtime_events_001",
     hermesRuntimeRef: "runtime_hermes_runtime_events_001",
+    principalKind: input.principalKind ?? "participant",
+    principalActorRef: input.principalActorRef ?? "actor_participant_runtime_events_001",
   });
   return { storeRoot, config };
 }
@@ -57,8 +63,11 @@ test("runtime bridge routes participant owner claims to OpenClaw review and repl
   assert.deepEqual(second.record_refs, first.record_refs);
 });
 
-test("runtime bridge applies owner-authenticated Hermes preference through the same event contract", async () => {
-  const { config } = await buildConfiguredStore();
+test("runtime bridge applies Hermes preference only when the bridge config carries owner authority", async () => {
+  const { config } = await buildConfiguredStore({
+    principalKind: "owner",
+    principalActorRef: "actor_owner_runtime_events_001",
+  });
   const result = await handleRuntimeBridgeEvent(config, {
     event_id: "evt_hermes_preference_001",
     event_type: "conversation_preference_signal",
@@ -82,6 +91,72 @@ test("runtime bridge applies owner-authenticated Hermes preference through the s
   assert.equal(result.pending_owner_review_count, 0);
 });
 
+test("runtime bridge ignores self-declared Hermes owner authority in event payload", async () => {
+  const { config } = await buildConfiguredStore();
+  const result = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_self_declared_owner_001",
+    event_type: "conversation_preference_signal",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:02:30.000Z",
+    actor_ref: "actor_owner_runtime_events_001",
+    authenticated_principal: {
+      kind: "owner",
+      actor_ref: "actor_owner_runtime_events_001",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+    statement: "The owner prefers Hermes runtime events not to self-authorize writes.",
+    message: "The event payload claims owner authority, but the bridge config is a participant.",
+    speaker_ref: "actor_owner_runtime_events_001",
+    preference_topic_label: "Runtime Bridge Authority Preferences",
+  });
+
+  assert.equal(result.status, "deferred");
+  assert.equal(result.runtime, "hermes");
+  assert.equal(result.pending_owner_review_count, 1);
+});
+
+test("runtime bridge blocks runtime-requested owner review actions", async () => {
+  const { config, storeRoot } = await buildConfiguredStore();
+  await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_review_candidate_001",
+    event_type: "conversation_preference_signal",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:02:40.000Z",
+    actor_ref: "actor_participant_runtime_events_001",
+    authenticated_principal: {
+      kind: "participant",
+      actor_ref: "actor_participant_runtime_events_001",
+    },
+    runtime_instance_ref: "runtime_hermes_runtime_events_001",
+    statement: "The owner prefers review actions to stay outside runtime event payload authority.",
+    message: "A collaborator says review actions should be explicit.",
+    speaker_ref: "actor_participant_runtime_events_001",
+    preference_topic_label: "Runtime Bridge Authority Preferences",
+  });
+  const queue = await listHermesConversationPreferenceOwnerRatificationQueue(storeRoot);
+  assert.equal(queue.length, 1);
+
+  await assert.rejects(
+    handleRuntimeBridgeEvent(config, {
+      event_id: "evt_hermes_review_action_001",
+      event_type: "review_action_requested",
+      runtime: "hermes",
+      occurred_at: "2026-04-28T12:02:50.000Z",
+      actor_ref: "actor_owner_runtime_events_001",
+      authenticated_principal: {
+        kind: "owner",
+        actor_ref: "actor_owner_runtime_events_001",
+      },
+      runtime_instance_ref: "runtime_hermes_runtime_events_001",
+      queue_kind: "owner_ratification",
+      action: "ratify",
+      queue_id: queue[0]!.queue_id,
+    }),
+    /review_action_requested is blocked/,
+  );
+  assert.equal((await listHermesConversationPreferenceOwnerRatificationQueue(storeRoot)).length, 1);
+});
+
 test("runtime bridge records runtime ref drift as diagnostic-only intake", async () => {
   const { config } = await buildConfiguredStore();
   const result = await handleRuntimeBridgeEvent(config, {
@@ -92,6 +167,32 @@ test("runtime bridge records runtime ref drift as diagnostic-only intake", async
   assert.equal(result.status, "diagnostic_recorded");
   assert.equal(result.pending_owner_review_count, 0);
   assert.ok(result.diagnostics[0]!.includes("declared runtime_instance_ref"));
+});
+
+test("runtime bridge drift diagnostics preserve the observed Hermes runtime ref", async () => {
+  const { config, storeRoot } = await buildConfiguredStore();
+  const result = await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_hermes_drift_001",
+    event_type: "runtime_diagnostic",
+    runtime: "hermes",
+    occurred_at: "2026-04-28T12:02:55.000Z",
+    actor_ref: "system:hermes-runtime",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-runtime",
+      system_scope: "hermes-runtime",
+    },
+    runtime_instance_ref: "runtime_hermes_unconfigured_001",
+    code: "hermes_runtime_probe",
+    severity: "warning",
+    message: "Hermes reported a runtime binding mismatch.",
+  });
+  const source = JSON.parse(await readFile(join(storeRoot, "raw", "sources", `${result.record_refs[0]!}.json`), "utf8")) as {
+    provenance: { runtime_ref?: string | null };
+  };
+
+  assert.equal(result.status, "diagnostic_recorded");
+  assert.equal(source.provenance.runtime_ref, "runtime_hermes_unconfigured_001");
 });
 
 test("runtime bridge compiles cross-runtime session resume pack from checkpoint", async () => {

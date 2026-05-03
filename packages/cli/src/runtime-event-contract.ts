@@ -98,10 +98,10 @@ function optionalStringField(record: Record<string, unknown>, key: string, diagn
   return value;
 }
 
-function validateAuthenticatedPrincipal(value: unknown, diagnostics: string[]): void {
+function validateAuthenticatedPrincipal(value: unknown, diagnostics: string[]): string | null {
   if (!isRecord(value)) {
     diagnostics.push("authenticated_principal must be an object");
-    return;
+    return null;
   }
   if (value.kind !== "owner" && value.kind !== "participant" && value.kind !== "system") {
     diagnostics.push("authenticated_principal.kind must be owner, participant, or system");
@@ -112,6 +112,7 @@ function validateAuthenticatedPrincipal(value: unknown, diagnostics: string[]): 
   if (value.kind === "system" && (typeof value.system_scope !== "string" || value.system_scope.trim().length === 0)) {
     diagnostics.push("authenticated_principal.system_scope is required for system principals");
   }
+  return typeof value.actor_ref === "string" && value.actor_ref.trim().length > 0 ? value.actor_ref : null;
 }
 
 export function validateRuntimeBridgeEventContract(
@@ -152,8 +153,11 @@ export function validateRuntimeBridgeEventContract(
   const eventType = stringField(value, "event_type", diagnostics);
   const runtime = stringField(value, "runtime", diagnostics);
   const occurredAt = stringField(value, "occurred_at", diagnostics);
-  stringField(value, "actor_ref", diagnostics);
-  validateAuthenticatedPrincipal(value.authenticated_principal, diagnostics);
+  const actorRef = stringField(value, "actor_ref", diagnostics);
+  const declaredPrincipalActorRef = validateAuthenticatedPrincipal(value.authenticated_principal, diagnostics);
+  if (actorRef && declaredPrincipalActorRef && actorRef !== declaredPrincipalActorRef) {
+    diagnostics.push("event actor_ref must match declared authenticated_principal.actor_ref");
+  }
   optionalStringField(value, "runtime_instance_ref", diagnostics);
   optionalStringField(value, "runtime_session_ref", diagnostics);
   optionalStringField(value, "conversation_thread_ref", diagnostics);

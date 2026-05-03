@@ -81,6 +81,13 @@ In particular:
 - `authenticated_principal` is the authority-bearing caller
 - queue expiration, owner-ratification, and contradiction-manual-review actions must arrive with an explicit authenticated principal instead of relying on free-form `actor` strings
 
+For file-based runtime bridge events, the event payload may still carry a
+declared principal for contract validation and audit context, but it is not the
+authority-bearing caller. The bridge must derive the effective
+`authenticated_principal` from a trusted boundary such as local bridge config or
+an explicit CLI/operator action. Runtime hook events must not ratify owner
+review queue items by self-declaring owner authority in JSON.
+
 ### Runtime identity rule
 
 Adapters fix their runtime identity at the adapter boundary.
