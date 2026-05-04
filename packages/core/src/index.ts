@@ -10,6 +10,7 @@ export * from "./adapter-sdk/projection.js";
 export * from "./adapter-sdk/runtime-projection.js";
 export * from "./adapter-sdk/runtime-context.js";
 export * from "./projection-engine/openclaw.js";
+export * from "./projection-engine/hermes-recognition.js";
 export * from "./projection-engine/memory-browser.js";
 export * from "./projection-engine/session-pack.js";
 export * from "./session-continuity-store.js";

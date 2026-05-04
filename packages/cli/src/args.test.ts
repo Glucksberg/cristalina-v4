@@ -67,6 +67,16 @@ test("CLI parser recognizes the planned command surface", () => {
     nonInteractive: false,
     metadataPath: undefined,
     runtimeRoot: undefined,
+    integrationMode: undefined,
+  });
+  assert.deepEqual(parseCristalinaCommand(["install", "hermes", "--integration-mode", "provider"]), {
+    name: "install",
+    target: "hermes",
+    configPath: undefined,
+    nonInteractive: false,
+    metadataPath: undefined,
+    runtimeRoot: undefined,
+    integrationMode: "provider",
   });
   assert.deepEqual(parseCristalinaCommand(["checkpoint", "create", "--runtime", "openclaw"]), {
     name: "checkpoint",
@@ -114,6 +124,19 @@ test("CLI parser recognizes the planned command surface", () => {
     configPath: "config.json",
     storeRoot: "tmp/store",
     manifestId: undefined,
+    query: undefined,
+    format: undefined,
+    write: false,
+  });
+  assert.deepEqual(parseCristalinaCommand(["projection", "recognition", "--query", "Fluck memory", "--format", "context", "--write"]), {
+    name: "projection",
+    action: "recognition",
+    configPath: undefined,
+    storeRoot: undefined,
+    manifestId: undefined,
+    query: "Fluck memory",
+    format: "context",
+    write: true,
   });
   assert.deepEqual(parseCristalinaCommand(["store", "inspect"]), {
     name: "store",
@@ -127,4 +150,6 @@ test("CLI parser rejects unknown commands and options", () => {
   assert.throws(() => parseCristalinaCommand(["unknown"]), CommandUsageError);
   assert.throws(() => parseCristalinaCommand(["status", "--bad"]), CommandUsageError);
   assert.throws(() => parseCristalinaCommand(["smoke", "other"]), CommandUsageError);
+  assert.throws(() => parseCristalinaCommand(["install", "hermes", "--integration-mode", "invalid"]), CommandUsageError);
+  assert.throws(() => parseCristalinaCommand(["projection", "recognition", "--format", "invalid"]), CommandUsageError);
 });

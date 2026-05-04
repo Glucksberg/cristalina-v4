@@ -37,7 +37,16 @@ export type CristalinaCommand =
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
   | { name: "session-pack"; action: "verify-handoff"; configPath?: string; checkpointId?: string; createCheckpoint?: boolean }
-  | { name: "projection"; action: "list" | "show" | "refresh" | "verify"; configPath?: string; storeRoot?: string; manifestId?: string }
+  | {
+      name: "projection";
+      action: "list" | "show" | "refresh" | "verify" | "recognition";
+      configPath?: string;
+      storeRoot?: string;
+      manifestId?: string;
+      query?: string;
+      format?: "json" | "context";
+      write?: boolean;
+    }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string }
   | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
   | { name: "store"; action: "inspect" | "recover"; configPath?: string; storeRoot?: string }
@@ -48,6 +57,7 @@ export type CristalinaCommand =
       nonInteractive?: boolean;
       metadataPath?: string;
       runtimeRoot?: string;
+      integrationMode?: "provider" | "bridge" | "both";
     };
 
 export class CommandUsageError extends Error {
@@ -334,20 +344,30 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "projection") {
-    if (subcommand !== "list" && subcommand !== "show" && subcommand !== "refresh" && subcommand !== "verify") {
-      throw new CommandUsageError("projection requires action list, show, refresh, or verify");
+    if (subcommand !== "list" && subcommand !== "show" && subcommand !== "refresh" && subcommand !== "verify" && subcommand !== "recognition") {
+      throw new CommandUsageError("projection requires action list, show, refresh, verify, or recognition");
     }
     rejectUnknownOptions(rest, new Map([
       ["--config", "value"],
       ["--store-root", "value"],
       ["--manifest", "value"],
+      ["--query", "value"],
+      ["--format", "value"],
+      ["--write", "flag"],
     ]));
+    const format = readOption(argv, "--format");
+    if (format !== undefined && format !== "json" && format !== "context") {
+      throw new CommandUsageError("--format must be json or context");
+    }
     return {
       name: "projection",
       action: subcommand,
       configPath: readOption(argv, "--config"),
       storeRoot: readOption(argv, "--store-root"),
       manifestId: readOption(argv, "--manifest"),
+      query: readOption(argv, "--query"),
+      format,
+      write: hasFlag(argv, "--write"),
     };
   }
 
@@ -400,7 +420,17 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       ["--non-interactive", "flag"],
       ["--metadata", "value"],
       ["--runtime-root", "value"],
+      ["--integration-mode", "value"],
     ]));
+    const integrationMode = readOption(argv, "--integration-mode");
+    if (
+      integrationMode !== undefined &&
+      integrationMode !== "provider" &&
+      integrationMode !== "bridge" &&
+      integrationMode !== "both"
+    ) {
+      throw new CommandUsageError("--integration-mode must be provider, bridge, or both");
+    }
     return {
       name: "install",
       target: subcommand,
@@ -408,6 +438,7 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       nonInteractive: hasFlag(argv, "--non-interactive"),
       metadataPath: readOption(argv, "--metadata"),
       runtimeRoot: readOption(argv, "--runtime-root"),
+      integrationMode,
     };
   }
 
@@ -441,6 +472,7 @@ export function helpText(): string {
     "  projection list [--config PATH] [--store-root PATH]",
     "  projection show --manifest ID [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",
+    "  projection recognition [--query TEXT] [--format json|context] [--write] [--config PATH] [--store-root PATH]",
     "  projection verify [--config PATH] [--store-root PATH]",
     "  reviews list [--config PATH] [--store-root PATH]",
     "  reviews apply --runtime openclaw|hermes --queue-id ID [--config PATH] [--store-root PATH]",
@@ -448,7 +480,7 @@ export function helpText(): string {
     "  store inspect [--config PATH] [--store-root PATH]",
     "  store recover [--config PATH] [--store-root PATH]",
     "  install openclaw [--config PATH] [--non-interactive]",
-    "  install hermes [--config PATH] [--non-interactive]",
+    "  install hermes [--config PATH] [--non-interactive] [--integration-mode provider|bridge|both]",
     "",
   ].join("\n");
 }

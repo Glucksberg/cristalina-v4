@@ -754,9 +754,12 @@ Hermes integration must support:
   disable hint
 - `scripts/install-hermes.sh` provides the local one-line installer shape for
   development
-- the Hermes installer writes a general `plugins/cristalina-bridge` auto-emitter
-  that can register `post_llm_call` and call the same runtime bridge hook; this
-  is not a native Hermes memory provider
+- the Hermes installer now defaults to the native `memory.provider=cristalina`
+  path and keeps the general `plugins/cristalina-bridge` auto-emitter as an
+  explicit rollback mode
+- the native provider consumes a Hermes recognition/hydration projection before
+  LLM calls and emits post-turn evidence through the same public bridge event
+  contract
 - tests prove Hermes/OpenClaw installer metadata parity
 
 ### Explicit Non-Goals
@@ -764,61 +767,58 @@ Hermes integration must support:
 - no Hermes-specific governance semantics
 - no runtime-authored canonical memory
 - no hidden proposal extraction from session summaries
-- no native Hermes memory-provider plugin in the first bridge validation slice
+- no owner ratification from Hermes provider payloads
 
 ---
 
-## 12. Future Plan: Native Hermes Memory Plugin
+## 12. Native Hermes Memory Plugin
 
-**Execution status:** deferred until the bridge has been validated against a real
-Hermes instance.
+**Execution status:** first native provider slice implemented.
 
 ### Purpose
 
-Add a native Hermes memory-provider plugin only after the bridge proves the
-runtime contract in live use. The plugin should improve Hermes ergonomics, not
-move memory law into Hermes.
+Run the complete Hermes memory loop rather than only a post-turn bridge loop:
+Cristalina recognition/hydration context enters Hermes before the model call,
+and the completed turn is emitted back as governed evidence afterward.
 
 ### Entry Criteria
 
-- a fresh Hermes instance can install the current bridge with one command
-- Hermes can emit valid `cristalina.runtime_bridge_event.v1` files during a real
-  conversation
-- bridge writes preserve authenticated authority boundaries: event JSON remains
-  evidence, and owner ratification remains explicit
-- Hermes can consume compatible bootstrap projections without inventing
-  adapter-specific retrieval, canon, or review semantics
-- diagnostics, projection verification, review listing/application, and
-  OpenClaw-to-Hermes handoff have been exercised through the documented runbook
+- `cristalina install hermes` writes `plugins/cristalina`
+- the installer sets `memory.provider: cristalina` in Hermes `config.yaml`
+- provider mode disables `cristalina-bridge` by default so the bridge is not a
+  parallel write path
+- `projection recognition` compiles `hermes_recognition_v1` context using the
+  existing projection read policy
+- the provider emits `message_observed` evidence through
+  `cristalina.runtime_bridge_event.v1`
 
 ### Plugin Shape To Explore
 
-- package as the native Hermes memory-provider/plugin format, for example
-  `plugins/memory/<name>/plugin.yaml` if that remains the Hermes convention
-- call public Cristalina CLI/API surfaces only
-- read latest compatible Hermes projections and session packs from Cristalina
-- emit bridge events or call an equivalent public bridge endpoint for evidence,
-  diagnostics, and runtime observations
-- surface pending reviews without applying owner authority from runtime payloads
-- preserve Cristalina store root, runtime instance identity, projection manifest
-  refs, and checkpoint/session-pack lineage
+- package as `plugins/cristalina`
+- call public Cristalina CLI surfaces only
+- prefetch derived recognition/hydration context before LLM calls
+- queue recognition refresh for the next turn
+- emit completed Hermes turns as evidence in background
+- expose read-only archive/status tools
+- preserve store root, runtime instance identity, projection refs, and authority
+  boundaries
 
 ### Non-Goals
 
 - no Hermes-side canon mutation
 - no plugin-specific governance or review semantics
 - no treating Hermes memory-provider callbacks as owner authority by default
-- no replacing the runtime-neutral bridge until parity and rollback are proven
+- no dual capture in normal provider mode
 
 ### Exit Criteria
 
-- bridge mode and plugin mode produce equivalent durable Cristalina state for the
-  same Hermes conversation fixtures
-- plugin installation can be disabled without corrupting store state or derived
-  artifacts
-- tests prove plugin parity against bridge behavior for event intake, projection
-  reads, diagnostics, review visibility, and session continuity
-- docs clearly distinguish bridge install, native plugin install, and rollback
+- provider mode and bridge mode produce equivalent durable Cristalina state for
+  the same Hermes conversation fixtures
+- live Hermes turns show pre-call Cristalina context and post-call evidence
+  ingestion without manual `CRISTALINA_EVENT_PATH`
+- Farol reports provider enablement, recognition projection health, event
+  ingestion, diagnostics, and pending reviews
+- rollback to `--integration-mode bridge` remains documented and tested
 
 ---
 

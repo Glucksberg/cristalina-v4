@@ -60,7 +60,7 @@ test("OpenClaw one-liner documents the public installer shape", () => {
   );
 });
 
-test("Hermes installer uses the same metadata contract as OpenClaw", async () => {
+test("Hermes installer installs Cristalina as the native memory provider by default", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-install-"));
   const configPath = join(root, "config.json");
   const metadataPath = join(root, ".cristalina-v4", "runtime-hermes.json");
@@ -86,49 +86,61 @@ test("Hermes installer uses the same metadata contract as OpenClaw", async () =>
     event_contract: string;
     bridge_command: string;
     projection_command: string;
-    plugin_path: string;
-    plugin_manifest_path: string;
-    plugin_entrypoint_path: string;
-    plugin_config_path: string;
+    integration_mode: string;
+    provider_path: string;
+    provider_manifest_path: string;
+    provider_entrypoint_path: string;
+    provider_config_path: string;
     plugin_enable_hint: string;
   };
   assert.equal(metadata.runtime, "hermes");
   assert.equal(metadata.event_contract, "cristalina.runtime_bridge_event.v1");
   assert.match(metadata.bridge_command, /cristalina bridge event/);
   assert.match(metadata.projection_command, /cristalina projection list/);
-  assert.equal(metadata.plugin_path, join(root, "hermes", "plugins", "cristalina-bridge"));
-  assert.equal(metadata.plugin_manifest_path, join(metadata.plugin_path, "plugin.yaml"));
-  assert.equal(metadata.plugin_entrypoint_path, join(metadata.plugin_path, "__init__.py"));
-  assert.equal(metadata.plugin_config_path, hermesConfigPath);
-  assert.match(metadata.plugin_enable_hint, /cristalina-bridge/);
+  assert.equal(metadata.integration_mode, "provider");
+  assert.equal(metadata.provider_path, join(root, "hermes", "plugins", "cristalina"));
+  assert.equal(metadata.provider_manifest_path, join(metadata.provider_path, "plugin.yaml"));
+  assert.equal(metadata.provider_entrypoint_path, join(metadata.provider_path, "__init__.py"));
+  assert.equal(metadata.provider_config_path, join(root, "hermes", ".cristalina-v4", "provider-hermes.json"));
+  assert.match(metadata.plugin_enable_hint, /memory\.provider/);
   assert.match(await readFile(result.hook_path, "utf8"), /cristalina.runtime_hook.v1/);
-  assert.equal(result.plugin_path, metadata.plugin_path);
-  assert.equal(result.plugin_manifest_path, metadata.plugin_manifest_path);
-  assert.equal(result.plugin_entrypoint_path, metadata.plugin_entrypoint_path);
-  assert.equal(result.plugin_config_path, metadata.plugin_config_path);
-  assert.match(result.plugin_enable_hint!, /post_llm_call/);
-  assert.ok(result.diagnostics.some((entry) => entry.includes("plugins.enabled")));
+  assert.equal(result.provider_path, metadata.provider_path);
+  assert.equal(result.provider_manifest_path, metadata.provider_manifest_path);
+  assert.equal(result.provider_entrypoint_path, metadata.provider_entrypoint_path);
+  assert.equal(result.provider_config_path, metadata.provider_config_path);
+  assert.match(result.plugin_enable_hint!, /memory\.provider/);
+  assert.ok(result.diagnostics.some((entry) => entry.includes("memory.provider")));
 
-  const pluginManifest = await readFile(metadata.plugin_manifest_path, "utf8");
-  assert.match(pluginManifest, /name: cristalina-bridge/);
-  assert.match(pluginManifest, /post_llm_call/);
+  const providerManifest = await readFile(metadata.provider_manifest_path, "utf8");
+  assert.match(providerManifest, /name: cristalina/);
+  assert.match(providerManifest, /type: memory_provider/);
 
-  const pluginEntrypoint = await readFile(metadata.plugin_entrypoint_path, "utf8");
-  assert.match(pluginEntrypoint, /def register\(ctx/);
-  assert.match(pluginEntrypoint, /ctx.register_hook\('post_llm_call'/);
-  assert.match(pluginEntrypoint, /CRISTALINA_EVENT_PATH/);
-  assert.match(pluginEntrypoint, /message_observed/);
-  assert.match(pluginEntrypoint, /if isinstance\(speaker_ref, str\) and speaker_ref\.strip\(\):/);
-  assert.doesNotMatch(pluginEntrypoint, /'speaker_ref': _get/);
-  assert.match(pluginEntrypoint, /subprocess\.Popen/);
-  assert.match(pluginEntrypoint, /start_new_session=True/);
-  assert.doesNotMatch(pluginEntrypoint, /subprocess\.run/);
+  const providerEntrypoint = await readFile(metadata.provider_entrypoint_path, "utf8");
+  assert.match(providerEntrypoint, /class CristalinaMemoryProvider\(MemoryProvider\)/);
+  assert.match(providerEntrypoint, /ctx.register_memory_provider\(CristalinaMemoryProvider\(\)\)/);
+  assert.match(providerEntrypoint, /def _resolve_hermes_root/);
+  assert.match(providerEntrypoint, /def prefetch/);
+  assert.match(providerEntrypoint, /def sync_turn/);
+  assert.match(providerEntrypoint, /cristalina_archive_search/);
+  assert.match(providerEntrypoint, /evt_hermes_provider_/);
+
+  const providerConfig = JSON.parse(await readFile(metadata.provider_config_path, "utf8")) as {
+    provider: string;
+    integration_mode: string;
+    cli_path: string;
+    config_path: string;
+  };
+  assert.equal(providerConfig.provider, "cristalina");
+  assert.equal(providerConfig.integration_mode, "provider");
+  assert.equal(providerConfig.config_path, configPath);
+  assert.ok(providerConfig.cli_path.endsWith("index.js"));
 
   const hermesConfig = await readFile(hermesConfigPath, "utf8");
-  assert.match(hermesConfig, /plugins:\n  enabled:\n  - cristalina-bridge/);
+  assert.match(hermesConfig, /memory:\n  provider: cristalina/);
+  assert.doesNotMatch(hermesConfig, /cristalina-bridge/);
 });
 
-test("Hermes installer enables plugin across common config yaml shapes", async () => {
+test("Hermes bridge mode still enables bridge plugin across common config yaml shapes", async () => {
   const cases = [
     "plugins:\n  enabled: []\n",
     "plugins:\n  enabled: [foo]\n",
@@ -148,6 +160,7 @@ test("Hermes installer enables plugin across common config yaml shapes", async (
       configPath: join(root, "config.json"),
       nonInteractive: true,
       runtimeRoot,
+      integrationMode: "bridge",
     });
 
     const updated = await readFile(hermesConfigPath, "utf8");
@@ -156,6 +169,48 @@ test("Hermes installer enables plugin across common config yaml shapes", async (
     assert.match(updated, /^  - cristalina-bridge$/m);
     assert.equal([...updated.matchAll(/^  enabled:/gm)].length, 1);
   }
+});
+
+test("Hermes provider mode disables existing bridge plugin while preserving other plugins", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-provider-config-"));
+  const runtimeRoot = join(root, "hermes");
+  const hermesConfigPath = join(runtimeRoot, "config.yaml");
+  await mkdir(runtimeRoot, { recursive: true });
+  await writeFile(hermesConfigPath, "plugins:\n  enabled:\n  - foo\n  - cristalina-bridge\nmemory:\n  provider: ''\n");
+
+  await installRuntime({
+    runtime: "hermes",
+    configPath: join(root, "config.json"),
+    nonInteractive: true,
+    runtimeRoot,
+  });
+
+  const updated = await readFile(hermesConfigPath, "utf8");
+  assert.match(updated, /^memory:\n  provider: cristalina$/m);
+  assert.match(updated, /^  - foo$/m);
+  assert.doesNotMatch(updated, /cristalina-bridge/);
+});
+
+test("Hermes provider mode normalizes inline plugin and memory config without duplicate keys", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-provider-inline-config-"));
+  const runtimeRoot = join(root, "hermes");
+  const hermesConfigPath = join(runtimeRoot, "config.yaml");
+  await mkdir(runtimeRoot, { recursive: true });
+  await writeFile(hermesConfigPath, "plugins: { enabled: [foo, cristalina-bridge] }\nmemory: { provider: honcho, ttl: 30 }\n");
+
+  await installRuntime({
+    runtime: "hermes",
+    configPath: join(root, "config.json"),
+    nonInteractive: true,
+    runtimeRoot,
+  });
+
+  const updated = await readFile(hermesConfigPath, "utf8");
+  assert.equal([...updated.matchAll(/^plugins:/gm)].length, 1);
+  assert.equal([...updated.matchAll(/^memory:/gm)].length, 1);
+  assert.match(updated, /^plugins:\n  enabled:\n  - foo$/m);
+  assert.match(updated, /^memory:\n  provider: cristalina\n  ttl: 30$/m);
+  assert.doesNotMatch(updated, /cristalina-bridge/);
 });
 
 test("Hermes one-liner documents the public installer shape", () => {

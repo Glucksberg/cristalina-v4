@@ -6,10 +6,12 @@ tests.
 The monitor is intentionally read-only with respect to Cristalina memory. It
 observes:
 
-- Hermes bridge plugin files and enablement
+- Hermes native Cristalina memory provider files and enablement
+- Hermes bridge plugin files and enablement when rollback mode is active
 - Hermes-emitted runtime bridge event files
-- bridge background logs per event
-- Cristalina status, projections, diagnostics, review queue, and store shape
+- provider/bridge background logs per event
+- Cristalina status, recognition projection, projections, diagnostics, review
+  queue, and store shape
 
 It does not infer owner authority, apply reviews, repair records, or mutate the
 store.
@@ -49,8 +51,8 @@ small summary; the full JSON snapshot remains on disk for later inspection.
 The snapshot summary should show:
 
 ```text
-plugin_enabled: true
-background_dispatch: true
+provider_enabled: true
+provider_prefetch: true
 cristalina_status_ok: true
 ```
 
@@ -62,7 +64,11 @@ $HERMES_ROOT/.cristalina-v4/events/
 ```
 
 If `bridge_log_size` grows with an error, inspect the matching `.bridge.log`
-file from the full snapshot.
+or `.provider.log` file from the full snapshot.
+
+In rollback bridge mode, `plugin_enabled: true` and `background_dispatch: true`
+are expected. In provider mode, `plugin_enabled` should normally be false so the
+bridge is not capturing the same turn in parallel.
 
 ## Custom Roots
 

@@ -1,18 +1,19 @@
 # Cristalina Runtime Wiring Runbook
 
-**Status:** First controlled-runbook baseline
-**Scope:** local OpenClaw and Hermes wiring through the generated hook contract
+**Status:** Native Hermes provider baseline
+**Scope:** local OpenClaw wiring through hooks and Hermes wiring through the native memory provider
 
 This runbook is the operator path for connecting one OpenClaw runtime and one
 Hermes runtime to the same Cristalina store.
 
-It assumes the current thin bridge model:
+It assumes the current trust model:
 
 - Cristalina owns memory semantics.
-- OpenClaw and Hermes emit bridge event files.
-- The generated hook script calls `cristalina bridge event`.
-- Runtime config only points at the generated hook; it does not define memory
-  law.
+- OpenClaw emits bridge event files through the generated hook.
+- Hermes loads Cristalina as `memory.provider`.
+- The Hermes provider consumes derived Cristalina projections before LLM calls
+  and emits post-turn evidence through `cristalina bridge event`.
+- Runtime config selects integration points; it does not define memory law.
 
 The goal is a controlled first live loop, not a daemon or hosted service.
 
@@ -106,7 +107,7 @@ Fix diagnostics before continuing.
 
 ---
 
-## 4. Install Hook Metadata And Hermes Auto-Emitter
+## 4. Install Hook Metadata And Hermes Provider
 
 Install generated hook descriptors and hook scripts:
 
@@ -123,20 +124,39 @@ pnpm cristalina install hermes \
 ```
 
 Each install writes Cristalina-owned metadata under the runtime root. For
-Hermes, the installer also enables the generated user plugin in
-`/path/to/hermes/config.yaml` when that file exists.
-
-For Hermes, the installer also writes a general hook plugin under:
+Hermes, the default installer mode is now the native memory provider:
 
 ```text
-/path/to/hermes/plugins/cristalina-bridge/plugin.yaml
-/path/to/hermes/plugins/cristalina-bridge/__init__.py
+/path/to/hermes/plugins/cristalina/plugin.yaml
+/path/to/hermes/plugins/cristalina/__init__.py
+/path/to/hermes/.cristalina-v4/provider-hermes.json
 ```
 
-This plugin is not a native Hermes memory provider. It is a thin post-turn event
-emitter: when Hermes loads it and calls its `post_llm_call` hook, it writes a
-`cristalina.runtime_bridge_event.v1` JSON file under the Hermes runtime root and
-invokes the generated `cristalina-bridge-event.sh` script.
+When `/path/to/hermes/config.yaml` exists, the installer sets:
+
+```yaml
+memory:
+  provider: cristalina
+```
+
+In provider mode, `cristalina-bridge` is removed from `plugins.enabled` so the
+bridge does not run as a parallel write path. The provider still emits completed
+turns through the public `cristalina bridge event` command; the bridge contract
+is the evidence intake boundary, not the Hermes runtime integration.
+
+For rollback or parity testing, install explicitly with:
+
+```text
+pnpm cristalina install hermes \
+  --runtime-root /path/to/hermes \
+  --config .cristalina-v4/config.json \
+  --non-interactive \
+  --integration-mode bridge
+```
+
+Bridge mode writes the older general hook plugin under
+`/path/to/hermes/plugins/cristalina-bridge/` and enables it in
+`plugins.enabled`.
 
 Record where the real runtime config should point:
 
@@ -161,10 +181,15 @@ The generated map records:
 
 Wire the real OpenClaw config to invoke the generated hook script after writing
 an event file. For Hermes, restart the session/gateway after installation so the
-`cristalina-bridge` plugin is loaded from `plugins.enabled` and its
-`post_llm_call` hook is registered. If Hermes does not load the plugin, use the
-same event-file plus `CRISTALINA_EVENT_PATH` fallback while fixing plugin
-discovery.
+native memory provider is loaded from `memory.provider`.
+
+Validate the provider-side read path:
+
+```bash
+pnpm cristalina projection recognition \
+  --config .cristalina-v4/config.json \
+  --format context
+```
 
 ---
 

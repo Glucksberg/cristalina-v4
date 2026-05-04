@@ -13,6 +13,9 @@ import {
   loadLatestSessionPackManifest,
   planCristalinaStoreRecovery,
   recordSessionResumeReceiptToStore,
+  compileHermesRecognitionProjectionFromStore,
+  formatHermesRecognitionContext,
+  writeHermesRecognitionProjectionToStore,
   type AuthenticatedPrincipal,
 } from "@cristalina-v4/core";
 import { loadCristalinaConfig, resolveStoreRoot, type CristalinaConfig } from "./config.js";
@@ -370,6 +373,50 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
         stderr: "",
       };
     }
+    if (command.action === "recognition") {
+      const { config, storeRoot } = await loadRequiredConfig(command.configPath, command.storeRoot);
+      const runtimeContext = config.runtimes?.hermes;
+      const readContext = {
+        adapter: "hermes" as const,
+        audience: "memory_provider",
+        owner_identity_ref: config.owner_identity_ref ?? null,
+        actor_identity_ref: config.agent_identity_ref ?? null,
+        runtime_instance_ref: runtimeContext?.runtime_instance_ref ?? null,
+        runtime_session_ref: runtimeContext?.default_session_ref ?? null,
+        conversation_thread_ref: runtimeContext?.default_thread_ref ?? null,
+      };
+      const result = command.write
+        ? await writeHermesRecognitionProjectionToStore({
+            rootDir: storeRoot,
+            read_context: readContext,
+          })
+        : await compileHermesRecognitionProjectionFromStore({
+            rootDir: storeRoot,
+            read_context: readContext,
+          });
+      if (command.format === "context") {
+        return {
+          exitCode: 0,
+          stdout: formatHermesRecognitionContext(result.snapshot, command.query),
+          stderr: "",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify({
+          manifest: result.manifest,
+          artifacts: result.artifacts,
+          snapshot: result.snapshot,
+          ...(command.write
+            ? {
+                json_relative_path: "json_relative_path" in result ? result.json_relative_path : undefined,
+                context_relative_path: "context_relative_path" in result ? result.context_relative_path : undefined,
+              }
+            : {}),
+        }, null, 2)}\n`,
+        stderr: "",
+      };
+    }
     const status = await loadStatus(command);
     if (command.action === "show") {
       const storeRoot = status.store_root;
@@ -471,6 +518,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
       nonInteractive: command.nonInteractive,
       metadataPath: command.metadataPath,
       runtimeRoot: command.runtimeRoot,
+      integrationMode: command.integrationMode,
     });
     return {
       exitCode: 0,

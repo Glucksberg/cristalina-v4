@@ -29,6 +29,9 @@ const hermesConfigPath = join(hermesRoot, "config.yaml");
 const hermesEventsDir = join(hermesRoot, ".cristalina-v4", "events");
 const hermesPluginPath = join(hermesRoot, "plugins", "cristalina-bridge", "__init__.py");
 const hermesPluginManifestPath = join(hermesRoot, "plugins", "cristalina-bridge", "plugin.yaml");
+const hermesProviderPath = join(hermesRoot, "plugins", "memory", "cristalina", "__init__.py");
+const hermesProviderManifestPath = join(hermesRoot, "plugins", "memory", "cristalina", "plugin.yaml");
+const hermesProviderConfigPath = join(hermesRoot, ".cristalina-v4", "provider-hermes.json");
 const hermesHookScriptPath = join(hermesRoot, ".cristalina-v4", "hooks", "cristalina-bridge-event.sh");
 
 function safeRead(path, maxChars = 200000) {
@@ -129,6 +132,16 @@ function pluginEnabled() {
   return /^plugins:\s*$/m.test(config) && /^\s*-\s*cristalina-bridge\s*$/m.test(config);
 }
 
+function memoryProviderConfigured() {
+  const config = safeRead(hermesConfigPath, 100000);
+  if (!config) return false;
+  return /^memory:\s*$/m.test(config) && /^  provider:\s*['"]?cristalina['"]?\s*$/m.test(config);
+}
+
+function providerConfig() {
+  return tryJson(safeRead(hermesProviderConfigPath, 100000));
+}
+
 function makeSnapshot() {
   const now = new Date();
   const snapshot = {
@@ -145,6 +158,9 @@ function makeSnapshot() {
       hermes_events_dir: pathState(hermesEventsDir),
       hermes_plugin_manifest: pathState(hermesPluginManifestPath),
       hermes_plugin_entrypoint: pathState(hermesPluginPath),
+      hermes_provider_manifest: pathState(hermesProviderManifestPath),
+      hermes_provider_entrypoint: pathState(hermesProviderPath),
+      hermes_provider_config: pathState(hermesProviderConfigPath),
       hermes_hook_script: pathState(hermesHookScriptPath),
       cristalina_config: pathState(configPath),
       cristalina_cli: pathState(cliPath),
@@ -154,9 +170,17 @@ function makeSnapshot() {
       entrypoint_uses_background_dispatch: Boolean(safeRead(hermesPluginPath, 100000)?.includes("subprocess.Popen")),
       entrypoint_omits_null_speaker_ref: !Boolean(safeRead(hermesPluginPath, 100000)?.includes("'speaker_ref': _get")),
     },
+    provider: {
+      configured_as_memory_provider: memoryProviderConfigured(),
+      config: providerConfig(),
+      entrypoint_registers_memory_provider: Boolean(safeRead(hermesProviderPath, 100000)?.includes("register_memory_provider")),
+      entrypoint_has_prefetch: Boolean(safeRead(hermesProviderPath, 100000)?.includes("def prefetch")),
+      entrypoint_has_sync_turn: Boolean(safeRead(hermesProviderPath, 100000)?.includes("def sync_turn")),
+    },
     hermes_events: listRecentEvents(),
     cristalina: {
       status: runJson("status", ["status", "--config", configPath]),
+      recognition: runJson("projection recognition", ["projection", "recognition", "--config", configPath, "--format", "json"]),
       projections: runJson("projection list", ["projection", "list", "--config", configPath]),
       diagnostics: runJson("diagnostics list", ["diagnostics", "list", "--config", configPath]),
       reviews: runJson("reviews list hermes", ["reviews", "list", "--runtime", "hermes", "--config", configPath]),
@@ -174,7 +198,9 @@ function makeSnapshot() {
     events_seen: snapshot.hermes_events.length,
     latest_event: snapshot.hermes_events.at(-1)?.event_id ?? null,
     plugin_enabled: snapshot.plugin.enabled_in_config,
+    provider_enabled: snapshot.provider.configured_as_memory_provider,
     status_ok: snapshot.cristalina.status.ok,
+    recognition_entries: snapshot.cristalina.recognition.json?.snapshot?.recognition_index?.length ?? null,
     diagnostics_count: snapshot.cristalina.diagnostics.json?.diagnostics?.length ?? null,
   })}\n`);
 
@@ -183,7 +209,10 @@ function makeSnapshot() {
     snapshot: snapshotPath,
     captured_at: snapshot.captured_at,
     plugin_enabled: snapshot.plugin.enabled_in_config,
+    provider_enabled: snapshot.provider.configured_as_memory_provider,
     background_dispatch: snapshot.plugin.entrypoint_uses_background_dispatch,
+    provider_prefetch: snapshot.provider.entrypoint_has_prefetch,
+    recognition_entries: snapshot.cristalina.recognition.json?.snapshot?.recognition_index?.length ?? null,
     events_seen: snapshot.hermes_events.length,
     latest_event: latest ? {
       event_id: latest.event_id,
