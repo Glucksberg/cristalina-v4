@@ -6,9 +6,10 @@ not as an instruction channel that the Hermes agent depends on.
 
 ## Current Operating Mode
 
-Cristalina is being tested with a Hermes agent named Cristal. Hermes emits
-runtime evidence through the `cristalina-bridge` plugin; Cristalina owns memory
-semantics, projection, diagnostics, review queues, and authority legality.
+Cristalina is being tested with a Hermes agent named Cristal. Hermes uses the
+native `cristalina` memory provider to retrieve session-scoped context and emit
+runtime evidence; Cristalina owns memory semantics, projection, diagnostics,
+review queues, and authority legality.
 
 The external monitor for this phase is called Farol:
 
@@ -24,14 +25,14 @@ Default monitor output lives under:
 ```
 
 Use the monitor before and after meaningful changes or live-test analysis. The
-monitor observes Hermes bridge events, per-event bridge logs, Cristalina status,
-diagnostics, projections, reviews, and store shape. It is read-only and must not
-be treated as a memory writer.
+monitor observes Hermes native provider events, per-event processing logs,
+Cristalina status, diagnostics, projections, reviews, and store shape. It is
+read-only and must not be treated as a memory writer.
 
 Cristal should not be trained to coordinate with this monitor as part of its
 normal loop. The test is more valuable when Cristal mostly attempts to
 self-regulate through Cristalina itself. The monitor exists to catch accumulated
-failures, blocked bridge flow, broken projections, stuck reviews, or code-level
+failures, blocked provider flow, broken projections, stuck reviews, or code-level
 defects that cannot be repaired from inside the running agent.
 
 ## External Oversight With Markus
@@ -39,7 +40,7 @@ defects that cannot be repaired from inside the running agent.
 When Markus is testing Cristal, help from this repository by:
 
 - checking the latest monitor snapshot and `snapshots.jsonl`
-- inspecting Hermes event JSON and matching `.bridge.log` files when needed
+- inspecting Hermes event JSON and matching processing log files when needed
 - running Cristalina status, diagnostics, projection, review, and store commands
 - explaining what Cristalina actually recorded, deferred, diagnosed, or failed
 - proposing focused fixes when the monitor shows a concrete problem
@@ -70,9 +71,10 @@ Current entries:
 
 - 2026-05-03: Cristal entered the first live Hermes/Cristalina test with Farol
   observing externally instead of steering the agent's normal loop.
-- 2026-05-03: The Hermes bridge is running seamless post-turn capture with
-  background dispatch; Farol's healthy baseline is plugin enabled, dispatch on,
-  Cristalina status OK, zero diagnostics, and zero pending owner reviews.
+- 2026-05-03: The Hermes native memory provider replaced the bridge as the live
+  test surface; Farol's healthy baseline is provider configured, native events
+  applied, Cristalina status OK, zero diagnostics, and zero pending owner
+  reviews.
 - 2026-05-03: Cristal's X/Twitter research path uses `bird` in read-only mode
   with credentials loaded from the Hermes home `.env`; account mutation is out
   of scope unless Markus explicitly changes the test.
@@ -80,6 +82,9 @@ Current entries:
   outside repair; Farol intervenes only for blockers, accumulating failures,
   invalid events, stuck reviews, misleading operator assumptions, or code-layer
   defects.
+- 2026-05-03: Cristal's first two native Hermes turns were captured and applied
+  cleanly; recognition needed a session-scoped runtime-observation read path so
+  Farol and provider prefetch could see those observations as live memory.
 
 ## Investigation Loop
 
@@ -87,15 +92,15 @@ For any live-test symptom:
 
 1. run a one-shot monitor snapshot
 2. identify the latest relevant Hermes event
-3. inspect the event contract, bridge log, diagnostics, and pending reviews
-4. decide whether the issue is runtime emission, bridge processing, store state,
+3. inspect the event contract, processing log, diagnostics, and pending reviews
+4. decide whether the issue is runtime emission, event processing, store state,
    projection/read behavior, or operator expectation
 5. patch only the layer that owns the broken contract
 6. run focused tests and a fresh monitor snapshot
 
-If the monitor shows a bridge failure, inspect the `.bridge.log` before editing
-code. If Cristalina reports pending owner review, do not bypass it with runtime
-events.
+If the monitor shows an event-processing failure, inspect the matching log before
+editing code. If Cristalina reports pending owner review, do not bypass it with
+runtime events.
 
 ## Development Guardrails
 
@@ -112,7 +117,7 @@ governance boundaries.
 
 Prefer correctness, recoverability, replayability, auditability, and authority
 legality over runtime convenience. Do not repair by editing canon, projections,
-session packs, resume receipts, or monitor snapshots directly; use bridge
+session packs, resume receipts, or monitor snapshots directly; use runtime
 events, review actions, projection refresh, checkpoint/session-pack commands, or
 code fixes at the owning layer.
 

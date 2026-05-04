@@ -381,9 +381,9 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
         audience: "memory_provider",
         owner_identity_ref: config.owner_identity_ref ?? null,
         actor_identity_ref: config.agent_identity_ref ?? null,
-        runtime_instance_ref: runtimeContext?.runtime_instance_ref ?? null,
-        runtime_session_ref: runtimeContext?.default_session_ref ?? null,
-        conversation_thread_ref: runtimeContext?.default_thread_ref ?? null,
+        runtime_instance_ref: command.runtimeInstanceRef ?? runtimeContext?.runtime_instance_ref ?? null,
+        runtime_session_ref: command.runtimeSessionRef ?? runtimeContext?.default_session_ref ?? null,
+        conversation_thread_ref: command.conversationThreadRef ?? runtimeContext?.default_thread_ref ?? null,
       };
       const result = command.write
         ? await writeHermesRecognitionProjectionToStore({

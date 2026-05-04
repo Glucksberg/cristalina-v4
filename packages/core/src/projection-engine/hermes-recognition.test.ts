@@ -6,7 +6,7 @@ import {
   formatHermesRecognitionContext,
   HERMES_RECOGNITION_PROJECTION_PROFILE,
 } from "./hermes-recognition.js";
-import type { ActorIdentity, CanonicalMemoryObject, Entity, WikiPage, WorldClaim } from "../types.js";
+import type { ActorIdentity, CanonicalMemoryObject, Entity, Observation, WikiPage, WorldClaim } from "../types.js";
 
 const now = "2026-05-03T12:00:00.000Z";
 
@@ -90,6 +90,27 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
     epistemic_state: "observed",
     support_refs: ["src_memory_pattern_001"],
   };
+  const observation: Observation = {
+    id: "obs_hermes_turn_001",
+    kind: "observation",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "owner_private" },
+    provenance: {
+      ...provenance("tests/hermes-recognition/observation"),
+      actor_ref: "actor_owner_001",
+    },
+    summary: JSON.stringify({
+      message: "Cristal noticed the native memory provider is active during the Hermes test.",
+    }),
+    epistemic_state: "observed",
+    observed_at: now,
+    runtime_instance_ref: "runtime_hermes_local_001",
+    runtime_session_ref: "session_hermes_test_001",
+    conversation_thread_ref: "thread_hermes_test_001",
+  };
   const wiki: WikiPage = {
     id: "wpg_agent_memory_research_001",
     kind: "wiki_page",
@@ -116,6 +137,9 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
       audience: "memory_provider",
       actor_identity_ref: "actor_cristal_001",
       owner_identity_ref: "actor_owner_001",
+      runtime_instance_ref: "runtime_hermes_local_001",
+      runtime_session_ref: "session_hermes_test_001",
+      conversation_thread_ref: "thread_hermes_test_001",
     },
     ids: {
       json_artifact: "part_hermes_recognition_json_test_001",
@@ -124,6 +148,7 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
     },
     actor_identities: [actor],
     entities: [entity],
+    runtime_observations: [observation],
     canonical_records: [canon, suppressedCanon],
     world_claims: [world],
     wiki_pages: [wiki],
@@ -131,6 +156,7 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
 
   assert.equal(result.snapshot.projection_profile, HERMES_RECOGNITION_PROJECTION_PROFILE);
   assert.ok(result.snapshot.recognition_index.some((entry) => entry.target_ref === "ent_fluck_001"));
+  assert.ok(result.snapshot.recognition_index.some((entry) => entry.target_ref === "obs_hermes_turn_001"));
   assert.ok(result.snapshot.hydration_cards.some((card) => card.target_ref === "mem_memory_goal_001"));
   assert.ok(result.snapshot.suppressed_records.some((record) => record.id === "mem_other_owner_001"));
   assert.equal(result.manifest.projection_profile, HERMES_RECOGNITION_PROJECTION_PROFILE);
@@ -142,6 +168,7 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
   const context = formatHermesRecognitionContext(result.snapshot, "Fluck memory");
   assert.match(context, /## Cristalina Memory/);
   assert.match(context, /Fluck/);
+  assert.match(context, /native memory provider is active/);
   assert.match(context, /Archive Descent/);
   assert.doesNotMatch(context, /Another owner/);
 });

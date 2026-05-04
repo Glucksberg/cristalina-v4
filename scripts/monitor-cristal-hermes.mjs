@@ -29,8 +29,8 @@ const hermesConfigPath = join(hermesRoot, "config.yaml");
 const hermesEventsDir = join(hermesRoot, ".cristalina-v4", "events");
 const hermesPluginPath = join(hermesRoot, "plugins", "cristalina-bridge", "__init__.py");
 const hermesPluginManifestPath = join(hermesRoot, "plugins", "cristalina-bridge", "plugin.yaml");
-const hermesProviderPath = join(hermesRoot, "plugins", "memory", "cristalina", "__init__.py");
-const hermesProviderManifestPath = join(hermesRoot, "plugins", "memory", "cristalina", "plugin.yaml");
+const hermesProviderPath = join(hermesRoot, "plugins", "cristalina", "__init__.py");
+const hermesProviderManifestPath = join(hermesRoot, "plugins", "cristalina", "plugin.yaml");
 const hermesProviderConfigPath = join(hermesRoot, ".cristalina-v4", "provider-hermes.json");
 const hermesHookScriptPath = join(hermesRoot, ".cristalina-v4", "hooks", "cristalina-bridge-event.sh");
 
@@ -114,6 +114,9 @@ function listRecentEvents() {
         event_id: parsed?.event_id ?? null,
         event_type: parsed?.event_type ?? null,
         runtime: parsed?.runtime ?? null,
+        runtime_instance_ref: parsed?.runtime_instance_ref ?? null,
+        runtime_session_ref: parsed?.runtime_session_ref ?? null,
+        conversation_thread_ref: parsed?.conversation_thread_ref ?? null,
         occurred_at: parsed?.occurred_at ?? null,
         message_preview: typeof parsed?.message === "string" ? parsed.message.slice(0, 280) : null,
         has_speaker_ref: typeof parsed?.speaker_ref === "string",
@@ -142,8 +145,22 @@ function providerConfig() {
   return tryJson(safeRead(hermesProviderConfigPath, 100000));
 }
 
+function recognitionArgsFor(latestEvent) {
+  const args = ["projection", "recognition", "--config", configPath, "--format", "json"];
+  const provider = providerConfig();
+  const runtimeInstanceRef = latestEvent?.runtime_instance_ref ?? provider?.runtime_instance_ref;
+  const runtimeSessionRef = latestEvent?.runtime_session_ref;
+  const conversationThreadRef = latestEvent?.conversation_thread_ref ?? runtimeSessionRef;
+  if (runtimeInstanceRef) args.push("--runtime-instance-ref", runtimeInstanceRef);
+  if (runtimeSessionRef) args.push("--runtime-session-ref", runtimeSessionRef);
+  if (conversationThreadRef) args.push("--conversation-thread-ref", conversationThreadRef);
+  return args;
+}
+
 function makeSnapshot() {
   const now = new Date();
+  const hermesEvents = listRecentEvents();
+  const latestEvent = hermesEvents.at(-1);
   const snapshot = {
     schema_version: 1,
     captured_at: now.toISOString(),
@@ -177,10 +194,10 @@ function makeSnapshot() {
       entrypoint_has_prefetch: Boolean(safeRead(hermesProviderPath, 100000)?.includes("def prefetch")),
       entrypoint_has_sync_turn: Boolean(safeRead(hermesProviderPath, 100000)?.includes("def sync_turn")),
     },
-    hermes_events: listRecentEvents(),
+    hermes_events: hermesEvents,
     cristalina: {
       status: runJson("status", ["status", "--config", configPath]),
-      recognition: runJson("projection recognition", ["projection", "recognition", "--config", configPath, "--format", "json"]),
+      recognition: runJson("projection recognition", recognitionArgsFor(latestEvent)),
       projections: runJson("projection list", ["projection", "list", "--config", configPath]),
       diagnostics: runJson("diagnostics list", ["diagnostics", "list", "--config", configPath]),
       reviews: runJson("reviews list hermes", ["reviews", "list", "--runtime", "hermes", "--config", configPath]),

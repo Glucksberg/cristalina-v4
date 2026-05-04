@@ -46,6 +46,9 @@ export type CristalinaCommand =
       query?: string;
       format?: "json" | "context";
       write?: boolean;
+      runtimeInstanceRef?: string;
+      runtimeSessionRef?: string;
+      conversationThreadRef?: string;
     }
   | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string }
   | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
@@ -354,11 +357,17 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       ["--query", "value"],
       ["--format", "value"],
       ["--write", "flag"],
+      ["--runtime-instance-ref", "value"],
+      ["--runtime-session-ref", "value"],
+      ["--conversation-thread-ref", "value"],
     ]));
     const format = readOption(argv, "--format");
     if (format !== undefined && format !== "json" && format !== "context") {
       throw new CommandUsageError("--format must be json or context");
     }
+    const runtimeInstanceRef = readOption(argv, "--runtime-instance-ref");
+    const runtimeSessionRef = readOption(argv, "--runtime-session-ref");
+    const conversationThreadRef = readOption(argv, "--conversation-thread-ref");
     return {
       name: "projection",
       action: subcommand,
@@ -368,6 +377,9 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       query: readOption(argv, "--query"),
       format,
       write: hasFlag(argv, "--write"),
+      ...(subcommand === "recognition" && runtimeInstanceRef !== undefined ? { runtimeInstanceRef } : {}),
+      ...(subcommand === "recognition" && runtimeSessionRef !== undefined ? { runtimeSessionRef } : {}),
+      ...(subcommand === "recognition" && conversationThreadRef !== undefined ? { conversationThreadRef } : {}),
     };
   }
 
@@ -472,7 +484,7 @@ export function helpText(): string {
     "  projection list [--config PATH] [--store-root PATH]",
     "  projection show --manifest ID [--config PATH] [--store-root PATH]",
     "  projection refresh [--config PATH] [--store-root PATH]",
-    "  projection recognition [--query TEXT] [--format json|context] [--write] [--config PATH] [--store-root PATH]",
+    "  projection recognition [--query TEXT] [--format json|context] [--runtime-session-ref ID] [--conversation-thread-ref ID] [--write] [--config PATH] [--store-root PATH]",
     "  projection verify [--config PATH] [--store-root PATH]",
     "  reviews list [--config PATH] [--store-root PATH]",
     "  reviews apply --runtime openclaw|hermes --queue-id ID [--config PATH] [--store-root PATH]",

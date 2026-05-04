@@ -78,6 +78,29 @@ test("CLI parser recognizes the planned command surface", () => {
     runtimeRoot: undefined,
     integrationMode: "provider",
   });
+  assert.deepEqual(parseCristalinaCommand([
+    "projection",
+    "recognition",
+    "--query",
+    "Cristal",
+    "--format",
+    "context",
+    "--runtime-session-ref",
+    "session_001",
+    "--conversation-thread-ref",
+    "thread_001",
+  ]), {
+    name: "projection",
+    action: "recognition",
+    configPath: undefined,
+    storeRoot: undefined,
+    manifestId: undefined,
+    query: "Cristal",
+    format: "context",
+    write: false,
+    runtimeSessionRef: "session_001",
+    conversationThreadRef: "thread_001",
+  });
   assert.deepEqual(parseCristalinaCommand(["checkpoint", "create", "--runtime", "openclaw"]), {
     name: "checkpoint",
     action: "create",

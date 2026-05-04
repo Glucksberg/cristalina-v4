@@ -14,6 +14,7 @@ import {
   loadConversationThreads,
   loadDiagnostics,
   loadRuntimeInstances,
+  loadRuntimeObservations,
   loadRuntimeSessions,
   loadWikiClaims,
   loadWikiPages,
@@ -32,6 +33,7 @@ import type {
   ProjectionArtifact,
   ProjectionManifest,
   RuntimeInstance,
+  Observation,
   RuntimeSession,
   VisibilityState,
   WikiClaim,
@@ -95,6 +97,7 @@ export interface HermesRecognitionProjectionInput {
   };
   actor_identities?: ActorIdentity[];
   runtime_instances?: RuntimeInstance[];
+  runtime_observations?: Observation[];
   runtime_sessions?: RuntimeSession[];
   conversation_threads?: ConversationThread[];
   entities?: Entity[];
@@ -130,6 +133,18 @@ function compactText(value: string, limit = 240): string {
 
 function updatedAt(record: { created_at: string; updated_at?: string | null }): string {
   return record.updated_at ?? record.created_at;
+}
+
+function observationLabel(summary: string): string {
+  try {
+    const parsed = JSON.parse(summary) as { message?: unknown };
+    if (typeof parsed.message === "string" && parsed.message.trim()) {
+      return parsed.message;
+    }
+  } catch {
+    // Runtime observations may be plain summaries or structured event JSON.
+  }
+  return summary;
 }
 
 function entry(input: {
@@ -229,6 +244,7 @@ export function compileHermesRecognitionProjection(
   };
   const actorFilter = filterProjectionRecords(input.actor_identities ?? [], readContext);
   const runtimeInstanceFilter = filterProjectionRecords(input.runtime_instances ?? [], readContext);
+  const observationFilter = filterProjectionRecords(input.runtime_observations ?? [], readContext);
   const runtimeSessionFilter = filterProjectionRecords(input.runtime_sessions ?? [], readContext);
   const threadFilter = filterProjectionRecords(input.conversation_threads ?? [], readContext);
   const entityFilter = filterProjectionRecords(input.entities ?? [], readContext);
@@ -276,6 +292,16 @@ export function compileHermesRecognitionProjection(
       recognition_hint: `${record.kind} is ${record.epistemic_state}; temporal status ${record.temporal_state?.temporal_status ?? "unresolved"}.`,
       authority_label: `world/${record.epistemic_state}`,
       upstream_refs: record.support_refs,
+      updated_at: updatedAt(record),
+    })),
+    ...observationFilter.included.map((record) => entry({
+      target_ref: record.id,
+      target_kind: record.kind,
+      source_layer: record.layer,
+      label: observationLabel(record.summary),
+      recognition_hint: `Runtime observation (${record.epistemic_state}) from Hermes session ${record.runtime_session_ref ?? "unknown"}.`,
+      authority_label: `runtime/${record.epistemic_state}`,
+      upstream_refs: [record.provenance.source_ref, ...(record.provenance.evidence_refs ?? [])],
       updated_at: updatedAt(record),
     })),
     ...wikiPageFilter.included.map((record) => entry({
@@ -345,6 +371,7 @@ export function compileHermesRecognitionProjection(
   const suppressed_records = [
     ...actorFilter.suppressed,
     ...runtimeInstanceFilter.suppressed,
+    ...observationFilter.suppressed,
     ...runtimeSessionFilter.suppressed,
     ...threadFilter.suppressed,
     ...entityFilter.suppressed,
@@ -460,6 +487,7 @@ export async function compileHermesRecognitionProjectionFromStore(input: {
   const [
     actor_identities,
     runtime_instances,
+    runtime_observations,
     runtime_sessions,
     conversation_threads,
     entities,
@@ -472,6 +500,7 @@ export async function compileHermesRecognitionProjectionFromStore(input: {
   ] = await Promise.all([
     loadActorIdentities(input.rootDir),
     loadRuntimeInstances(input.rootDir),
+    loadRuntimeObservations(input.rootDir),
     loadRuntimeSessions(input.rootDir),
     loadConversationThreads(input.rootDir),
     loadWorldEntities(input.rootDir),
@@ -492,6 +521,7 @@ export async function compileHermesRecognitionProjectionFromStore(input: {
     ids,
     actor_identities,
     runtime_instances,
+    runtime_observations,
     runtime_sessions,
     conversation_threads,
     entities,

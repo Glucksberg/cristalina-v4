@@ -18,6 +18,7 @@ import type {
   RatificationRecord,
   Relation,
   RuntimeInstance,
+  Observation,
   RuntimeSession,
   SessionResumeReceipt,
   WorkingMemoryCheckpoint,
@@ -648,6 +649,11 @@ export async function loadActorIdentities(rootDir: string): Promise<ActorIdentit
 export async function loadRuntimeInstances(rootDir: string): Promise<RuntimeInstance[]> {
   const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.runtime.instances);
   return records.filter((record): record is RuntimeInstance => record.kind === "runtime_instance");
+}
+
+export async function loadRuntimeObservations(rootDir: string): Promise<Observation[]> {
+  const records = await loadLayerRecords(rootDir, STORAGE_LAYOUT.runtime.observations);
+  return records.filter((record): record is Observation => record.kind === "observation");
 }
 
 export async function loadRuntimeSessions(rootDir: string): Promise<RuntimeSession[]> {
