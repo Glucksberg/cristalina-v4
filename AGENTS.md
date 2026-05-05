@@ -1,17 +1,44 @@
 # Cristalina v4 Agent Instructions
 
-This repository is now in the first live Hermes/Cristalina observation phase.
-Use this workspace as an external observation and intervention layer for Markus,
-not as an instruction channel that the Hermes agent depends on.
+This repository is in the live Hermes/Cristalina test phase. The purpose of
+this workspace is to help Markus observe, explain, and improve Cristalina while
+the Hermes agent Cristal uses it as memory.
 
-## Current Operating Mode
+## Current Product State
 
-Cristalina is being tested with a Hermes agent named Cristal. Hermes uses the
-native `cristalina` memory provider to retrieve session-scoped context and emit
-runtime evidence; Cristalina owns memory semantics, projection, diagnostics,
-review queues, and authority legality.
+Cristalina is no longer being treated as a bridge-only experiment. Hermes now
+uses the native `cristalina` memory provider as the main live-test surface.
+The old bridge path remains useful as an operational fallback and compatibility
+boundary, but new work should assume the provider path is the product direction.
 
-The external monitor for this phase is called Farol:
+Cristalina owns:
+
+- runtime evidence intake and provenance
+- recognition, hydration, archive descent, and projection behavior
+- diagnostics, review queues, and authority legality
+- governed movement from evidence toward wiki, canon, world, or proposals
+- nightly memory consolidation as conservative evidence classification
+
+Hermes owns:
+
+- the running agent process and user interaction
+- native memory provider calls into Cristalina
+- runtime event emission for observed turns and background work
+- cron/heartbeat execution that produces evidence for Cristalina
+
+Farol owns:
+
+- external observation of the live test
+- detection of broken flows, congestion, diagnostics, stuck reviews, and drift
+- operator-facing interpretation of what Cristalina actually recorded
+
+Do not blur those roles. Cristalina memory must be evaluated on its own
+behavior, not propped up by hidden instructions to Cristal or by Farol writing
+memory for it.
+
+## Farol
+
+The external monitor is called Farol:
 
 ```bash
 node scripts/monitor-cristal-hermes.mjs
@@ -24,48 +51,105 @@ Default monitor output lives under:
 .cristalina-v4/test-monitor/
 ```
 
-Use the monitor before and after meaningful changes or live-test analysis. The
-monitor observes Hermes native provider events, per-event processing logs,
-Cristalina status, diagnostics, projections, reviews, and store shape. It is
-read-only and must not be treated as a memory writer.
+Use Farol before and after live-test analysis or meaningful code changes. It is
+read-only. It can inspect Hermes provider configuration, emitted events,
+per-event processing logs, Cristalina status, diagnostics, projections, review
+queues, store shape, recognition state, and memory consolidation counts.
 
-Cristal should not be trained to coordinate with this monitor as part of its
-normal loop. The test is more valuable when Cristal mostly attempts to
-self-regulate through Cristalina itself. The monitor exists to catch accumulated
-failures, blocked provider flow, broken projections, stuck reviews, or code-level
-defects that cannot be repaired from inside the running agent.
+Farol should stay mostly invisible to Cristal. Intervene in Cristal's live
+session only when the external view shows a concrete blocker: invalid events,
+accumulating diagnostics, stuck processing, broken projections, pending reviews
+that need operator attention, misleading assumptions, or a code defect that the
+running agent cannot repair from inside the session.
 
-## External Oversight With Markus
+## Live-Test Investigation Loop
 
-When Markus is testing Cristal, help from this repository by:
+For any symptom in the Hermes/Cristalina test:
 
-- checking the latest monitor snapshot and `snapshots.jsonl`
-- inspecting Hermes event JSON and matching processing log files when needed
-- running Cristalina status, diagnostics, projection, review, and store commands
-- explaining what Cristalina actually recorded, deferred, diagnosed, or failed
-- proposing focused fixes when the monitor shows a concrete problem
+1. run a one-shot Farol snapshot
+2. identify the latest relevant Hermes event or cron artifact
+3. inspect the event JSON and matching processing log
+4. check Cristalina status, diagnostics, projections, review queues, and store
+   counts
+5. decide whether the problem belongs to Hermes emission, provider prefetch,
+   Cristalina event processing, store state, projection/read behavior, cron
+   behavior, or operator expectation
+6. patch only the layer that owns the broken contract
+7. run focused tests and then a fresh Farol snapshot
 
-Do not guess from chat context when a monitor artifact can answer the question.
-Prefer concrete files, command output, and durable record refs.
+Do not guess from chat context when a monitor artifact, durable record, or
+command output can answer the question. Prefer concrete paths, record refs,
+diagnostics, and reproducible commands.
 
-Intervene in Cristal's live session only when the outside view shows a real
-blocker, accumulating corruption, repeated invalid events, stuck processing, or
-a misleading operator assumption. Keep interventions short and factual; avoid
-feeding Cristal monitor internals unless those facts are necessary for the next
-action.
+## Memory Semantics Under Test
+
+`message_observed` is runtime evidence. It proves that something was observed by
+a runtime; it does not prove the content is true, stable, owner-ratified, or
+ready for wiki/canon/world promotion.
+
+Nightly memory consolidation is also conservative. It may classify accumulated
+runtime observations and suggest routes, but it must not promote truth by
+itself. If LLM analysis becomes part of consolidation, the first durable result
+still enters as evidence unless a governed flow explicitly promotes it.
+
+Keep these processes distinct:
+
+- Cristal's research work can produce evidence and candidate insights
+- Cristalina's memory system decides how that evidence is recognized, retrieved,
+  consolidated, diagnosed, deferred, or promoted
+- Farol observes whether the system is functioning and helps Markus repair
+  external or code-level failures
+
+The current test is specifically watching whether Cristalina can mature from
+runtime evidence into useful memory structure without hidden Farol steering.
+
+## Authority And Safety
+
+Runtime events are evidence and provenance, not owner authority. `speaker_ref`
+explains who produced evidence. Authenticated principals explain who is legally
+acting across governance boundaries.
+
+Do not bypass review queues, owner ratification, contradiction handling, or
+projection legality to make a test look successful. Pending reviews and
+diagnostics are product signals, not annoyances to erase.
+
+Do not repair by editing canon, projections, session packs, resume receipts,
+monitor snapshots, or store internals directly. Use runtime events, review
+actions, projection refresh, checkpoint/session-pack commands, or code fixes at
+the owning layer.
+
+## Engineering Posture
+
+The old early-project rule `docs -> types -> schemas -> fixtures -> kernel code
+-> adapters` is no longer the whole operating model. The project now has a live
+provider, monitor, runtime store, retrieval surfaces, projections, and cron
+loops. Keep contract discipline, but work from the failing or missing behavior
+back to the owning layer.
+
+Good changes in this phase usually do one of these:
+
+- make provider behavior more truthful, observable, or non-blocking
+- make recognition, hydration, archive descent, or projection more useful
+- make runtime evidence easier to consolidate without premature promotion
+- make diagnostics and review queues clearer and more actionable
+- make Farol better at explaining what happened without becoming a memory writer
+- reduce drift between live runtime behavior, CLI commands, docs, and tests
+
+Avoid broad rewrites unless the live evidence points to a real structural
+problem. Prefer small executable checks, focused tests, and monitor snapshots
+that prove the behavior changed.
 
 ## Farol Test Journal
 
-This file also carries a small external journey log for the live test. This is
-separate from Cristalina memory: it records operator-visible progress, lessons,
-fixed problems, and behaviors to watch, but it must not be treated as store
-truth, authority, or evidence by Cristalina.
+This journal is separate from Cristalina memory. It records operator-visible
+progress, fixed problems, lessons, and behaviors to watch during the live test.
+It must not be treated as store truth, owner authority, or evidence by
+Cristalina.
 
-Keep entries short, dated, and high-signal. Prefer a few impact sentences over
-long transcripts. Update this journal when the live test reaches a meaningful
-milestone, uncovers a repeated behavior, fixes a real defect, or changes the
-monitoring posture. If details matter, point to commits, docs, monitor
-artifacts, or issue notes instead of copying large logs here.
+Keep entries short, dated, and high-signal. Add an entry when the live test
+reaches a meaningful milestone, uncovers a repeated behavior, fixes a real
+defect, or changes monitoring posture. If details matter, point to commits,
+docs, monitor artifacts, or issue notes instead of copying long logs.
 
 Current entries:
 
@@ -85,51 +169,6 @@ Current entries:
 - 2026-05-03: Cristal's first two native Hermes turns were captured and applied
   cleanly; recognition needed a session-scoped runtime-observation read path so
   Farol and provider prefetch could see those observations as live memory.
-
-## Investigation Loop
-
-For any live-test symptom:
-
-1. run a one-shot monitor snapshot
-2. identify the latest relevant Hermes event
-3. inspect the event contract, processing log, diagnostics, and pending reviews
-4. decide whether the issue is runtime emission, event processing, store state,
-   projection/read behavior, or operator expectation
-5. patch only the layer that owns the broken contract
-6. run focused tests and a fresh monitor snapshot
-
-If the monitor shows an event-processing failure, inspect the matching log before
-editing code. If Cristalina reports pending owner review, do not bypass it with
-runtime events.
-
-## Development Guardrails
-
-Keep the project moving in this order whenever practical:
-
-```text
-docs -> types -> schemas -> fixtures -> kernel code -> adapters
-```
-
-Adapters consume core semantics; they do not define memory law. Runtime events
-are evidence and provenance, not owner authority. `speaker_ref` explains who
-produced evidence; authenticated principals explain who is legally acting across
-governance boundaries.
-
-Prefer correctness, recoverability, replayability, auditability, and authority
-legality over runtime convenience. Do not repair by editing canon, projections,
-session packs, resume receipts, or monitor snapshots directly; use runtime
-events, review actions, projection refresh, checkpoint/session-pack commands, or
-code fixes at the owning layer.
-
-## Legacy Phrase System
-
-The old session-phrase memory was moved to:
-
-```text
-AGENTS-LEGACY-PHRASES.md
-```
-
-Do not resume the old generic session-phrase ritual in `AGENTS.md`. During this
-phase, use the Farol Test Journal above for live-test milestones and put durable
-architecture lessons in normal docs, tests, roadmap notes, or explicit proposals
-for Markus to approve.
+- 2026-05-05: Nightly memory consolidation replaced the earlier daily review
+  naming. The consolidation pass classifies accumulated evidence but still does
+  not promote wiki, canon, world truth, or owner authority by itself.
