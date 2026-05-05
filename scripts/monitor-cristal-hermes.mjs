@@ -33,6 +33,12 @@ const hermesProviderPath = join(hermesRoot, "plugins", "cristalina", "__init__.p
 const hermesProviderManifestPath = join(hermesRoot, "plugins", "cristalina", "plugin.yaml");
 const hermesProviderConfigPath = join(hermesRoot, ".cristalina-v4", "provider-hermes.json");
 const hermesHookScriptPath = join(hermesRoot, ".cristalina-v4", "hooks", "cristalina-bridge-event.sh");
+const hermesMemoryConsolidationMetadataPath = join(hermesRoot, ".cristalina-v4", "memory-consolidation-hermes.json");
+const hermesMemoryConsolidationScriptPath = join(hermesRoot, "scripts", "cristalina-memory-consolidation.sh");
+const hermesMemoryConsolidationCronScriptPath = join(hermesRoot, "scripts", "cristalina-memory-consolidation.py");
+const hermesCronJobsPath = join(hermesRoot, "cron", "jobs.json");
+const cristalResearchHeartbeatsDir = join(hermesRoot, "scratch", "cristal-heartbeats");
+const aiPulseDir = join(hermesRoot, "scratch", "ai-pulse");
 
 function safeRead(path, maxChars = 200000) {
   try {
@@ -145,6 +151,109 @@ function providerConfig() {
   return tryJson(safeRead(hermesProviderConfigPath, 100000));
 }
 
+function listJsonFiles(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => join(dir, name));
+}
+
+function countFiles(dir) {
+  return listJsonFiles(dir).length;
+}
+
+function countStoreDir(relativeDir) {
+  const dir = join(cristalinaRoot, ".cristalina-v4", relativeDir);
+  return countFiles(dir);
+}
+
+function parseObservationSummary(value) {
+  if (typeof value !== "string") return {};
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function increment(counts, key) {
+  counts[key] = (counts[key] ?? 0) + 1;
+}
+
+function scanMaturation() {
+  const storeRoot = join(cristalinaRoot, ".cristalina-v4");
+  const observationDir = join(storeRoot, "runtime", "observations");
+  const dispositionDir = join(storeRoot, "governance", "dispositions");
+  const eventTypeCounts = {};
+  const sourceTypeCounts = {};
+  const dispositionOutcomeCounts = {};
+  const memoryConsolidationObservations = [];
+  for (const file of listJsonFiles(observationDir)) {
+    const observation = tryJson(safeRead(file, 1000000));
+    const parsed = parseObservationSummary(observation?.summary);
+    const eventType = parsed?.event_type ?? "unknown";
+    const sourceType = observation?.provenance?.source_type ?? "unknown";
+    increment(eventTypeCounts, eventType);
+    increment(sourceTypeCounts, sourceType);
+    if (eventType === "memory_consolidation") {
+      memoryConsolidationObservations.push({
+        id: observation?.id ?? basename(file),
+        observed_at: observation?.observed_at ?? observation?.created_at ?? null,
+        preview: typeof parsed?.message === "string" ? parsed.message.slice(0, 260) : null,
+      });
+    }
+  }
+  for (const file of listJsonFiles(dispositionDir)) {
+    const disposition = tryJson(safeRead(file, 200000));
+    for (const outcome of disposition?.outcomes ?? []) {
+      increment(dispositionOutcomeCounts, outcome);
+    }
+  }
+  memoryConsolidationObservations.sort((left, right) => String(left.observed_at ?? "").localeCompare(String(right.observed_at ?? "")));
+  const researchHeartbeatState = tryJson(safeRead(join(cristalResearchHeartbeatsDir, "state.json"), 200000));
+  return {
+    store_counts: {
+      raw_sources: countStoreDir("raw/sources"),
+      runtime_observations: countStoreDir("runtime/observations"),
+      dispositions: countStoreDir("governance/dispositions"),
+      proposals: countStoreDir("governance/proposals"),
+      curation_packets: countStoreDir("governance/curation"),
+      ratifications: countStoreDir("governance/ratifications"),
+      wiki_pages: countStoreDir("wiki/pages"),
+      wiki_claims: countStoreDir("wiki/claims"),
+      wiki_runs: countStoreDir("wiki/runs"),
+      canon_records: [
+        "canon/facts",
+        "canon/beliefs",
+        "canon/preferences",
+        "canon/constraints",
+        "canon/goals",
+        "canon/procedures",
+        "canon/values",
+        "canon/identity-traits",
+        "canon/identity",
+      ].reduce((sum, dir) => sum + countStoreDir(dir), 0),
+      world_claims: countStoreDir("world/claims"),
+      derived_manifests: countStoreDir("derived/manifests"),
+    },
+    event_type_counts: eventTypeCounts,
+    source_type_counts: sourceTypeCounts,
+    disposition_outcome_counts: dispositionOutcomeCounts,
+    memory_consolidations: {
+      count: memoryConsolidationObservations.length,
+      latest: memoryConsolidationObservations.at(-1) ?? null,
+    },
+    research_heartbeats: {
+      file_count: countFiles(cristalResearchHeartbeatsDir),
+      state: researchHeartbeatState,
+    },
+    ai_pulse: {
+      file_count: countFiles(aiPulseDir),
+      latest_file: listJsonFiles(aiPulseDir).sort().at(-1) ?? null,
+    },
+  };
+}
+
 function recognitionArgsFor(latestEvent) {
   const args = ["projection", "recognition", "--config", configPath, "--format", "json"];
   const provider = providerConfig();
@@ -178,6 +287,10 @@ function makeSnapshot() {
       hermes_provider_manifest: pathState(hermesProviderManifestPath),
       hermes_provider_entrypoint: pathState(hermesProviderPath),
       hermes_provider_config: pathState(hermesProviderConfigPath),
+      hermes_memory_consolidation_metadata: pathState(hermesMemoryConsolidationMetadataPath),
+      hermes_memory_consolidation_script: pathState(hermesMemoryConsolidationScriptPath),
+      hermes_memory_consolidation_cron_script: pathState(hermesMemoryConsolidationCronScriptPath),
+      hermes_cron_jobs: pathState(hermesCronJobsPath),
       hermes_hook_script: pathState(hermesHookScriptPath),
       cristalina_config: pathState(configPath),
       cristalina_cli: pathState(cliPath),
@@ -194,6 +307,13 @@ function makeSnapshot() {
       entrypoint_has_prefetch: Boolean(safeRead(hermesProviderPath, 100000)?.includes("def prefetch")),
       entrypoint_has_sync_turn: Boolean(safeRead(hermesProviderPath, 100000)?.includes("def sync_turn")),
     },
+    memory_consolidation: {
+      metadata: tryJson(safeRead(hermesMemoryConsolidationMetadataPath, 100000)),
+      script_installed: existsSync(hermesMemoryConsolidationScriptPath),
+      cron_script_installed: existsSync(hermesMemoryConsolidationCronScriptPath),
+      cron_job_installed: Boolean((tryJson(safeRead(hermesCronJobsPath, 1000000))?.jobs ?? [])
+        .some((job) => job?.name === "cristalina-nightly-memory-consolidation")),
+    },
     hermes_events: hermesEvents,
     cristalina: {
       status: runJson("status", ["status", "--config", configPath]),
@@ -202,6 +322,7 @@ function makeSnapshot() {
       diagnostics: runJson("diagnostics list", ["diagnostics", "list", "--config", configPath]),
       reviews: runJson("reviews list hermes", ["reviews", "list", "--runtime", "hermes", "--config", configPath]),
       store: runJson("store inspect", ["store", "inspect", "--config", configPath]),
+      maturation: scanMaturation(),
     },
   };
 
@@ -219,6 +340,9 @@ function makeSnapshot() {
     status_ok: snapshot.cristalina.status.ok,
     recognition_entries: snapshot.cristalina.recognition.json?.snapshot?.recognition_index?.length ?? null,
     diagnostics_count: snapshot.cristalina.diagnostics.json?.diagnostics?.length ?? null,
+    memory_consolidations: snapshot.cristalina.maturation.memory_consolidations.count,
+    wiki_pages: snapshot.cristalina.maturation.store_counts.wiki_pages,
+    canon_records: snapshot.cristalina.maturation.store_counts.canon_records,
   })}\n`);
 
   const latest = snapshot.hermes_events.at(-1);
@@ -229,6 +353,13 @@ function makeSnapshot() {
     provider_enabled: snapshot.provider.configured_as_memory_provider,
     background_dispatch: snapshot.plugin.entrypoint_uses_background_dispatch,
     provider_prefetch: snapshot.provider.entrypoint_has_prefetch,
+    nightly_memory_consolidation: {
+      installed: snapshot.memory_consolidation.script_installed,
+      cron_installed: snapshot.memory_consolidation.cron_job_installed,
+      enabled: snapshot.memory_consolidation.metadata?.enabled ?? null,
+      interval_minutes: snapshot.memory_consolidation.metadata?.interval_minutes ?? null,
+      consolidations_seen: snapshot.cristalina.maturation.memory_consolidations.count,
+    },
     recognition_entries: snapshot.cristalina.recognition.json?.snapshot?.recognition_index?.length ?? null,
     events_seen: snapshot.hermes_events.length,
     latest_event: latest ? {
@@ -240,6 +371,14 @@ function makeSnapshot() {
     cristalina_status_ok: snapshot.cristalina.status.ok,
     pending_owner_reviews: snapshot.cristalina.status.json?.pending_owner_reviews ?? null,
     diagnostics_count: snapshot.cristalina.diagnostics.json?.diagnostics?.length ?? null,
+    maturation: {
+      runtime_observations: snapshot.cristalina.maturation.store_counts.runtime_observations,
+      proposals: snapshot.cristalina.maturation.store_counts.proposals,
+      wiki_pages: snapshot.cristalina.maturation.store_counts.wiki_pages,
+      canon_records: snapshot.cristalina.maturation.store_counts.canon_records,
+      ai_pulse_files: snapshot.cristalina.maturation.ai_pulse.file_count,
+      research_heartbeat_count: snapshot.cristalina.maturation.research_heartbeats.state?.count ?? null,
+    },
   }, null, 2));
 }
 

@@ -34,6 +34,7 @@ import { mapRuntimeHook } from "./runtime-hook-map.js";
 import { checkRuntimeBridgeEventFile, validateRuntimeBridgeEventContract, verifyRuntimeBridgeEventPair, writeRuntimeBridgeEventTemplate } from "./runtime-event-contract.js";
 import { verifyRuntimeProjections } from "./projection-verify.js";
 import { verifyOpenClawToHermesHandoff } from "./session-handoff-verify.js";
+import { runMemoryConsolidation } from "./memory-consolidation.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -289,6 +290,25 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
         status: "not_started",
         reason: "Step 2 defines the command boundary; the daemon starts in the runtime-neutral event bridge step.",
       }, null, 2)}\n`,
+      stderr: "",
+    };
+  }
+
+  if (command.name === "memory") {
+    const loaded = await loadRequiredConfig(command.configPath, command.storeRoot);
+    const result = await runMemoryConsolidation({
+      config: loaded.config,
+      storeRootOverride: command.storeRoot,
+      runtime: command.runtime,
+      write: command.write,
+      maxRecentEvents: command.maxRecentEvents,
+      runtimeInstanceRef: command.runtimeInstanceRef,
+      runtimeSessionRef: command.runtimeSessionRef,
+      conversationThreadRef: command.conversationThreadRef,
+    });
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
       stderr: "",
     };
   }

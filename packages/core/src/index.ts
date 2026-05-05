@@ -15,6 +15,7 @@ export * from "./projection-engine/memory-browser.js";
 export * from "./projection-engine/session-pack.js";
 export * from "./session-continuity-store.js";
 export * from "./operator-inspection-store.js";
+export * from "./memory-consolidation.js";
 export * from "./retrieval-engine/audit.js";
 export * from "./retrieval-engine/chunking.js";
 export * from "./retrieval-engine/embedding-provider.js";

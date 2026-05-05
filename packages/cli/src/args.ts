@@ -34,6 +34,18 @@ export type CristalinaCommand =
   | { name: "runtime"; action: "event-verify"; configPath?: string; openclawEventPath: string; hermesEventPath: string }
   | { name: "bridge"; action: "start"; configPath?: string }
   | { name: "bridge"; action: "event"; configPath?: string; eventPath: string }
+  | {
+      name: "memory";
+      action: "consolidation";
+      configPath?: string;
+      storeRoot?: string;
+      runtime: "openclaw" | "hermes";
+      write?: boolean;
+      maxRecentEvents?: number;
+      runtimeInstanceRef?: string;
+      runtimeSessionRef?: string;
+      conversationThreadRef?: string;
+    }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
   | { name: "session-pack"; action: "verify-handoff"; configPath?: string; checkpointId?: string; createCheckpoint?: boolean }
@@ -301,6 +313,43 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
     return { name: "bridge", action: "start", configPath: readOption(argv, "--config") };
   }
 
+  if (command === "memory") {
+    if (subcommand !== "consolidation") {
+      throw new CommandUsageError("memory requires action consolidation");
+    }
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--store-root", "value"],
+      ["--runtime", "value"],
+      ["--write", "flag"],
+      ["--max-recent-events", "value"],
+      ["--runtime-instance-ref", "value"],
+      ["--runtime-session-ref", "value"],
+      ["--conversation-thread-ref", "value"],
+    ]));
+    const runtime = readOption(argv, "--runtime") ?? "hermes";
+    if (runtime !== "openclaw" && runtime !== "hermes") {
+      throw new CommandUsageError("memory consolidation requires --runtime openclaw or hermes");
+    }
+    const maxRecentEventsRaw = readOption(argv, "--max-recent-events");
+    const maxRecentEvents = maxRecentEventsRaw === undefined ? undefined : Number(maxRecentEventsRaw);
+    if (maxRecentEvents !== undefined && (!Number.isInteger(maxRecentEvents) || maxRecentEvents < 1)) {
+      throw new CommandUsageError("--max-recent-events must be a positive integer");
+    }
+    return {
+      name: "memory",
+      action: "consolidation",
+      configPath: readOption(argv, "--config"),
+      storeRoot: readOption(argv, "--store-root"),
+      runtime,
+      write: hasFlag(argv, "--write"),
+      maxRecentEvents,
+      runtimeInstanceRef: readOption(argv, "--runtime-instance-ref"),
+      runtimeSessionRef: readOption(argv, "--runtime-session-ref"),
+      conversationThreadRef: readOption(argv, "--conversation-thread-ref"),
+    };
+  }
+
   if (command === "checkpoint") {
     if (subcommand !== "create") {
       throw new CommandUsageError("checkpoint requires action create");
@@ -475,6 +524,7 @@ export function helpText(): string {
     "  runtime event-verify --openclaw-event PATH --hermes-event PATH [--config PATH]",
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
+    "  memory consolidation [--runtime openclaw|hermes] [--write] [--max-recent-events N] [--config PATH] [--store-root PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",
     "  session-pack compile --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
     "  session-pack latest --runtime openclaw|hermes [--config PATH]",

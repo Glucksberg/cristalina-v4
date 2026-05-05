@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -479,7 +479,7 @@ test("projection verify loads compatible OpenClaw and Hermes runtime manifests",
 });
 
 test("reviews apply writes to the explicit store-root override", async () => {
-  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-review-override-"));
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-consolidation-override-"));
   const storeA = join(root, "store-a");
   const storeB = join(root, "store-b");
   const configPath = join(root, "config.json");
@@ -515,8 +515,8 @@ test("reviews apply writes to the explicit store-root override", async () => {
       actor_ref: "actor_participant_cli_review_001",
     },
     runtime_instance_ref: "runtime_openclaw_cli_review_001",
-    statement: "The owner prefers review apply to respect explicit store roots.",
-    message: "A collaborator says review apply should respect explicit store roots.",
+    statement: "The owner prefers consolidation apply to respect explicit store roots.",
+    message: "A collaborator says consolidation apply should respect explicit store roots.",
     speaker_ref: "actor_participant_cli_review_001",
   });
   const queueBefore = await listOpenClawConversationPreferenceOwnerRatificationQueue(storeB);
@@ -534,7 +534,7 @@ test("reviews apply writes to the explicit store-root override", async () => {
   assert.equal((await listOpenClawConversationPreferenceOwnerRatificationQueue(storeB)).length, 0);
 });
 
-test("bridge event treats deferred review as successful event processing", async () => {
+test("bridge event treats deferred consolidation as successful event processing", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-bridge-deferred-"));
   const storeRoot = join(root, "store");
   const configPath = join(root, "config.json");
@@ -632,6 +632,100 @@ test("bridge event validates event contract before writing memory", async () => 
   assert.ok(payload.diagnostics.some((entry) => entry.includes("occurred_at")));
   assert.ok(payload.diagnostics.some((entry) => entry.includes("message_refs")));
   assert.equal(inspection.diagnostic_count, 0);
+});
+
+test("memory consolidation classifies runtime observations without promoting canon or wiki", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-memory-consolidation-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_memory_consolidation_001",
+      agentIdentityRef: "actor_agent_cli_memory_consolidation_001",
+      hermesRuntimeRef: "runtime_hermes_cli_memory_consolidation_001",
+    }), null, 2)}\n`,
+  );
+
+  await handleRuntimeBridgeEvent(buildDefaultCristalinaConfig({
+    storeRoot,
+    ownerIdentityRef: "actor_owner_cli_memory_consolidation_001",
+    agentIdentityRef: "actor_agent_cli_memory_consolidation_001",
+    hermesRuntimeRef: "runtime_hermes_cli_memory_consolidation_001",
+  }), {
+    event_id: "evt_cli_memory_consolidation_observed_001",
+    event_type: "message_observed",
+    runtime: "hermes",
+    occurred_at: "2026-05-05T12:00:00.000Z",
+    actor_ref: "system:hermes-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-test",
+      system_scope: "memory-consolidation-test",
+    },
+    runtime_instance_ref: "runtime_hermes_cli_memory_consolidation_001",
+    runtime_session_ref: "session_memory_consolidation_test",
+    conversation_thread_ref: "thread_memory_consolidation_test",
+    source_ref: "runtime/hermes/test/evt_cli_memory_consolidation_observed_001",
+    message: "Markus asked to save an operator note about agent memory research.",
+  });
+  await handleRuntimeBridgeEvent(buildDefaultCristalinaConfig({
+    storeRoot,
+    ownerIdentityRef: "actor_owner_cli_memory_consolidation_001",
+    agentIdentityRef: "actor_agent_cli_memory_consolidation_001",
+    hermesRuntimeRef: "runtime_hermes_cli_memory_consolidation_001",
+  }), {
+    event_id: "evt_cli_memory_consolidation_observed_002",
+    event_type: "message_observed",
+    runtime: "hermes",
+    occurred_at: "2026-05-05T12:01:00.000Z",
+    actor_ref: "system:hermes-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-test",
+      system_scope: "memory-consolidation-test",
+    },
+    runtime_instance_ref: "runtime_hermes_cli_memory_consolidation_001",
+    runtime_session_ref: "session_memory_consolidation_test",
+    conversation_thread_ref: "thread_memory_consolidation_test",
+    source_ref: "runtime/hermes/test/evt_cli_memory_consolidation_observed_002",
+    message: "Research heartbeat saw https://x.com/example/status/1 twice in memory posts.",
+  });
+
+  const result = await executeCristalinaCommand({
+    name: "memory",
+    action: "consolidation",
+    configPath,
+    runtime: "hermes",
+    runtimeSessionRef: "session_memory_consolidation_test",
+    conversationThreadRef: "thread_memory_consolidation_test",
+    maxRecentEvents: 10,
+    write: true,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    event: { event_type: string };
+    consolidation: {
+      counts: { recent_observations_consolidated: number; proposals: number; wiki_pages: number; canon_records: number };
+      suggested_route_counts: { candidate_operator_review: number; candidate_research_synthesis: number };
+    };
+    bridge_result: { status: string; record_refs: string[] };
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "applied");
+  assert.equal(payload.event.event_type, "memory_consolidation");
+  assert.equal(payload.consolidation.counts.recent_observations_consolidated, 2);
+  assert.equal(payload.consolidation.counts.proposals, 0);
+  assert.equal(payload.consolidation.counts.wiki_pages, 0);
+  assert.equal(payload.consolidation.counts.canon_records, 0);
+  assert.equal(payload.consolidation.suggested_route_counts.candidate_operator_review, 1);
+  assert.equal(payload.consolidation.suggested_route_counts.candidate_research_synthesis, 1);
+  assert.equal(payload.bridge_result.status, "applied");
+  assert.ok(payload.bridge_result.record_refs.some((ref) => ref.startsWith("obs_hermes_memory_consolidation_")));
+  assert.equal((await readdir(join(storeRoot, "governance", "proposals"))).length, 0);
+  assert.equal((await readdir(join(storeRoot, "wiki", "pages"))).length, 0);
 });
 
 test("CLI checkpoint create emits a new generation instead of overwriting the previous checkpoint", async () => {

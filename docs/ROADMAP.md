@@ -1059,6 +1059,25 @@ Phase 2 should proceed in this order:
 - [RUNTIME-WIRING-RUNBOOK.md](RUNTIME-WIRING-RUNBOOK.md) documents install,
   inspect, review, recover, and handoff operation
 
+### Nightly Memory Consolidation Slice
+
+The Hermes provider install now includes a conservative nightly memory consolidation.
+This consolidation pass is not a promotion engine. It classifies accumulated runtime
+observations, emits a structured `memory_consolidation` event, and leaves any
+wiki/canon/world/proposal transition to later governed flows.
+
+Implemented boundaries:
+
+- `message_observed` remains runtime-only evidence
+- `memory consolidation` compiles recent observations into
+  `cristalina.memory_consolidation.v1`
+- `--write` records the memory consolidation through the same runtime event path
+- `install hermes` writes nightly memory consolidation metadata, scripts, and a nightly
+  Hermes cron job
+- Farol reports memory consolidation installation and maturation counts
+- [NIGHTLY-MEMORY-CONSOLIDATION.md](NIGHTLY-MEMORY-CONSOLIDATION.md) documents the
+  product posture and current command surface
+
 ---
 
 ## 16. Deferred On Purpose
@@ -1073,7 +1092,7 @@ Still intentionally deferred:
 - treating session packs, wiki pages, retrieval results, projections, or
   summaries as direct truth sources
 - runtime-specific memory semantics
-- native Hermes memory-provider plugin before live bridge parity is proven
+- automatic wiki/canon promotion from ordinary runtime observations
 
 These are deferred because the shortest path to value is now an installable
-local runtime bridge over the existing core.
+local runtime memory provider over the existing core.

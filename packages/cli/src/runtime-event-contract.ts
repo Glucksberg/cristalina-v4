@@ -187,6 +187,7 @@ export function validateRuntimeBridgeEventContract(
 
   if (
     eventType !== "message_observed" &&
+    eventType !== "memory_consolidation" &&
     eventType !== "conversation_preference_signal" &&
     eventType !== "projection_feedback" &&
     eventType !== "runtime_diagnostic" &&
@@ -200,6 +201,12 @@ export function validateRuntimeBridgeEventContract(
 
   if (eventType === "message_observed") {
     stringField(value, "message", diagnostics);
+  }
+  if (eventType === "memory_consolidation") {
+    stringField(value, "message", diagnostics);
+    if (!isRecord(value.consolidation)) {
+      diagnostics.push("consolidation must be an object for memory_consolidation events");
+    }
   }
   if (eventType === "conversation_preference_signal" || eventType === "projection_feedback") {
     stringField(value, "statement", diagnostics);

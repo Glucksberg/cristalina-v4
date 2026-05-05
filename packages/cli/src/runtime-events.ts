@@ -40,6 +40,7 @@ type NonCanonicalInput = OpenClawNonCanonicalIntakeInput | HermesNonCanonicalInt
 
 export type RuntimeBridgeEvent =
   | RuntimeMessageObservedEvent
+  | RuntimeMemoryConsolidationEvent
   | RuntimeConversationPreferenceSignalEvent
   | RuntimeProjectionFeedbackEvent
   | RuntimeDiagnosticEvent
@@ -66,6 +67,12 @@ export interface RuntimeBridgeEventBase {
 export interface RuntimeMessageObservedEvent extends Omit<RuntimeBridgeEventBase, "event_type"> {
   event_type: "message_observed";
   message: string;
+}
+
+export interface RuntimeMemoryConsolidationEvent extends Omit<RuntimeBridgeEventBase, "event_type"> {
+  event_type: "memory_consolidation";
+  message: string;
+  consolidation: unknown;
 }
 
 export interface RuntimeConversationPreferenceSignalEvent extends Omit<RuntimeBridgeEventBase, "event_type"> {
@@ -267,7 +274,7 @@ function buildPreferenceInput(
 }
 
 function buildNonCanonicalInput(
-  event: RuntimeMessageObservedEvent | RuntimeDiagnosticEvent,
+  event: RuntimeMessageObservedEvent | RuntimeMemoryConsolidationEvent | RuntimeDiagnosticEvent,
   context: ResolvedRuntimeEventContext,
   mode: NonCanonicalInput["mode"],
   authenticated_principal: AuthenticatedPrincipal,
@@ -396,7 +403,7 @@ export async function handleRuntimeBridgeEvent(config: CristalinaConfig, event: 
     };
   }
 
-  if (event.event_type === "message_observed" || event.event_type === "runtime_diagnostic") {
+  if (event.event_type === "message_observed" || event.event_type === "memory_consolidation" || event.event_type === "runtime_diagnostic") {
     const diagnostic = event.event_type === "runtime_diagnostic"
       ? { code: event.code, severity: event.severity, message: event.message }
       : undefined;
