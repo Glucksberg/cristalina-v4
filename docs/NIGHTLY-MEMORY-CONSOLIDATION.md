@@ -102,12 +102,17 @@ The default metadata uses:
 ```text
 enabled: true
 interval_minutes: 1440
+schedule_kind: cron
+schedule_expr: 0 3 * * *
+schedule_display: daily at 03:00
 mode: conservative
 auto_promote: false
 max_recent_events: 200
 ```
 
-Hermes cron runs the installed script once per day.
+Hermes cron runs the installed script once per day at 03:00 local runtime time.
+This is an operational default for the current live test and can change later
+without changing the memory contract.
 
 ## Farol
 

@@ -43,6 +43,8 @@ export interface RuntimeInstallResult {
   memory_consolidation_cron_jobs_path?: string;
   memory_consolidation_cron_job_id?: string;
   memory_consolidation_interval_minutes?: number;
+  memory_consolidation_schedule_expr?: string;
+  memory_consolidation_schedule_display?: string;
   integration_mode?: "provider" | "bridge" | "both";
   uninstall_hint: string;
   diagnostics: string[];
@@ -71,8 +73,13 @@ function stableHermesCronJobId(input: { runtimeRoot: string; configPath: string 
     .slice(0, 12);
 }
 
-function isoInMinutes(minutes: number): string {
-  return new Date(Date.now() + minutes * 60_000).toISOString();
+function isoNextLocalTime(hour: number, minute: number): string {
+  const next = new Date();
+  next.setHours(hour, minute, 0, 0);
+  if (next.getTime() <= Date.now()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next.toISOString();
 }
 
 function hermesPluginPaths(runtimeRoot: string | undefined): {
@@ -392,6 +399,10 @@ async function upsertHermesMemoryConsolidationCron(input: {
   cronScriptPath: string | null;
   configPath: string;
   intervalMinutes: number;
+  scheduleExpr: string;
+  scheduleDisplay: string;
+  scheduleHour: number;
+  scheduleMinute: number;
 }): Promise<{ jobId?: string; diagnostics: string[] }> {
   if (!input.runtimeRoot || !input.jobsPath || !input.cronScriptPath) {
     return { diagnostics: [] };
@@ -404,9 +415,9 @@ async function upsertHermesMemoryConsolidationCron(input: {
   });
   const jobName = "cristalina-nightly-memory-consolidation";
   const schedule = {
-    kind: "interval",
-    minutes: input.intervalMinutes,
-    display: `every ${input.intervalMinutes}m`,
+    kind: "cron",
+    expr: input.scheduleExpr,
+    display: input.scheduleDisplay,
   };
   const scriptName = basename(input.cronScriptPath);
   const prompt = [
@@ -434,9 +445,14 @@ async function upsertHermesMemoryConsolidationCron(input: {
   const existingRepeat = existing?.repeat && typeof existing.repeat === "object"
     ? existing.repeat as { completed?: unknown }
     : {};
-  const nextRunAt = typeof existing?.next_run_at === "string" && existing.next_run_at
+  const existingSchedule = existing?.schedule && typeof existing.schedule === "object"
+    ? existing.schedule as Record<string, unknown>
+    : null;
+  const existingScheduleMatches = existingSchedule?.kind === schedule.kind &&
+    existingSchedule.expr === schedule.expr;
+  const nextRunAt = existingScheduleMatches && typeof existing?.next_run_at === "string" && existing.next_run_at
     ? existing.next_run_at
-    : isoInMinutes(input.intervalMinutes);
+    : isoNextLocalTime(input.scheduleHour, input.scheduleMinute);
   const job = {
     id: jobId,
     name: jobName,
@@ -571,6 +587,10 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   const projectionCommand = `cristalina projection list --config ${loaded.configPath}`;
   const sessionPackCommand = `cristalina session-pack latest --runtime ${input.runtime} --config ${loaded.configPath}`;
   const memoryConsolidationIntervalMinutes = 1440;
+  const memoryConsolidationScheduleExpr = "0 3 * * *";
+  const memoryConsolidationScheduleDisplay = "daily at 03:00";
+  const memoryConsolidationScheduleHour = 3;
+  const memoryConsolidationScheduleMinute = 0;
   const memoryConsolidationMaxRecentEvents = 200;
   const memoryConsolidationCommand = `cristalina memory consolidation --runtime ${input.runtime} --write --config ${loaded.configPath}`;
   const memoryConsolidationCronJobId = input.runtime === "hermes" && input.runtimeRoot
@@ -603,6 +623,9 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
               enabled: true,
               mode: "conservative",
               interval_minutes: memoryConsolidationIntervalMinutes,
+              schedule_kind: "cron",
+              schedule_expr: memoryConsolidationScheduleExpr,
+              schedule_display: memoryConsolidationScheduleDisplay,
               script_path: pluginPaths.memoryConsolidationScriptPath,
               cron_script_path: pluginPaths.memoryConsolidationCronScriptPath,
               hermes_cron_jobs_path: pluginPaths.memoryConsolidationCronJobsPath,
@@ -651,6 +674,8 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
           memory_consolidation_cron_jobs_path: pluginPaths.memoryConsolidationCronJobsPath,
           memory_consolidation_cron_job_id: memoryConsolidationCronJobId,
           memory_consolidation_interval_minutes: memoryConsolidationIntervalMinutes,
+          memory_consolidation_schedule_expr: memoryConsolidationScheduleExpr,
+          memory_consolidation_schedule_display: memoryConsolidationScheduleDisplay,
         }
       : {}),
     event_contract: "cristalina.runtime_bridge_event.v1",
@@ -706,6 +731,9 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         enabled: true,
         mode: "conservative",
         interval_minutes: memoryConsolidationIntervalMinutes,
+        schedule_kind: "cron",
+        schedule_expr: memoryConsolidationScheduleExpr,
+        schedule_display: memoryConsolidationScheduleDisplay,
         max_recent_events: memoryConsolidationMaxRecentEvents,
         auto_promote: false,
         runtime_root: input.runtimeRoot ?? null,
@@ -803,6 +831,10 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
           cronScriptPath: pluginPaths.memoryConsolidationCronScriptPath,
           configPath: loaded.configPath,
           intervalMinutes: memoryConsolidationIntervalMinutes,
+          scheduleExpr: memoryConsolidationScheduleExpr,
+          scheduleDisplay: memoryConsolidationScheduleDisplay,
+          scheduleHour: memoryConsolidationScheduleHour,
+          scheduleMinute: memoryConsolidationScheduleMinute,
         });
         diagnostics.push(...cron.diagnostics);
       }
@@ -845,6 +877,8 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
           memory_consolidation_cron_jobs_path: pluginPaths.memoryConsolidationCronJobsPath ?? undefined,
           memory_consolidation_cron_job_id: memoryConsolidationCronJobId,
           memory_consolidation_interval_minutes: memoryConsolidationIntervalMinutes,
+          memory_consolidation_schedule_expr: memoryConsolidationScheduleExpr,
+          memory_consolidation_schedule_display: memoryConsolidationScheduleDisplay,
         }
       : {}),
     uninstall_hint: metadata.disable_hint,

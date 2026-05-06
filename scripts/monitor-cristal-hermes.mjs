@@ -270,6 +270,8 @@ function makeSnapshot() {
   const now = new Date();
   const hermesEvents = listRecentEvents();
   const latestEvent = hermesEvents.at(-1);
+  const hermesCronJobs = tryJson(safeRead(hermesCronJobsPath, 1000000))?.jobs ?? [];
+  const memoryConsolidationCronJob = hermesCronJobs.find((job) => job?.name === "cristalina-nightly-memory-consolidation") ?? null;
   const snapshot = {
     schema_version: 1,
     captured_at: now.toISOString(),
@@ -311,8 +313,8 @@ function makeSnapshot() {
       metadata: tryJson(safeRead(hermesMemoryConsolidationMetadataPath, 100000)),
       script_installed: existsSync(hermesMemoryConsolidationScriptPath),
       cron_script_installed: existsSync(hermesMemoryConsolidationCronScriptPath),
-      cron_job_installed: Boolean((tryJson(safeRead(hermesCronJobsPath, 1000000))?.jobs ?? [])
-        .some((job) => job?.name === "cristalina-nightly-memory-consolidation")),
+      cron_job_installed: Boolean(memoryConsolidationCronJob),
+      cron_job: memoryConsolidationCronJob,
     },
     hermes_events: hermesEvents,
     cristalina: {
@@ -358,6 +360,8 @@ function makeSnapshot() {
       cron_installed: snapshot.memory_consolidation.cron_job_installed,
       enabled: snapshot.memory_consolidation.metadata?.enabled ?? null,
       interval_minutes: snapshot.memory_consolidation.metadata?.interval_minutes ?? null,
+      schedule: snapshot.memory_consolidation.cron_job?.schedule ?? null,
+      next_run_at: snapshot.memory_consolidation.cron_job?.next_run_at ?? null,
       consolidations_seen: snapshot.cristalina.maturation.memory_consolidations.count,
     },
     recognition_entries: snapshot.cristalina.recognition.json?.snapshot?.recognition_index?.length ?? null,

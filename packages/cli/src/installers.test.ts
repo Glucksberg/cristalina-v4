@@ -97,6 +97,8 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     memory_consolidation_cron_jobs_path: string;
     memory_consolidation_cron_job_id: string;
     memory_consolidation_interval_minutes: number;
+    memory_consolidation_schedule_expr: string;
+    memory_consolidation_schedule_display: string;
     plugin_enable_hint: string;
   };
   assert.equal(metadata.runtime, "hermes");
@@ -113,6 +115,8 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(metadata.memory_consolidation_cron_script_path, join(root, "hermes", "scripts", "cristalina-memory-consolidation.py"));
   assert.equal(metadata.memory_consolidation_cron_jobs_path, join(root, "hermes", "cron", "jobs.json"));
   assert.equal(metadata.memory_consolidation_interval_minutes, 1440);
+  assert.equal(metadata.memory_consolidation_schedule_expr, "0 3 * * *");
+  assert.equal(metadata.memory_consolidation_schedule_display, "daily at 03:00");
   assert.match(metadata.plugin_enable_hint, /memory\.provider/);
   assert.match(await readFile(result.hook_path, "utf8"), /cristalina.runtime_hook.v1/);
   assert.equal(result.provider_path, metadata.provider_path);
@@ -125,6 +129,8 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(result.memory_consolidation_cron_jobs_path, metadata.memory_consolidation_cron_jobs_path);
   assert.equal(result.memory_consolidation_cron_job_id, metadata.memory_consolidation_cron_job_id);
   assert.equal(result.memory_consolidation_interval_minutes, 1440);
+  assert.equal(result.memory_consolidation_schedule_expr, "0 3 * * *");
+  assert.equal(result.memory_consolidation_schedule_display, "daily at 03:00");
   assert.match(result.plugin_enable_hint!, /memory\.provider/);
   assert.ok(result.diagnostics.some((entry) => entry.includes("memory.provider")));
 
@@ -149,6 +155,9 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     memory_consolidation: {
       enabled: boolean;
       interval_minutes: number;
+      schedule_kind: string;
+      schedule_expr: string;
+      schedule_display: string;
       auto_promote: boolean;
       script_path: string;
       cron_script_path: string;
@@ -163,6 +172,9 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.ok(providerConfig.cli_path.endsWith("index.js"));
   assert.equal(providerConfig.memory_consolidation.enabled, true);
   assert.equal(providerConfig.memory_consolidation.interval_minutes, 1440);
+  assert.equal(providerConfig.memory_consolidation.schedule_kind, "cron");
+  assert.equal(providerConfig.memory_consolidation.schedule_expr, "0 3 * * *");
+  assert.equal(providerConfig.memory_consolidation.schedule_display, "daily at 03:00");
   assert.equal(providerConfig.memory_consolidation.auto_promote, false);
   assert.equal(providerConfig.memory_consolidation.script_path, metadata.memory_consolidation_script_path);
   assert.equal(providerConfig.memory_consolidation.cron_script_path, metadata.memory_consolidation_cron_script_path);
@@ -174,24 +186,31 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     enabled: boolean;
     mode: string;
     interval_minutes: number;
+    schedule_kind: string;
+    schedule_expr: string;
+    schedule_display: string;
     auto_promote: boolean;
     command: string;
   };
   assert.equal(memoryConsolidationMetadata.enabled, true);
   assert.equal(memoryConsolidationMetadata.mode, "conservative");
   assert.equal(memoryConsolidationMetadata.interval_minutes, 1440);
+  assert.equal(memoryConsolidationMetadata.schedule_kind, "cron");
+  assert.equal(memoryConsolidationMetadata.schedule_expr, "0 3 * * *");
+  assert.equal(memoryConsolidationMetadata.schedule_display, "daily at 03:00");
   assert.equal(memoryConsolidationMetadata.auto_promote, false);
   assert.match(memoryConsolidationMetadata.command, /memory consolidation --runtime hermes --write/);
   assert.match(await readFile(metadata.memory_consolidation_script_path, "utf8"), /memory consolidation --runtime 'hermes' --write/);
   assert.match(await readFile(metadata.memory_consolidation_cron_script_path, "utf8"), /"memory","consolidation"/);
   const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
-    jobs: Array<{ id: string; name: string; schedule: { kind: string; minutes: number }; script: string; deliver: string }>;
+    jobs: Array<{ id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; script: string; deliver: string }>;
   };
   assert.ok(cronJobs.jobs.some((job) =>
     job.id === metadata.memory_consolidation_cron_job_id &&
     job.name === "cristalina-nightly-memory-consolidation" &&
-    job.schedule.kind === "interval" &&
-    job.schedule.minutes === 1440 &&
+    job.schedule.kind === "cron" &&
+    job.schedule.expr === "0 3 * * *" &&
+    job.schedule.display === "daily at 03:00" &&
     job.script === "cristalina-memory-consolidation.py" &&
     job.deliver === "local"));
 
