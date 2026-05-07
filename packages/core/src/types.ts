@@ -89,6 +89,7 @@ export const SOURCE_INTAKE_KINDS = [
   // Deprecated compatibility profile for legacy records; new adapter feedback should use projection_feedback.
   "openclaw_projection_feedback",
   "structured_preference_signal",
+  "structured_memory_claim",
 ] as const;
 
 export const PROPOSAL_OPERATIONS = [

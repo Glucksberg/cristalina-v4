@@ -46,6 +46,16 @@ export type CristalinaCommand =
       runtimeSessionRef?: string;
       conversationThreadRef?: string;
     }
+  | {
+      name: "memory";
+      action: "mature";
+      configPath?: string;
+      storeRoot?: string;
+      runtime: "openclaw" | "hermes";
+      write?: boolean;
+      maxItems?: number;
+      llmOutputPath?: string;
+    }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
   | { name: "session-pack"; action: "verify-handoff"; configPath?: string; checkpointId?: string; createCheckpoint?: boolean }
@@ -314,14 +324,43 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "memory") {
-    if (subcommand !== "consolidation") {
-      throw new CommandUsageError("memory requires action consolidation");
+    if (subcommand !== "consolidation" && subcommand !== "mature") {
+      throw new CommandUsageError("memory requires action consolidation or mature");
     }
-    rejectUnknownOptions(rest, new Map([
+    const commonOptions = new Map<string, OptionKind>([
       ["--config", "value"],
       ["--store-root", "value"],
       ["--runtime", "value"],
       ["--write", "flag"],
+    ]);
+    if (subcommand === "mature") {
+      rejectUnknownOptions(rest, new Map([
+        ...commonOptions,
+        ["--max-items", "value"],
+        ["--llm-output", "value"],
+      ]));
+      const runtime = readOption(argv, "--runtime") ?? "hermes";
+      if (runtime !== "openclaw" && runtime !== "hermes") {
+        throw new CommandUsageError("memory mature requires --runtime openclaw or hermes");
+      }
+      const maxItemsRaw = readOption(argv, "--max-items");
+      const maxItems = maxItemsRaw === undefined ? undefined : Number(maxItemsRaw);
+      if (maxItems !== undefined && (!Number.isInteger(maxItems) || maxItems < 1)) {
+        throw new CommandUsageError("--max-items must be a positive integer");
+      }
+      return {
+        name: "memory",
+        action: "mature",
+        configPath: readOption(argv, "--config"),
+        storeRoot: readOption(argv, "--store-root"),
+        runtime,
+        write: hasFlag(argv, "--write"),
+        maxItems,
+        llmOutputPath: readOption(argv, "--llm-output"),
+      };
+    }
+    rejectUnknownOptions(rest, new Map([
+      ...commonOptions,
       ["--max-recent-events", "value"],
       ["--runtime-instance-ref", "value"],
       ["--runtime-session-ref", "value"],
@@ -525,6 +564,7 @@ export function helpText(): string {
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  memory consolidation [--runtime openclaw|hermes] [--write] [--max-recent-events N] [--config PATH] [--store-root PATH]",
+    "  memory mature [--runtime openclaw|hermes] [--write] [--max-items N] [--llm-output PATH] [--config PATH] [--store-root PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",
     "  session-pack compile --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
     "  session-pack latest --runtime openclaw|hermes [--config PATH]",

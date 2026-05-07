@@ -35,6 +35,7 @@ import { checkRuntimeBridgeEventFile, validateRuntimeBridgeEventContract, verify
 import { verifyRuntimeProjections } from "./projection-verify.js";
 import { verifyOpenClawToHermesHandoff } from "./session-handoff-verify.js";
 import { runMemoryConsolidation } from "./memory-consolidation.js";
+import { runCliMemoryMaturation } from "./memory-maturation.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -294,7 +295,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
     };
   }
 
-  if (command.name === "memory") {
+  if (command.name === "memory" && command.action === "consolidation") {
     const loaded = await loadRequiredConfig(command.configPath, command.storeRoot);
     const result = await runMemoryConsolidation({
       config: loaded.config,
@@ -308,6 +309,37 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
     });
     return {
       exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+    };
+  }
+
+  if (command.name === "memory" && command.action === "mature") {
+    const { config, storeRoot } = await loadRequiredConfig(command.configPath, command.storeRoot);
+    const result = await runCliMemoryMaturation({
+      config,
+      storeRootOverride: storeRoot,
+      runtime: command.runtime,
+      write: command.write,
+      maxItems: command.maxItems,
+      llmOutputPath: command.llmOutputPath,
+    });
+    if (command.write && command.runtime === "hermes") {
+      await writeHermesRecognitionProjectionToStore({
+        rootDir: storeRoot,
+        read_context: {
+          adapter: "hermes",
+          audience: "memory_provider",
+          owner_identity_ref: config.owner_identity_ref ?? null,
+          actor_identity_ref: config.agent_identity_ref ?? null,
+          runtime_instance_ref: config.runtimes?.hermes?.runtime_instance_ref ?? null,
+          runtime_session_ref: config.runtimes?.hermes?.default_session_ref ?? null,
+          conversation_thread_ref: config.runtimes?.hermes?.default_thread_ref ?? null,
+        },
+      }).catch(() => undefined);
+    }
+    return {
+      exitCode: result.maturation.diagnostics.length === 0 ? 0 : 1,
       stdout: `${JSON.stringify(result, null, 2)}\n`,
       stderr: "",
     };

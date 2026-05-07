@@ -45,6 +45,12 @@ export interface RuntimeInstallResult {
   memory_consolidation_interval_minutes?: number;
   memory_consolidation_schedule_expr?: string;
   memory_consolidation_schedule_display?: string;
+  memory_maturation_metadata_path?: string;
+  memory_maturation_script_path?: string;
+  memory_maturation_cron_script_path?: string;
+  memory_maturation_cron_job_id?: string;
+  memory_maturation_schedule_expr?: string;
+  memory_maturation_schedule_display?: string;
   integration_mode?: "provider" | "bridge" | "both";
   uninstall_hint: string;
   diagnostics: string[];
@@ -73,6 +79,13 @@ function stableHermesCronJobId(input: { runtimeRoot: string; configPath: string 
     .slice(0, 12);
 }
 
+function stableHermesNamedCronJobId(input: { runtimeRoot: string; configPath: string; name: string }): string {
+  return createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex")
+    .slice(0, 12);
+}
+
 function isoNextLocalTime(hour: number, minute: number): string {
   const next = new Date();
   next.setHours(hour, minute, 0, 0);
@@ -95,6 +108,9 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
   memoryConsolidationScriptPath: string | null;
   memoryConsolidationCronScriptPath: string | null;
   memoryConsolidationCronJobsPath: string | null;
+  memoryMaturationMetadataPath: string | null;
+  memoryMaturationScriptPath: string | null;
+  memoryMaturationCronScriptPath: string | null;
 } {
   if (!runtimeRoot) {
     return {
@@ -110,6 +126,9 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
       memoryConsolidationScriptPath: null,
       memoryConsolidationCronScriptPath: null,
       memoryConsolidationCronJobsPath: null,
+      memoryMaturationMetadataPath: null,
+      memoryMaturationScriptPath: null,
+      memoryMaturationCronScriptPath: null,
     };
   }
   const pluginPath = resolve(runtimeRoot, "plugins", "cristalina-bridge");
@@ -127,6 +146,9 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
     memoryConsolidationScriptPath: resolve(runtimeRoot, "scripts", "cristalina-memory-consolidation.sh"),
     memoryConsolidationCronScriptPath: resolve(runtimeRoot, "scripts", "cristalina-memory-consolidation.py"),
     memoryConsolidationCronJobsPath: resolve(runtimeRoot, "cron", "jobs.json"),
+    memoryMaturationMetadataPath: resolve(runtimeRoot, ".cristalina-v4", "memory-maturation-hermes.json"),
+    memoryMaturationScriptPath: resolve(runtimeRoot, "scripts", "cristalina-memory-maturation.sh"),
+    memoryMaturationCronScriptPath: resolve(runtimeRoot, "scripts", "cristalina-memory-maturation.py"),
   };
 }
 
@@ -504,6 +526,117 @@ async function upsertHermesMemoryConsolidationCron(input: {
   };
 }
 
+async function upsertHermesMemoryMaturationCron(input: {
+  runtimeRoot: string | undefined;
+  jobsPath: string | null;
+  cronScriptPath: string | null;
+  configPath: string;
+  scheduleExpr: string;
+  scheduleDisplay: string;
+  scheduleHour: number;
+  scheduleMinute: number;
+}): Promise<{ jobId?: string; diagnostics: string[] }> {
+  if (!input.runtimeRoot || !input.jobsPath || !input.cronScriptPath) {
+    return { diagnostics: [] };
+  }
+
+  const now = new Date().toISOString();
+  const jobName = "cristalina-nightly-memory-maturation";
+  const jobId = stableHermesNamedCronJobId({
+    runtimeRoot: resolve(input.runtimeRoot),
+    configPath: resolve(input.configPath),
+    name: jobName,
+  });
+  const schedule = {
+    kind: "cron",
+    expr: input.scheduleExpr,
+    display: input.scheduleDisplay,
+  };
+  const scriptName = basename(input.cronScriptPath);
+  const prompt = [
+    "Nightly Cristalina memory maturation.",
+    "A pre-run script asks Cristalina to mature consolidated runtime evidence into governed structured memory claims.",
+    "If the script succeeds, it returns wakeAgent=false and this cron stays silent.",
+    "If the script fails, report the script error concisely. Do not create cron jobs or edit Cristalina code.",
+  ].join(" ");
+
+  let jobs: Record<string, unknown>[] = [];
+  try {
+    const parsed = JSON.parse(await readFile(input.jobsPath, "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { jobs?: unknown }).jobs)) {
+      throw new Error("Hermes cron jobs file must contain a jobs array");
+    }
+    jobs = (parsed as { jobs: Record<string, unknown>[] }).jobs;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const existingIndex = jobs.findIndex((job) => job.id === jobId || job.name === jobName);
+  const existing = existingIndex >= 0 ? jobs[existingIndex] : undefined;
+  const existingRepeat = existing?.repeat && typeof existing.repeat === "object"
+    ? existing.repeat as { completed?: unknown }
+    : {};
+  const existingSchedule = existing?.schedule && typeof existing.schedule === "object"
+    ? existing.schedule as Record<string, unknown>
+    : null;
+  const existingScheduleMatches = existingSchedule?.kind === schedule.kind &&
+    existingSchedule.expr === schedule.expr;
+  const nextRunAt = existingScheduleMatches && typeof existing?.next_run_at === "string" && existing.next_run_at
+    ? existing.next_run_at
+    : isoNextLocalTime(input.scheduleHour, input.scheduleMinute);
+  const job = {
+    id: jobId,
+    name: jobName,
+    prompt,
+    skills: [],
+    skill: null,
+    model: null,
+    provider: null,
+    base_url: null,
+    script: scriptName,
+    context_from: null,
+    schedule,
+    schedule_display: schedule.display,
+    repeat: {
+      times: null,
+      completed: typeof existingRepeat.completed === "number" ? existingRepeat.completed : 0,
+    },
+    enabled: true,
+    state: "scheduled",
+    paused_at: null,
+    paused_reason: null,
+    created_at: typeof existing?.created_at === "string" ? existing.created_at : now,
+    next_run_at: nextRunAt,
+    last_run_at: typeof existing?.last_run_at === "string" ? existing.last_run_at : null,
+    last_status: typeof existing?.last_status === "string" ? existing.last_status : null,
+    last_error: typeof existing?.last_error === "string" ? existing.last_error : null,
+    last_delivery_error: typeof existing?.last_delivery_error === "string" ? existing.last_delivery_error : null,
+    deliver: "local",
+    origin: null,
+    enabled_toolsets: ["terminal"],
+    workdir: null,
+  };
+
+  if (existingIndex >= 0) {
+    jobs[existingIndex] = job;
+  } else {
+    jobs.push(job);
+  }
+
+  await mkdir(dirname(input.jobsPath), { recursive: true });
+  await writeFile(input.jobsPath, `${JSON.stringify({ jobs, updated_at: now }, null, 2)}\n`);
+  return {
+    jobId,
+    diagnostics: [
+      existingIndex >= 0
+        ? `Hermes cron job ${jobName} was updated in ${input.jobsPath}.`
+        : `Hermes cron job ${jobName} was created in ${input.jobsPath}.`,
+    ],
+  };
+}
+
 function runtimeInstanceRef(config: CristalinaConfig, runtime: "openclaw" | "hermes"): string {
   const ref = config.runtimes?.[runtime]?.runtime_instance_ref;
   if (!ref) {
@@ -593,8 +726,17 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   const memoryConsolidationScheduleMinute = 0;
   const memoryConsolidationMaxRecentEvents = 200;
   const memoryConsolidationCommand = `cristalina memory consolidation --runtime ${input.runtime} --write --config ${loaded.configPath}`;
+  const memoryMaturationScheduleExpr = "10 3 * * *";
+  const memoryMaturationScheduleDisplay = "daily at 03:10";
+  const memoryMaturationScheduleHour = 3;
+  const memoryMaturationScheduleMinute = 10;
+  const memoryMaturationMaxItems = 40;
+  const memoryMaturationCommand = `cristalina memory mature --runtime ${input.runtime} --write --config ${loaded.configPath}`;
   const memoryConsolidationCronJobId = input.runtime === "hermes" && input.runtimeRoot
     ? stableHermesCronJobId({ runtimeRoot: resolve(input.runtimeRoot), configPath: resolve(loaded.configPath) })
+    : undefined;
+  const memoryMaturationCronJobId = input.runtime === "hermes" && input.runtimeRoot
+    ? stableHermesNamedCronJobId({ runtimeRoot: resolve(input.runtimeRoot), configPath: resolve(loaded.configPath), name: "cristalina-nightly-memory-maturation" })
     : undefined;
   const pluginEnableHint = pluginPaths.pluginPath
     ? integrationMode === "bridge"
@@ -634,6 +776,21 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
               auto_promote: false,
             }
           : undefined,
+        memory_maturation: pluginPaths.memoryMaturationScriptPath
+          ? {
+              enabled: true,
+              schedule_kind: "cron",
+              schedule_expr: memoryMaturationScheduleExpr,
+              schedule_display: memoryMaturationScheduleDisplay,
+              max_items: memoryMaturationMaxItems,
+              script_path: pluginPaths.memoryMaturationScriptPath,
+              cron_script_path: pluginPaths.memoryMaturationCronScriptPath,
+              hermes_cron_jobs_path: pluginPaths.memoryConsolidationCronJobsPath,
+              hermes_cron_job_id: memoryMaturationCronJobId,
+              command: `${memoryMaturationCommand} --max-items ${memoryMaturationMaxItems}`,
+              auto_ratify_non_owner_claims: true,
+            }
+          : undefined,
         authority_note: "Provider payloads are evidence and derived context only; owner authority remains in Cristalina consolidation flows.",
       }
     : null;
@@ -651,6 +808,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     projection_command: projectionCommand,
     session_pack_command: sessionPackCommand,
     memory_consolidation_command: memoryConsolidationCommand,
+    memory_maturation_command: memoryMaturationCommand,
     integration_mode: integrationMode,
     plugin_enable_hint: pluginEnableHint,
     ...((integrationMode === "bridge" || integrationMode === "both") && pluginPaths.pluginPath
@@ -676,6 +834,12 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
           memory_consolidation_interval_minutes: memoryConsolidationIntervalMinutes,
           memory_consolidation_schedule_expr: memoryConsolidationScheduleExpr,
           memory_consolidation_schedule_display: memoryConsolidationScheduleDisplay,
+          memory_maturation_metadata_path: pluginPaths.memoryMaturationMetadataPath,
+          memory_maturation_script_path: pluginPaths.memoryMaturationScriptPath,
+          memory_maturation_cron_script_path: pluginPaths.memoryMaturationCronScriptPath,
+          memory_maturation_cron_job_id: memoryMaturationCronJobId,
+          memory_maturation_schedule_expr: memoryMaturationScheduleExpr,
+          memory_maturation_schedule_display: memoryMaturationScheduleDisplay,
         }
       : {}),
     event_contract: "cristalina.runtime_bridge_event.v1",
@@ -698,6 +862,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     projection_command: projectionCommand,
     session_pack_command: sessionPackCommand,
     memory_consolidation_command: memoryConsolidationCommand,
+    memory_maturation_command: memoryMaturationCommand,
     hook_script_path: hookScriptPath,
     integration_mode: integrationMode,
     plugin_enable_hint: pluginEnableHint,
@@ -748,12 +913,45 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         authority_note: "Nightly memory consolidation classifies accumulated evidence but never promotes wiki, canon, world truth, or owner authority by itself.",
       }
     : null;
+  const memoryMaturationMetadata = pluginPaths.memoryMaturationScriptPath
+    ? {
+        schema_version: 1,
+        runtime: input.runtime,
+        maturation_contract: "cristalina.memory_maturation.v1",
+        installed_at: metadata.installed_at,
+        enabled: true,
+        mode: "llm_structured_claims",
+        schedule_kind: "cron",
+        schedule_expr: memoryMaturationScheduleExpr,
+        schedule_display: memoryMaturationScheduleDisplay,
+        max_items: memoryMaturationMaxItems,
+        runtime_root: input.runtimeRoot ?? null,
+        config_path: loaded.configPath,
+        store_root: storeRoot,
+        runtime_instance_ref: runtimeRef,
+        script_path: pluginPaths.memoryMaturationScriptPath,
+        cron_script_path: pluginPaths.memoryMaturationCronScriptPath,
+        hermes_cron_jobs_path: pluginPaths.memoryConsolidationCronJobsPath,
+        hermes_cron_job_id: memoryMaturationCronJobId,
+        command: `${memoryMaturationCommand} --max-items ${memoryMaturationMaxItems}`,
+        authority_note: "Nightly memory maturation proposes structured claims; Cristalina validates authority and governance before promotion.",
+      }
+    : null;
   const memoryConsolidationScript = pluginPaths.memoryConsolidationScriptPath
     ? [
         "#!/bin/sh",
         "set -eu",
         `MAX_RECENT_EVENTS="\${CRISTALINA_MEMORY_CONSOLIDATION_MAX_RECENT_EVENTS:-${memoryConsolidationMaxRecentEvents}}"`,
         `exec ${shellQuote(process.execPath)} ${shellQuote(cliPath)} memory consolidation --runtime ${shellQuote(input.runtime)} --write --config ${shellQuote(loaded.configPath)} --max-recent-events "$MAX_RECENT_EVENTS"`,
+        "",
+      ].join("\n")
+    : null;
+  const memoryMaturationScript = pluginPaths.memoryMaturationScriptPath
+    ? [
+        "#!/bin/sh",
+        "set -eu",
+        `MAX_ITEMS="\${CRISTALINA_MEMORY_MATURATION_MAX_ITEMS:-${memoryMaturationMaxItems}}"`,
+        `exec ${shellQuote(process.execPath)} ${shellQuote(cliPath)} memory mature --runtime ${shellQuote(input.runtime)} --write --config ${shellQuote(loaded.configPath)} --max-items "$MAX_ITEMS"`,
         "",
       ].join("\n")
     : null;
@@ -768,6 +966,34 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         `max_recent_events = os.environ.get('CRISTALINA_MEMORY_CONSOLIDATION_MAX_RECENT_EVENTS', '${memoryConsolidationMaxRecentEvents}')`,
         "timeout = int(os.environ.get('CRISTALINA_MEMORY_CONSOLIDATION_TIMEOUT_SECONDS', '120'))",
         `cmd = ${JSON.stringify([process.execPath, cliPath, "memory", "consolidation", "--runtime", input.runtime, "--write", "--config", loaded.configPath, "--max-recent-events"])} + [max_recent_events]`,
+        "completed = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)",
+        "payload = {",
+        "    'status': 'ok' if completed.returncode == 0 else 'error',",
+        "    'command': cmd,",
+        "    'returncode': completed.returncode,",
+        "}",
+        "if completed.stdout:",
+        "    payload['stdout_tail'] = completed.stdout[-4000:]",
+        "if completed.stderr:",
+        "    payload['stderr_tail'] = completed.stderr[-4000:]",
+        "if completed.returncode == 0:",
+        "    payload['wakeAgent'] = False",
+        "print(json.dumps(payload, ensure_ascii=True))",
+        "sys.exit(completed.returncode)",
+        "",
+      ].join("\n")
+    : null;
+  const memoryMaturationCronScript = pluginPaths.memoryMaturationCronScriptPath
+    ? [
+        "#!/usr/bin/env python3",
+        "import json",
+        "import os",
+        "import subprocess",
+        "import sys",
+        "",
+        `max_items = os.environ.get('CRISTALINA_MEMORY_MATURATION_MAX_ITEMS', '${memoryMaturationMaxItems}')`,
+        "timeout = int(os.environ.get('CRISTALINA_MEMORY_MATURATION_TIMEOUT_SECONDS', '180'))",
+        `cmd = ${JSON.stringify([process.execPath, cliPath, "memory", "mature", "--runtime", input.runtime, "--write", "--config", loaded.configPath, "--max-items"])} + [max_items]`,
         "completed = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)",
         "payload = {",
         "    'status': 'ok' if completed.returncode == 0 else 'error',",
@@ -838,6 +1064,29 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         });
         diagnostics.push(...cron.diagnostics);
       }
+      if (pluginPaths.memoryMaturationMetadataPath && pluginPaths.memoryMaturationScriptPath && memoryMaturationMetadata && memoryMaturationScript) {
+        await mkdir(dirname(pluginPaths.memoryMaturationMetadataPath), { recursive: true });
+        await mkdir(dirname(pluginPaths.memoryMaturationScriptPath), { recursive: true });
+        await writeFile(pluginPaths.memoryMaturationMetadataPath, `${JSON.stringify(memoryMaturationMetadata, null, 2)}\n`);
+        await writeFile(pluginPaths.memoryMaturationScriptPath, memoryMaturationScript, { mode: 0o755 });
+        await chmod(pluginPaths.memoryMaturationScriptPath, 0o755);
+      }
+      if (pluginPaths.memoryMaturationCronScriptPath && memoryMaturationCronScript) {
+        await mkdir(dirname(pluginPaths.memoryMaturationCronScriptPath), { recursive: true });
+        await writeFile(pluginPaths.memoryMaturationCronScriptPath, memoryMaturationCronScript, { mode: 0o755 });
+        await chmod(pluginPaths.memoryMaturationCronScriptPath, 0o755);
+        const cron = await upsertHermesMemoryMaturationCron({
+          runtimeRoot: input.runtimeRoot,
+          jobsPath: pluginPaths.memoryConsolidationCronJobsPath,
+          cronScriptPath: pluginPaths.memoryMaturationCronScriptPath,
+          configPath: loaded.configPath,
+          scheduleExpr: memoryMaturationScheduleExpr,
+          scheduleDisplay: memoryMaturationScheduleDisplay,
+          scheduleHour: memoryMaturationScheduleHour,
+          scheduleMinute: memoryMaturationScheduleMinute,
+        });
+        diagnostics.push(...cron.diagnostics);
+      }
       diagnostics.push(...(await configureHermesProvider(pluginPaths.pluginConfigPath, integrationMode)));
     }
   }
@@ -879,6 +1128,12 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
           memory_consolidation_interval_minutes: memoryConsolidationIntervalMinutes,
           memory_consolidation_schedule_expr: memoryConsolidationScheduleExpr,
           memory_consolidation_schedule_display: memoryConsolidationScheduleDisplay,
+          memory_maturation_metadata_path: pluginPaths.memoryMaturationMetadataPath ?? undefined,
+          memory_maturation_script_path: pluginPaths.memoryMaturationScriptPath ?? undefined,
+          memory_maturation_cron_script_path: pluginPaths.memoryMaturationCronScriptPath ?? undefined,
+          memory_maturation_cron_job_id: memoryMaturationCronJobId,
+          memory_maturation_schedule_expr: memoryMaturationScheduleExpr,
+          memory_maturation_schedule_display: memoryMaturationScheduleDisplay,
         }
       : {}),
     uninstall_hint: metadata.disable_hint,

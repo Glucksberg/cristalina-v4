@@ -97,6 +97,17 @@ const DEFAULT_PREFERENCE_SIGNAL_PROFILE: Record<SourceIntakeKind, Omit<Preferenc
     preference_topic_label: "Preference Signal",
     relation_type: "expressed_preference",
   },
+  structured_memory_claim: {
+    observation_prefix: "Structured memory claim: ",
+    episode_summary: "Structured source produced a bounded memory episode.",
+    wiki_title: "Structured Memory Claims",
+    wiki_path: "wiki/pages/structured-memory-claims.md",
+    proposal_reason: "Structured evidence indicates a memory claim that should pass through governance.",
+    subject_entity_kind: "external",
+    subject_authority_role: "external",
+    preference_topic_label: "Structured Memory Claim",
+    relation_type: "asserted_claim",
+  },
 };
 
 export function resolvePreferenceSignalSemanticProfile(input: {

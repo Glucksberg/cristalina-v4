@@ -728,6 +728,128 @@ test("memory consolidation classifies runtime observations without promoting can
   assert.equal((await readdir(join(storeRoot, "wiki", "pages"))).length, 0);
 });
 
+test("memory mature turns consolidated evidence into governed structured memory claims", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-memory-mature-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const llmOutputPath = join(root, "maturation-output.json");
+  const config = buildDefaultCristalinaConfig({
+    storeRoot,
+    ownerIdentityRef: "actor_owner_cli_memory_mature_001",
+    agentIdentityRef: "actor_agent_cli_memory_mature_001",
+    hermesRuntimeRef: "runtime_hermes_cli_memory_mature_001",
+  });
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+  await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_cli_memory_mature_observed_001",
+    event_type: "message_observed",
+    runtime: "hermes",
+    occurred_at: "2026-05-05T12:00:00.000Z",
+    actor_ref: "system:hermes-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-test",
+      system_scope: "memory-mature-test",
+    },
+    runtime_instance_ref: "runtime_hermes_cli_memory_mature_001",
+    runtime_session_ref: "session_memory_mature_test",
+    conversation_thread_ref: "thread_memory_mature_test",
+    source_ref: "runtime/hermes/test/evt_cli_memory_mature_observed_001",
+    message: "Technical memory research repeatedly describes recognition before hydration as a useful agent memory pattern.",
+  });
+
+  await executeCristalinaCommand({
+    name: "memory",
+    action: "consolidation",
+    configPath,
+    runtime: "hermes",
+    runtimeSessionRef: "session_memory_mature_test",
+    conversationThreadRef: "thread_memory_mature_test",
+    maxRecentEvents: 10,
+    write: true,
+  });
+
+  await writeFile(
+    llmOutputPath,
+    `${JSON.stringify({
+      candidates: [
+        {
+          statement: "Recognition before hydration is a recurring technical pattern for agent memory retrieval.",
+          memory_kind: "fact",
+          epistemic_state: "confirmed",
+          semantic_slot: "technical-pattern:agent-memory:recognition-before-hydration",
+          subject_authority_role: "external",
+          confidence: "high",
+          risk: "low",
+          support_refs: ["obs_hermes_evt_cli_memory_mature_observed_001"],
+          recommended_dispositions: ["world_update", "wiki_update", "proposal_for_canon"],
+          rationale: "The claim is technical, non-owner-scoped, and supported by runtime evidence.",
+          wiki_title: "Agent Memory Retrieval Patterns",
+        },
+        {
+          statement: "Recognition-first retrieval should normally precede heavy hydration in agent memory systems.",
+          memory_kind: "fact",
+          epistemic_state: "confirmed",
+          semantic_slot: "technical-pattern:agent-memory:recognition-before-hydration",
+          subject_authority_role: "external",
+          confidence: "high",
+          risk: "low",
+          support_refs: ["obs_hermes_evt_cli_memory_mature_observed_001"],
+          recommended_dispositions: ["world_update", "wiki_update", "proposal_for_canon"],
+          rationale: "This duplicate slot must see canon created earlier in the same maturation run and avoid a second active canonical fact.",
+          wiki_title: "Agent Memory Retrieval Patterns",
+        },
+        {
+          statement: "Markus may prefer recognition before hydration as a Cristalina memory direction.",
+          memory_kind: "preference",
+          epistemic_state: "inferred",
+          semantic_slot: "preference:owner:memory-direction:recognition-before-hydration",
+          subject_authority_role: "owner",
+          confidence: "high",
+          risk: "medium",
+          support_refs: ["obs_hermes_evt_cli_memory_mature_observed_001"],
+          recommended_dispositions: ["world_update", "wiki_update", "proposal_for_canon", "diagnostic_only"],
+          rationale: "The candidate is owner-scoped, so it must be staged for owner review instead of automatic canon.",
+          wiki_title: "Owner Memory Direction Signals",
+        },
+      ],
+    }, null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "memory",
+    action: "mature",
+    configPath,
+    runtime: "hermes",
+    write: true,
+    maxItems: 5,
+    llmOutputPath,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    maturation: { diagnostics: string[]; candidates: unknown[] };
+    applied: { canonical_record_refs: string[]; record_refs: string[]; diagnostic_refs: string[] };
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "applied");
+  assert.deepEqual(payload.maturation.diagnostics, []);
+  assert.equal(payload.maturation.candidates.length, 3);
+  assert.equal(payload.applied.canonical_record_refs.length, 1);
+  assert.ok(payload.applied.record_refs.some((ref) => ref.startsWith("wcl_")));
+  assert.ok(payload.applied.record_refs.some((ref) => ref.startsWith("wclm_")));
+  assert.ok(payload.applied.record_refs.some((ref) => ref.startsWith("prop_")));
+  assert.ok(payload.applied.diagnostic_refs.some((ref) => ref.startsWith("diag_eval_")));
+  assert.ok(payload.applied.diagnostic_refs.some((ref) => ref.startsWith("diag_candidate_")));
+  assert.equal((await readdir(join(storeRoot, "governance", "curation"))).length, 1);
+  assert.equal((await readdir(join(storeRoot, "canon", "facts"))).length, 1);
+  assert.equal((await readdir(join(storeRoot, "canon", "preferences"))).length, 0);
+  assert.equal((await readdir(join(storeRoot, "wiki", "pages"))).length, 2);
+  assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);
+  assert.equal((await readdir(join(storeRoot, "audits", "diagnostics"))).length, 3);
+});
+
 test("CLI checkpoint create emits a new generation instead of overwriting the previous checkpoint", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-checkpoint-"));
   const storeRoot = join(root, "store");

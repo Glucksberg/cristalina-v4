@@ -5,6 +5,10 @@ runtime evidence. It is deliberately separate from the agent's own heartbeat:
 heartbeats can happen many times per day, while memory consolidation needs enough
 accumulated experience to produce a useful signal.
 
+In Hermes provider installs, consolidation is followed by universal semantic
+maturation. Consolidation classifies accumulated evidence; maturation converts
+selected evidence into governed `structured_memory_claim` candidates.
+
 It is installed with the Hermes native provider and is designed to answer a
 small question once per day:
 
@@ -37,7 +41,9 @@ The nightly consolidation adds a second step without weakening that invariant:
 runtime observations
 -> memory_consolidation
 -> runtime observation of the consolidation
--> later governed synthesis or proposal
+-> memory mature
+-> structured_memory_claim candidates
+-> disposition and governance
 ```
 
 ## Event Contract
@@ -66,6 +72,10 @@ The consolidation classifies recent observations into suggested routes:
 These are suggestions, not transitions. Promotion remains owned by governance
 flows.
 
+Semantic maturation is the next governed step. It may create world/wiki updates,
+review packets, proposals, or canon records, but only through existing
+disposition and governance contracts.
+
 ## CLI
 
 Compile a consolidation without writing:
@@ -84,6 +94,12 @@ Limit the consolidated window:
 
 ```bash
 cristalina memory consolidation --runtime hermes --write --max-recent-events 200 --config .cristalina-v4/config.json
+```
+
+Run semantic maturation after consolidation:
+
+```bash
+cristalina memory mature --runtime hermes --write --max-items 40 --config .cristalina-v4/config.json
 ```
 
 ## Hermes Install

@@ -99,6 +99,12 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     memory_consolidation_interval_minutes: number;
     memory_consolidation_schedule_expr: string;
     memory_consolidation_schedule_display: string;
+    memory_maturation_metadata_path: string;
+    memory_maturation_script_path: string;
+    memory_maturation_cron_script_path: string;
+    memory_maturation_cron_job_id: string;
+    memory_maturation_schedule_expr: string;
+    memory_maturation_schedule_display: string;
     plugin_enable_hint: string;
   };
   assert.equal(metadata.runtime, "hermes");
@@ -117,6 +123,11 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(metadata.memory_consolidation_interval_minutes, 1440);
   assert.equal(metadata.memory_consolidation_schedule_expr, "0 3 * * *");
   assert.equal(metadata.memory_consolidation_schedule_display, "daily at 03:00");
+  assert.equal(metadata.memory_maturation_metadata_path, join(root, "hermes", ".cristalina-v4", "memory-maturation-hermes.json"));
+  assert.equal(metadata.memory_maturation_script_path, join(root, "hermes", "scripts", "cristalina-memory-maturation.sh"));
+  assert.equal(metadata.memory_maturation_cron_script_path, join(root, "hermes", "scripts", "cristalina-memory-maturation.py"));
+  assert.equal(metadata.memory_maturation_schedule_expr, "10 3 * * *");
+  assert.equal(metadata.memory_maturation_schedule_display, "daily at 03:10");
   assert.match(metadata.plugin_enable_hint, /memory\.provider/);
   assert.match(await readFile(result.hook_path, "utf8"), /cristalina.runtime_hook.v1/);
   assert.equal(result.provider_path, metadata.provider_path);
@@ -131,6 +142,12 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(result.memory_consolidation_interval_minutes, 1440);
   assert.equal(result.memory_consolidation_schedule_expr, "0 3 * * *");
   assert.equal(result.memory_consolidation_schedule_display, "daily at 03:00");
+  assert.equal(result.memory_maturation_metadata_path, metadata.memory_maturation_metadata_path);
+  assert.equal(result.memory_maturation_script_path, metadata.memory_maturation_script_path);
+  assert.equal(result.memory_maturation_cron_script_path, metadata.memory_maturation_cron_script_path);
+  assert.equal(result.memory_maturation_cron_job_id, metadata.memory_maturation_cron_job_id);
+  assert.equal(result.memory_maturation_schedule_expr, "10 3 * * *");
+  assert.equal(result.memory_maturation_schedule_display, "daily at 03:10");
   assert.match(result.plugin_enable_hint!, /memory\.provider/);
   assert.ok(result.diagnostics.some((entry) => entry.includes("memory.provider")));
 
@@ -165,6 +182,18 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
       hermes_cron_job_id: string;
       command: string;
     };
+    memory_maturation: {
+      enabled: boolean;
+      schedule_kind: string;
+      schedule_expr: string;
+      schedule_display: string;
+      script_path: string;
+      cron_script_path: string;
+      hermes_cron_jobs_path: string;
+      hermes_cron_job_id: string;
+      command: string;
+      auto_ratify_non_owner_claims: boolean;
+    };
   };
   assert.equal(providerConfig.provider, "cristalina");
   assert.equal(providerConfig.integration_mode, "provider");
@@ -181,6 +210,16 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(providerConfig.memory_consolidation.hermes_cron_jobs_path, metadata.memory_consolidation_cron_jobs_path);
   assert.equal(providerConfig.memory_consolidation.hermes_cron_job_id, metadata.memory_consolidation_cron_job_id);
   assert.match(providerConfig.memory_consolidation.command, /memory consolidation --runtime hermes --write/);
+  assert.equal(providerConfig.memory_maturation.enabled, true);
+  assert.equal(providerConfig.memory_maturation.schedule_kind, "cron");
+  assert.equal(providerConfig.memory_maturation.schedule_expr, "10 3 * * *");
+  assert.equal(providerConfig.memory_maturation.schedule_display, "daily at 03:10");
+  assert.equal(providerConfig.memory_maturation.auto_ratify_non_owner_claims, true);
+  assert.equal(providerConfig.memory_maturation.script_path, metadata.memory_maturation_script_path);
+  assert.equal(providerConfig.memory_maturation.cron_script_path, metadata.memory_maturation_cron_script_path);
+  assert.equal(providerConfig.memory_maturation.hermes_cron_jobs_path, metadata.memory_consolidation_cron_jobs_path);
+  assert.equal(providerConfig.memory_maturation.hermes_cron_job_id, metadata.memory_maturation_cron_job_id);
+  assert.match(providerConfig.memory_maturation.command, /memory mature --runtime hermes --write/);
 
   const memoryConsolidationMetadata = JSON.parse(await readFile(metadata.memory_consolidation_metadata_path, "utf8")) as {
     enabled: boolean;
@@ -202,6 +241,22 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.match(memoryConsolidationMetadata.command, /memory consolidation --runtime hermes --write/);
   assert.match(await readFile(metadata.memory_consolidation_script_path, "utf8"), /memory consolidation --runtime 'hermes' --write/);
   assert.match(await readFile(metadata.memory_consolidation_cron_script_path, "utf8"), /"memory","consolidation"/);
+  const memoryMaturationMetadata = JSON.parse(await readFile(metadata.memory_maturation_metadata_path, "utf8")) as {
+    enabled: boolean;
+    mode: string;
+    schedule_kind: string;
+    schedule_expr: string;
+    schedule_display: string;
+    command: string;
+  };
+  assert.equal(memoryMaturationMetadata.enabled, true);
+  assert.equal(memoryMaturationMetadata.mode, "llm_structured_claims");
+  assert.equal(memoryMaturationMetadata.schedule_kind, "cron");
+  assert.equal(memoryMaturationMetadata.schedule_expr, "10 3 * * *");
+  assert.equal(memoryMaturationMetadata.schedule_display, "daily at 03:10");
+  assert.match(memoryMaturationMetadata.command, /memory mature --runtime hermes --write/);
+  assert.match(await readFile(metadata.memory_maturation_script_path, "utf8"), /memory mature --runtime 'hermes' --write/);
+  assert.match(await readFile(metadata.memory_maturation_cron_script_path, "utf8"), /"memory","mature"/);
   const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
     jobs: Array<{ id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; script: string; deliver: string }>;
   };
@@ -212,6 +267,14 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     job.schedule.expr === "0 3 * * *" &&
     job.schedule.display === "daily at 03:00" &&
     job.script === "cristalina-memory-consolidation.py" &&
+    job.deliver === "local"));
+  assert.ok(cronJobs.jobs.some((job) =>
+    job.id === metadata.memory_maturation_cron_job_id &&
+    job.name === "cristalina-nightly-memory-maturation" &&
+    job.schedule.kind === "cron" &&
+    job.schedule.expr === "10 3 * * *" &&
+    job.schedule.display === "daily at 03:10" &&
+    job.script === "cristalina-memory-maturation.py" &&
     job.deliver === "local"));
 
   const hermesConfig = await readFile(hermesConfigPath, "utf8");
