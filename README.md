@@ -110,6 +110,7 @@ pnpm cristalina projection verify --config path/to/config.json
 pnpm cristalina session-pack verify-handoff --create-checkpoint --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
+pnpm cristalina update --config .cristalina-v4/config.json
 pnpm cristalina checkpoint create --runtime openclaw --config path/to/config.json
 pnpm cristalina session-pack compile --runtime hermes --config path/to/config.json
 pnpm cristalina store inspect --config path/to/config.json

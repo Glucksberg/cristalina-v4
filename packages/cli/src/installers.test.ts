@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { hermesInstallOneLiner, installRuntime, openClawInstallOneLiner } from "./installers.js";
+import { hermesInstallOneLiner, installRuntime, loadInstallationRegistry, openClawInstallOneLiner } from "./installers.js";
 
 test("OpenClaw installer writes operational metadata outside truth layers", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-openclaw-install-"));
@@ -150,6 +150,11 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(result.memory_maturation_schedule_display, "daily at 03:10");
   assert.match(result.plugin_enable_hint!, /memory\.provider/);
   assert.ok(result.diagnostics.some((entry) => entry.includes("memory.provider")));
+  const registry = await loadInstallationRegistry(configPath);
+  assert.equal(registry?.installations.length, 1);
+  assert.equal(registry?.installations[0]?.runtime, "hermes");
+  assert.equal(registry?.installations[0]?.runtime_root, join(root, "hermes"));
+  assert.equal(registry?.installations[0]?.integration_mode, "provider");
 
   const providerManifest = await readFile(metadata.provider_manifest_path, "utf8");
   assert.match(providerManifest, /name: cristalina/);
@@ -261,7 +266,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(memoryMaturationMetadata.schedule_display, "daily at 03:10");
   assert.equal(memoryMaturationMetadata.llm_runtime_policy, "inherits_runtime_llm_environment");
   assert.equal(memoryMaturationMetadata.remote_llm_opt_in, "runtime_managed_execution");
-  assert.equal(memoryMaturationMetadata.remote_full_summary_default, false);
+  assert.equal(memoryMaturationMetadata.remote_full_summary_default, true);
   assert.match(memoryMaturationMetadata.command, /memory mature --runtime hermes --write/);
   const memoryMaturationScript = await readFile(metadata.memory_maturation_script_path, "utf8");
   assert.match(memoryMaturationScript, /CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED/);

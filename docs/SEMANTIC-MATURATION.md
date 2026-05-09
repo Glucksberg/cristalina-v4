@@ -71,12 +71,17 @@ inherits the same LLM environment used by the agent's ordinary crons and
 heartbeats; Cristalina does not require a separate memory-specific LLM
 configuration.
 
+If the host runtime is configured for remote inference, runtime-managed semantic
+maturation sends the full selected evidence text to that same remote LLM
+provider. That is the expected remote-inference contract: complete context is
+necessary for reliable classification, synthesis, and governance proposal
+generation. Users who require privacy should configure the host runtime for
+local inference.
+
 The `memory mature` CLI path is an operator/debug interface, not the expected
 user experience. It uses `--llm-output` for offline/local review and recovery;
 remote LLM maturation is reserved for runtime-managed execution through the
-installed provider jobs. Remote prompts redact full observation summaries by
-default and send only previews plus refs unless
-`CRISTALINA_MEMORY_MATURATION_ALLOW_FULL_SUMMARY=1` is also set.
+installed provider jobs.
 
 ---
 

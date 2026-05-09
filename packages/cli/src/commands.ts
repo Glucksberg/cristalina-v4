@@ -36,6 +36,7 @@ import { verifyRuntimeProjections } from "./projection-verify.js";
 import { verifyOpenClawToHermesHandoff } from "./session-handoff-verify.js";
 import { runMemoryConsolidation } from "./memory-consolidation.js";
 import { runCliMemoryMaturation } from "./memory-maturation.js";
+import { runCristalinaUpdate } from "./update.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -163,6 +164,24 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
   if (command.name === "status") {
     const status = await loadStatus(command);
     return { exitCode: 0, stdout: formatStatus(status), stderr: "" };
+  }
+
+  if (command.name === "update") {
+    const result = await runCristalinaUpdate({
+      repoRoot: REPO_ROOT,
+      configPath: command.configPath,
+      runtime: command.runtime,
+      runtimeRoot: command.runtimeRoot,
+      integrationMode: command.integrationMode,
+      skipSourceUpdate: command.skipSourceUpdate,
+      skipBuild: command.skipBuild,
+      skipInstall: command.skipInstall,
+    });
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+    };
   }
 
   if (command.name === "smoke") {

@@ -68,6 +68,58 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
   assert.deepEqual(payload.projections.hermes, []);
 });
 
+test("update reapplies a registered Hermes installation without source update", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-update-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, ".cristalina-v4", "config.json");
+  const runtimeRoot = join(root, "hermes");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await mkdir(join(root, ".cristalina-v4"), { recursive: true });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_update_001",
+      agentIdentityRef: "actor_agent_cli_update_001",
+      hermesRuntimeRef: "runtime_hermes_cli_update_001",
+    }), null, 2)}\n`,
+  );
+
+  const first = await executeCristalinaCommand({
+    name: "update",
+    configPath,
+    runtime: "hermes",
+    runtimeRoot,
+    integrationMode: "provider",
+    skipSourceUpdate: true,
+    skipBuild: true,
+  });
+  const firstPayload = JSON.parse(first.stdout) as {
+    status: string;
+    source_update: { skipped: boolean };
+    installations: Array<{ runtime: string; runtime_root: string }>;
+  };
+  assert.equal(first.exitCode, 0);
+  assert.equal(firstPayload.status, "updated");
+  assert.equal(firstPayload.source_update.skipped, true);
+  assert.equal(firstPayload.installations[0]?.runtime, "hermes");
+  assert.equal(firstPayload.installations[0]?.runtime_root, runtimeRoot);
+
+  const second = await executeCristalinaCommand({
+    name: "update",
+    configPath,
+    skipSourceUpdate: true,
+    skipBuild: true,
+  });
+  const secondPayload = JSON.parse(second.stdout) as {
+    installations: Array<{ runtime: string; runtime_root: string }>;
+  };
+  assert.equal(second.exitCode, 0);
+  assert.equal(secondPayload.installations[0]?.runtime, "hermes");
+  assert.equal(secondPayload.installations[0]?.runtime_root, runtimeRoot);
+  assert.match(await readFile(join(runtimeRoot, "scripts", "cristalina-memory-maturation.sh"), "utf8"), /CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED/);
+});
+
 test("runtime preflight reports concrete hook install commands for selected roots", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-runtime-preflight-"));
   const storeRoot = join(root, "store");

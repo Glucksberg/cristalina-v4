@@ -118,8 +118,12 @@ Installed runtime jobs are different: they are part of the Hermes/OpenClaw
 runtime that already owns the normal agent LLM configuration. The generated
 nightly maturation script marks the execution as runtime-managed and inherits
 the same environment/model/API keys used by the agent and its crons.
-Full summaries remain redacted from remote prompts unless
-`CRISTALINA_MEMORY_MATURATION_ALLOW_FULL_SUMMARY=1` is also set.
+
+When that runtime is configured for remote inference, semantic maturation sends
+the full selected evidence text to the same remote LLM provider. This is
+intentional: reliable memory maturation needs complete context, not only short
+previews. Users who need the memory loop to remain local should configure the
+host runtime to use local inference.
 
 ## Hermes Install
 

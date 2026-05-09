@@ -59,23 +59,6 @@ function envFlag(name: string): boolean {
   return value === "1" || value?.toLowerCase() === "true" || value?.toLowerCase() === "yes";
 }
 
-function evidenceForRemoteLlm(evidence: MemoryMaturationEvidencePackage): MemoryMaturationEvidencePackage {
-  if (envFlag("CRISTALINA_MEMORY_MATURATION_ALLOW_FULL_SUMMARY")) {
-    return evidence;
-  }
-  return {
-    ...evidence,
-    observations: evidence.observations.map((observation) => ({
-      ...observation,
-      full_summary: "[redacted for remote LLM request; use summary_preview and support_refs]",
-    })),
-    instructions: [
-      ...evidence.instructions,
-      "Remote LLM payload is redacted by default; use summary_preview and support_refs instead of full private transcripts.",
-    ],
-  };
-}
-
 function extractJsonObject(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
@@ -124,7 +107,7 @@ async function requestLlmOutput(evidence: MemoryMaturationEvidencePackage): Prom
         },
         {
           role: "user",
-          content: buildPrompt(evidenceForRemoteLlm(evidence)),
+          content: buildPrompt(evidence),
         },
       ],
     }),

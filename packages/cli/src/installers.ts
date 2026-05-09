@@ -56,6 +56,21 @@ export interface RuntimeInstallResult {
   diagnostics: string[];
 }
 
+export interface CristalinaInstallationRegistryEntry {
+  runtime: "openclaw" | "hermes";
+  runtime_root: string | null;
+  config_path: string;
+  metadata_path: string;
+  integration_mode: "provider" | "bridge" | "both";
+  installed_at: string;
+}
+
+export interface CristalinaInstallationRegistry {
+  schema_version: 1;
+  updated_at: string;
+  installations: CristalinaInstallationRegistryEntry[];
+}
+
 function defaultMetadataPath(config: CristalinaConfig, runtime: "openclaw" | "hermes"): string {
   return config.hooks?.[runtime]?.install_metadata_path ?? `.cristalina-v4/runtime-${runtime}.json`;
 }
@@ -70,6 +85,47 @@ function shellQuote(value: string): string {
 
 function cliEntrypointPath(): string {
   return fileURLToPath(new URL("index.js", import.meta.url));
+}
+
+export function installationRegistryPath(configPath: string): string {
+  return join(dirname(resolve(configPath)), "installations.json");
+}
+
+export async function loadInstallationRegistry(configPath: string): Promise<CristalinaInstallationRegistry | null> {
+  try {
+    const parsed = JSON.parse(await readFile(installationRegistryPath(configPath), "utf8")) as Partial<CristalinaInstallationRegistry>;
+    if (parsed.schema_version !== 1 || !Array.isArray(parsed.installations)) return null;
+    return {
+      schema_version: 1,
+      updated_at: typeof parsed.updated_at === "string" ? parsed.updated_at : new Date(0).toISOString(),
+      installations: parsed.installations.filter((entry): entry is CristalinaInstallationRegistryEntry =>
+        entry !== null &&
+        typeof entry === "object" &&
+        (entry.runtime === "openclaw" || entry.runtime === "hermes") &&
+        (entry.runtime_root === null || typeof entry.runtime_root === "string") &&
+        typeof entry.config_path === "string" &&
+        typeof entry.metadata_path === "string" &&
+        (entry.integration_mode === "provider" || entry.integration_mode === "bridge" || entry.integration_mode === "both") &&
+        typeof entry.installed_at === "string",
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function recordInstallation(input: CristalinaInstallationRegistryEntry): Promise<void> {
+  const now = new Date().toISOString();
+  const registryPath = installationRegistryPath(input.config_path);
+  const existing = await loadInstallationRegistry(input.config_path);
+  const installations = (existing?.installations ?? []).filter((entry) => entry.runtime !== input.runtime);
+  installations.push(input);
+  await mkdir(dirname(registryPath), { recursive: true });
+  await writeFile(registryPath, `${JSON.stringify({
+    schema_version: 1,
+    updated_at: now,
+    installations,
+  } satisfies CristalinaInstallationRegistry, null, 2)}\n`);
 }
 
 function stableHermesCronJobId(input: { runtimeRoot: string; configPath: string }): string {
@@ -936,7 +992,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         command: `${memoryMaturationCommand} --max-items ${memoryMaturationMaxItems}`,
         llm_runtime_policy: "inherits_runtime_llm_environment",
         remote_llm_opt_in: "runtime_managed_execution",
-        remote_full_summary_default: false,
+        remote_full_summary_default: true,
         authority_note: "Nightly memory maturation proposes structured claims; Cristalina validates authority and governance before promotion.",
       }
     : null;
@@ -1096,6 +1152,15 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
       diagnostics.push(...(await configureHermesProvider(pluginPaths.pluginConfigPath, integrationMode)));
     }
   }
+
+  await recordInstallation({
+    runtime: input.runtime,
+    runtime_root: input.runtimeRoot ? resolve(input.runtimeRoot) : null,
+    config_path: loaded.configPath,
+    metadata_path: metadataPath,
+    integration_mode: integrationMode,
+    installed_at: metadata.installed_at,
+  });
 
   return {
     runtime: input.runtime,

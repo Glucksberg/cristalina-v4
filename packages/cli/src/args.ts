@@ -17,6 +17,16 @@ export type CristalinaCommand =
     }
   | { name: "doctor"; configPath?: string; storeRoot?: string }
   | { name: "status"; configPath?: string; storeRoot?: string }
+  | {
+      name: "update";
+      configPath?: string;
+      runtime?: "openclaw" | "hermes";
+      runtimeRoot?: string;
+      integrationMode?: "provider" | "bridge" | "both";
+      skipSourceUpdate?: boolean;
+      skipBuild?: boolean;
+      skipInstall?: boolean;
+    }
   | { name: "smoke"; target: "dual-runtime" | "runtime-wiring" }
   | { name: "runtime"; action: "preflight"; configPath?: string; openclawRoot?: string; hermesRoot?: string }
   | { name: "runtime"; action: "hook-map"; runtime: "openclaw" | "hermes"; runtimeRoot: string; targetConfigPath?: string; mapPath?: string }
@@ -180,6 +190,41 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       name: command,
       configPath: readOption(argv, "--config"),
       storeRoot: readOption(argv, "--store-root"),
+    };
+  }
+
+  if (command === "update") {
+    rejectUnknownOptions([subcommand, ...rest].filter((value): value is string => Boolean(value)), new Map([
+      ["--config", "value"],
+      ["--runtime", "value"],
+      ["--runtime-root", "value"],
+      ["--integration-mode", "value"],
+      ["--skip-source-update", "flag"],
+      ["--skip-build", "flag"],
+      ["--skip-install", "flag"],
+    ]));
+    const runtime = readOption(argv, "--runtime");
+    if (runtime !== undefined && runtime !== "openclaw" && runtime !== "hermes") {
+      throw new CommandUsageError("--runtime must be openclaw or hermes");
+    }
+    const integrationMode = readOption(argv, "--integration-mode");
+    if (
+      integrationMode !== undefined &&
+      integrationMode !== "provider" &&
+      integrationMode !== "bridge" &&
+      integrationMode !== "both"
+    ) {
+      throw new CommandUsageError("--integration-mode must be provider, bridge, or both");
+    }
+    return {
+      name: "update",
+      configPath: readOption(argv, "--config"),
+      runtime,
+      runtimeRoot: readOption(argv, "--runtime-root"),
+      integrationMode,
+      skipSourceUpdate: hasFlag(argv, "--skip-source-update"),
+      skipBuild: hasFlag(argv, "--skip-build"),
+      skipInstall: hasFlag(argv, "--skip-install"),
     };
   }
 
@@ -554,6 +599,7 @@ export function helpText(): string {
     "  config [--config PATH] [--init] [--non-interactive]",
     "  doctor [--config PATH] [--store-root PATH]",
     "  status [--config PATH] [--store-root PATH]",
+    "  update [--config PATH] [--runtime openclaw|hermes] [--runtime-root PATH] [--integration-mode provider|bridge|both]",
     "  smoke dual-runtime",
     "  smoke runtime-wiring",
     "  runtime preflight [--config PATH] [--openclaw-root PATH] [--hermes-root PATH]",
