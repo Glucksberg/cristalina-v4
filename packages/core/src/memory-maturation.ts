@@ -62,6 +62,7 @@ export interface MemoryMaturationEvidencePackage {
   runtime: RuntimeKind;
   source_consolidation_ref: string;
   source_consolidation_id: string;
+  skipped_already_matured_observation_refs: string[];
   selected_items: MemoryConsolidationItem[];
   observations: Array<{
     observation_ref: string;
@@ -186,6 +187,46 @@ function normalizeLimit(value: number | undefined): number {
   return Math.max(1, Math.min(Math.floor(value!), 120));
 }
 
+function sameStringSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((entry) => rightSet.has(entry));
+}
+
+async function loadCompletedMemoryMaturationObservationRefs(rootDir: string, runtime: RuntimeKind): Promise<Set<string>> {
+  const processed = new Set<string>();
+  const sources = await loadSourceRecords(rootDir);
+  for (const record of sources) {
+    if (record.provenance.source_type !== "memory_maturation") continue;
+    if (!record.content_ref.startsWith("raw/sources/")) continue;
+    try {
+      const payload = JSON.parse(await readFile(join(rootDir, record.content_ref), "utf8")) as {
+        evidence_package?: {
+          runtime?: unknown;
+          observations?: Array<{ observation_ref?: unknown }>;
+          selected_items?: Array<{ observation_ref?: unknown }>;
+        };
+        maturation?: { diagnostics?: unknown };
+      };
+      if (payload.evidence_package?.runtime !== runtime) continue;
+      if (!Array.isArray(payload.maturation?.diagnostics) || payload.maturation.diagnostics.length !== 0) continue;
+      for (const observation of payload.evidence_package.observations ?? []) {
+        if (typeof observation.observation_ref === "string" && observation.observation_ref) {
+          processed.add(observation.observation_ref);
+        }
+      }
+      for (const item of payload.evidence_package.selected_items ?? []) {
+        if (typeof item.observation_ref === "string" && item.observation_ref) {
+          processed.add(item.observation_ref);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return processed;
+}
+
 export async function prepareMemoryMaturationEvidence(input: {
   rootDir: string;
   runtime: RuntimeKind;
@@ -205,9 +246,15 @@ export async function prepareMemoryMaturationEvidence(input: {
   }
 
   const limit = normalizeLimit(input.maxItems);
-  const selectedItems = latest.consolidation.items
-    .filter((item) => item.suggested_route !== "dedupe_or_archive" && item.suggested_route !== "keep_runtime")
+  const processedRefs = await loadCompletedMemoryMaturationObservationRefs(input.rootDir, input.runtime);
+  const candidateItems = latest.consolidation.items
+    .filter((item) => item.suggested_route !== "dedupe_or_archive" && item.suggested_route !== "keep_runtime");
+  const selectedItems = candidateItems
+    .filter((item) => !processedRefs.has(item.observation_ref))
     .slice(0, limit);
+  const skippedAlreadyMaturedRefs = candidateItems
+    .filter((item) => processedRefs.has(item.observation_ref))
+    .map((item) => item.observation_ref);
   const selectedRefs = new Set(selectedItems.map((item) => item.observation_ref));
   const byId = new Map(observations.map((observation) => [observation.id, observation]));
   const selectedObservations = [...selectedRefs]
@@ -220,6 +267,7 @@ export async function prepareMemoryMaturationEvidence(input: {
     runtime: input.runtime,
     source_consolidation_ref: latest.observation.id,
     source_consolidation_id: latest.consolidation.consolidation_id,
+    skipped_already_matured_observation_refs: skippedAlreadyMaturedRefs,
     selected_items: selectedItems,
     observations: selectedObservations.map((observation) => ({
       observation_ref: observation.id,
@@ -545,7 +593,9 @@ async function materializeMemoryMaturationBatch(input: {
 async function findCompletedMemoryMaturationSource(
   rootDir: string,
   sourceConsolidationRef: string,
+  selectedObservationRefs: string[],
 ): Promise<SourceRecord | undefined> {
+  if (selectedObservationRefs.length === 0) return undefined;
   const candidates = (await loadSourceRecords(rootDir)).filter(
     (record) =>
       record.provenance.source_type === "memory_maturation" &&
@@ -555,9 +605,21 @@ async function findCompletedMemoryMaturationSource(
     if (!record.content_ref.startsWith("raw/sources/")) continue;
     try {
       const payload = JSON.parse(await readFile(join(rootDir, record.content_ref), "utf8")) as {
+        evidence_package?: {
+          observations?: Array<{ observation_ref?: unknown }>;
+          selected_items?: Array<{ observation_ref?: unknown }>;
+        };
         maturation?: { diagnostics?: unknown };
       };
-      if (Array.isArray(payload.maturation?.diagnostics) && payload.maturation.diagnostics.length === 0) {
+      const maturedRefs = [
+        ...(payload.evidence_package?.observations ?? []).map((observation) => observation.observation_ref),
+        ...(payload.evidence_package?.selected_items ?? []).map((item) => item.observation_ref),
+      ].filter((ref): ref is string => typeof ref === "string" && ref.length > 0);
+      if (
+        Array.isArray(payload.maturation?.diagnostics) &&
+        payload.maturation.diagnostics.length === 0 &&
+        sameStringSet([...new Set(maturedRefs)], selectedObservationRefs)
+      ) {
         return record;
       }
     } catch {
@@ -908,7 +970,11 @@ export async function runMemoryMaturation(input: RunMemoryMaturationInput): Prom
   await initializeStore(input.rootDir, now);
   return withMemoryMaturationLock(input.rootDir, evidence.source_consolidation_ref, async () => {
     await recoverPendingMemoryMaturationJournals(input.rootDir);
-    const completedSource = await findCompletedMemoryMaturationSource(input.rootDir, evidence.source_consolidation_ref);
+    const completedSource = await findCompletedMemoryMaturationSource(
+      input.rootDir,
+      evidence.source_consolidation_ref,
+      evidence.observations.map((observation) => observation.observation_ref),
+    );
     if (completedSource) {
       return {
         schema_version: 1,

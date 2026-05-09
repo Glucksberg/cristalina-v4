@@ -930,24 +930,24 @@ test("memory mature turns consolidated evidence into governed structured memory 
   assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);
   assert.equal((await readdir(join(storeRoot, "audits", "diagnostics"))).length, 3);
 
-  const rerun = await executeCristalinaCommand({
+  const secondEvidenceOutputPath = join(root, "maturation-evidence-second.json");
+  const secondEvidenceResult = await executeCristalinaCommand({
     name: "memory",
     action: "mature",
     configPath,
     runtime: "hermes",
-    write: true,
     maxItems: 5,
-    llmOutputPath,
+    evidenceOutputPath: secondEvidenceOutputPath,
   });
-  const rerunPayload = JSON.parse(rerun.stdout) as {
-    status: string;
-    applied: { canonical_record_refs: string[]; queued_review_refs: string[]; diagnostic_refs: string[] };
+  const secondEvidencePayload = JSON.parse(await readFile(secondEvidenceOutputPath, "utf8")) as {
+    evidence: {
+      selected_items: unknown[];
+      skipped_already_matured_observation_refs: string[];
+    };
   };
-  assert.equal(rerun.exitCode, 0);
-  assert.equal(rerunPayload.status, "applied");
-  assert.deepEqual(rerunPayload.applied.canonical_record_refs, []);
-  assert.deepEqual(rerunPayload.applied.queued_review_refs, []);
-  assert.deepEqual(rerunPayload.applied.diagnostic_refs, []);
+  assert.equal(secondEvidenceResult.exitCode, 0);
+  assert.equal(secondEvidencePayload.evidence.selected_items.length, 0);
+  assert.deepEqual(secondEvidencePayload.evidence.skipped_already_matured_observation_refs, ["obs_hermes_evt_cli_memory_mature_observed_001"]);
   assert.equal((await readdir(join(storeRoot, "governance", "curation"))).length, 1);
   assert.equal((await readdir(join(storeRoot, "canon", "facts"))).length, 1);
   assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);

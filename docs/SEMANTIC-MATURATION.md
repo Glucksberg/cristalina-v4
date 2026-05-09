@@ -84,6 +84,19 @@ user experience. It uses `--llm-output` for offline/local review and recovery;
 runtime LLM execution happens through the installed provider jobs and the host
 runtime's own model harness.
 
+Installed providers schedule maturation as a phase inside the nightly memory
+cycle, not as a second independent cron. The cycle writes consolidation first,
+then prepares one maturation evidence package. If the package has selected
+items, the runtime agent produces `llm-output.json` with its configured model
+harness and Cristalina applies that output through `memory mature --llm-output`.
+
+Maturation selection is progressive. Successful maturation records carry the
+observation refs they processed, and later evidence packages skip those refs so
+the nightly cycle can move through the accumulated backlog. This is a cursor-like
+contract, not a second memory store: old evidence may be revisited later when
+new support, conflict, or confidence changes create a fresh reason to reprocess
+it.
+
 ---
 
 ## Authority

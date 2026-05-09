@@ -5,8 +5,9 @@
 **Updated:** 2026-05-09
 **Current posture:** executable memory kernel with a live native Hermes memory
 provider, runtime-managed memory maturation, installation registration, and a
-first `cristalina update` flow; OpenClaw parity remains a future integration
-phase after the Hermes loop is satisfactory
+first `cristalina update` flow; Hermes now uses a single nightly memory cycle
+with progressive maturation selection; OpenClaw parity remains a future
+integration phase after the Hermes loop is satisfactory
 
 ---
 
@@ -97,9 +98,9 @@ configuration, and long-run validation gaps, not kernel gaps:
   harness; in the Hermes path this means the cron agent receives a Cristalina
   evidence package and produces structured candidates through Hermes' configured
   provider/OAuth, not through a separate Cristalina API key
-- memory maturation needs a progressive backlog/cursor contract so repeated
-  nightly runs can advance through unprocessed candidate observations instead of
-  repeatedly selecting the same top items from each fresh consolidation
+- the nightly memory cycle and progressive maturation selection need live soak
+  validation over several days of Hermes heartbeats, crons, gateway turns, and
+  recovery scenarios
 - OpenClaw should receive the same install/config/update pattern only after the
   Hermes loop is running satisfactorily
 
@@ -126,8 +127,8 @@ After installation:
 - the config flow writes a validated local config with conservative defaults
 - Hermes can prefetch derived memory context through the provider before model
   calls and can sync completed turns as evidence after responses
-- runtime-managed consolidation and maturation can process accumulated evidence
-  without requiring manual CLI operation from the user
+- runtime-managed consolidation and maturation run as a single nightly memory
+  cycle without requiring manual CLI operation from the user
 - maturation records which observations/support refs were successfully
   processed, skips already-matured items on later runs, and revisits old
   evidence only when new support, conflict, or confidence changes justify it
@@ -220,6 +221,11 @@ Primary outcome:
 - maturation stores processed observation/support refs, excludes already
   matured items from the next nightly batch, and only reopens old evidence when
   fresh support, conflict, or confidence changes make another pass meaningful
+
+Status:
+
+- implemented for successful maturation observation refs; remaining work is
+  long-run validation and a future reopen policy for fresh support/conflict
 
 ### Step 8. OpenClaw Installer Parity
 
@@ -1109,10 +1115,13 @@ Phase 2 should proceed in this order:
 
 ### Nightly Memory Consolidation Slice
 
-The Hermes provider install now includes a conservative nightly memory consolidation.
-This consolidation pass is not a promotion engine. It classifies accumulated runtime
-observations, emits a structured `memory_consolidation` event, and leaves any
-wiki/canon/world/proposal transition to later governed flows.
+The Hermes provider install now includes a conservative nightly memory cycle.
+The cycle writes deterministic consolidation first, then prepares semantic
+maturation evidence and uses the Hermes runtime model harness to produce
+structured candidates. Consolidation is not a promotion engine. It classifies
+accumulated runtime observations, emits a structured `memory_consolidation`
+event, and leaves any wiki/canon/world/proposal transition to governed
+maturation flows.
 
 Implemented boundaries:
 
@@ -1120,8 +1129,12 @@ Implemented boundaries:
 - `memory consolidation` compiles recent observations into
   `cristalina.memory_consolidation.v1`
 - `--write` records the memory consolidation through the same runtime event path
-- `install hermes` writes nightly memory consolidation metadata, scripts, and a nightly
-  Hermes cron job
+- `install hermes` writes consolidation, maturation, and memory-cycle metadata,
+  scripts, and one nightly Hermes cron job named
+  `cristalina-nightly-memory-cycle`
+- repeated maturation skips observation refs that were already successfully
+  matured so the cycle advances through backlog instead of looping on the same
+  selected items
 - Farol reports memory consolidation installation and maturation counts
 - [NIGHTLY-MEMORY-CONSOLIDATION.md](NIGHTLY-MEMORY-CONSOLIDATION.md) documents the
   product posture and current command surface

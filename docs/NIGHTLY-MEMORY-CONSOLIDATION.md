@@ -5,9 +5,10 @@ runtime evidence. It is deliberately separate from the agent's own heartbeat:
 heartbeats can happen many times per day, while memory consolidation needs enough
 accumulated experience to produce a useful signal.
 
-In Hermes provider installs, consolidation is followed by universal semantic
-maturation. Consolidation classifies accumulated evidence; maturation converts
-selected evidence into governed `structured_memory_claim` candidates.
+In Hermes provider installs, consolidation and universal semantic maturation run
+as one nightly memory cycle. Consolidation classifies accumulated evidence;
+maturation converts selected evidence into governed `structured_memory_claim`
+candidates through the host runtime's own model harness.
 
 It is installed with the Hermes native provider and is designed to answer a
 small question once per day:
@@ -115,10 +116,10 @@ uses `--llm-output` for offline/local review and recovery.
 
 Installed runtime jobs are different: they are part of the Hermes/OpenClaw
 runtime that already owns the normal agent LLM configuration. The generated
-nightly maturation job prepares a Cristalina evidence package, wakes the Hermes
-cron agent, lets that agent produce the structured JSON through the same
-Hermes model/provider harness used for ordinary cron turns, and then applies the
-JSON with `--llm-output`.
+nightly memory cycle first writes deterministic consolidation, then prepares a
+Cristalina maturation evidence package, wakes the Hermes cron agent, lets that
+agent produce the structured JSON through the same Hermes model/provider harness
+used for ordinary cron turns, and then applies the JSON with `--llm-output`.
 
 When that runtime is configured for remote inference, semantic maturation sends
 the full selected evidence text to the same remote LLM provider. This is
@@ -132,8 +133,13 @@ host runtime to use local inference.
 
 ```text
 $HERMES_HOME/.cristalina-v4/memory-consolidation-hermes.json
+$HERMES_HOME/.cristalina-v4/memory-maturation-hermes.json
+$HERMES_HOME/.cristalina-v4/memory-cycle-hermes.json
 $HERMES_HOME/scripts/cristalina-memory-consolidation.sh
 $HERMES_HOME/scripts/cristalina-memory-consolidation.py
+$HERMES_HOME/scripts/cristalina-memory-maturation.sh
+$HERMES_HOME/scripts/cristalina-memory-maturation.py
+$HERMES_HOME/scripts/cristalina-memory-cycle.py
 $HERMES_HOME/cron/jobs.json
 ```
 
@@ -150,9 +156,17 @@ auto_promote: false
 max_recent_events: 200
 ```
 
-Hermes cron runs the installed script once per day at 03:00 local runtime time.
-This is an operational default for the current live test and can change later
-without changing the memory contract.
+Hermes cron runs `cristalina-nightly-memory-cycle` once per day at 03:00 local
+runtime time. The old split jobs `cristalina-nightly-memory-consolidation` and
+`cristalina-nightly-memory-maturation` are removed during install/update. The
+separate consolidation and maturation scripts remain useful phase/debug scripts,
+but the scheduled product path is the single cycle.
+
+Maturation also keeps a progressive backlog boundary. Successfully matured
+observation refs are skipped on later nightly runs, so a fresh consolidation can
+advance through accumulated evidence instead of repeatedly selecting the same
+top items. Old evidence should only be reopened when new support, conflict, or
+confidence changes justify another pass.
 
 ## Farol
 

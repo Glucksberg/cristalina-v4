@@ -105,6 +105,11 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     memory_maturation_cron_job_id: string;
     memory_maturation_schedule_expr: string;
     memory_maturation_schedule_display: string;
+    memory_cycle_metadata_path: string;
+    memory_cycle_cron_script_path: string;
+    memory_cycle_cron_job_id: string;
+    memory_cycle_schedule_expr: string;
+    memory_cycle_schedule_display: string;
     plugin_enable_hint: string;
   };
   assert.equal(metadata.runtime, "hermes");
@@ -126,8 +131,14 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(metadata.memory_maturation_metadata_path, join(root, "hermes", ".cristalina-v4", "memory-maturation-hermes.json"));
   assert.equal(metadata.memory_maturation_script_path, join(root, "hermes", "scripts", "cristalina-memory-maturation.sh"));
   assert.equal(metadata.memory_maturation_cron_script_path, join(root, "hermes", "scripts", "cristalina-memory-maturation.py"));
-  assert.equal(metadata.memory_maturation_schedule_expr, "10 3 * * *");
-  assert.equal(metadata.memory_maturation_schedule_display, "daily at 03:10");
+  assert.equal(metadata.memory_maturation_schedule_expr, "0 3 * * *");
+  assert.equal(metadata.memory_maturation_schedule_display, "phase inside nightly memory cycle");
+  assert.equal(metadata.memory_cycle_metadata_path, join(root, "hermes", ".cristalina-v4", "memory-cycle-hermes.json"));
+  assert.equal(metadata.memory_cycle_cron_script_path, join(root, "hermes", "scripts", "cristalina-memory-cycle.py"));
+  assert.equal(metadata.memory_consolidation_cron_job_id, metadata.memory_cycle_cron_job_id);
+  assert.equal(metadata.memory_maturation_cron_job_id, metadata.memory_cycle_cron_job_id);
+  assert.equal(metadata.memory_cycle_schedule_expr, "0 3 * * *");
+  assert.equal(metadata.memory_cycle_schedule_display, "daily at 03:00");
   assert.match(metadata.plugin_enable_hint, /memory\.provider/);
   assert.match(await readFile(result.hook_path, "utf8"), /cristalina.runtime_hook.v1/);
   assert.equal(result.provider_path, metadata.provider_path);
@@ -146,8 +157,13 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(result.memory_maturation_script_path, metadata.memory_maturation_script_path);
   assert.equal(result.memory_maturation_cron_script_path, metadata.memory_maturation_cron_script_path);
   assert.equal(result.memory_maturation_cron_job_id, metadata.memory_maturation_cron_job_id);
-  assert.equal(result.memory_maturation_schedule_expr, "10 3 * * *");
-  assert.equal(result.memory_maturation_schedule_display, "daily at 03:10");
+  assert.equal(result.memory_maturation_schedule_expr, "0 3 * * *");
+  assert.equal(result.memory_maturation_schedule_display, "phase inside nightly memory cycle");
+  assert.equal(result.memory_cycle_metadata_path, metadata.memory_cycle_metadata_path);
+  assert.equal(result.memory_cycle_cron_script_path, metadata.memory_cycle_cron_script_path);
+  assert.equal(result.memory_cycle_cron_job_id, metadata.memory_cycle_cron_job_id);
+  assert.equal(result.memory_cycle_schedule_expr, "0 3 * * *");
+  assert.equal(result.memory_cycle_schedule_display, "daily at 03:00");
   assert.match(result.plugin_enable_hint!, /memory\.provider/);
   assert.ok(result.diagnostics.some((entry) => entry.includes("memory.provider")));
   const registry = await loadInstallationRegistry(configPath);
@@ -199,6 +215,16 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
       command: string;
       auto_ratify_non_owner_claims: boolean;
     };
+    memory_cycle: {
+      enabled: boolean;
+      schedule_kind: string;
+      schedule_expr: string;
+      schedule_display: string;
+      cron_script_path: string;
+      hermes_cron_jobs_path: string;
+      hermes_cron_job_id: string;
+      phases: string[];
+    };
   };
   assert.equal(providerConfig.provider, "cristalina");
   assert.equal(providerConfig.integration_mode, "provider");
@@ -216,15 +242,25 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(providerConfig.memory_consolidation.hermes_cron_job_id, metadata.memory_consolidation_cron_job_id);
   assert.match(providerConfig.memory_consolidation.command, /memory consolidation --runtime hermes --write/);
   assert.equal(providerConfig.memory_maturation.enabled, true);
-  assert.equal(providerConfig.memory_maturation.schedule_kind, "cron");
-  assert.equal(providerConfig.memory_maturation.schedule_expr, "10 3 * * *");
-  assert.equal(providerConfig.memory_maturation.schedule_display, "daily at 03:10");
+  assert.equal(providerConfig.memory_maturation.schedule_kind, "manual_or_cycle");
+  assert.equal(providerConfig.memory_maturation.schedule_expr, "0 3 * * *");
+  assert.equal(providerConfig.memory_maturation.schedule_display, "phase inside nightly memory cycle");
   assert.equal(providerConfig.memory_maturation.auto_ratify_non_owner_claims, true);
   assert.equal(providerConfig.memory_maturation.script_path, metadata.memory_maturation_script_path);
   assert.equal(providerConfig.memory_maturation.cron_script_path, metadata.memory_maturation_cron_script_path);
   assert.equal(providerConfig.memory_maturation.hermes_cron_jobs_path, metadata.memory_consolidation_cron_jobs_path);
   assert.equal(providerConfig.memory_maturation.hermes_cron_job_id, metadata.memory_maturation_cron_job_id);
   assert.match(providerConfig.memory_maturation.command, /memory mature --runtime hermes --write/);
+  assert.equal(providerConfig.memory_cycle.enabled, true);
+  assert.equal(providerConfig.memory_cycle.schedule_kind, "cron");
+  assert.equal(providerConfig.memory_cycle.schedule_expr, "0 3 * * *");
+  assert.equal(providerConfig.memory_cycle.schedule_display, "daily at 03:00");
+  assert.equal(providerConfig.memory_cycle.cron_script_path, metadata.memory_cycle_cron_script_path);
+  assert.equal(providerConfig.memory_cycle.hermes_cron_jobs_path, metadata.memory_consolidation_cron_jobs_path);
+  assert.equal(providerConfig.memory_cycle.hermes_cron_job_id, metadata.memory_cycle_cron_job_id);
+  assert.equal(providerConfig.memory_consolidation.hermes_cron_job_id, metadata.memory_cycle_cron_job_id);
+  assert.equal(providerConfig.memory_maturation.hermes_cron_job_id, metadata.memory_cycle_cron_job_id);
+  assert.deepEqual(providerConfig.memory_cycle.phases, ["memory_consolidation", "memory_maturation"]);
 
   const memoryConsolidationMetadata = JSON.parse(await readFile(metadata.memory_consolidation_metadata_path, "utf8")) as {
     enabled: boolean;
@@ -261,9 +297,9 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   };
   assert.equal(memoryMaturationMetadata.enabled, true);
   assert.equal(memoryMaturationMetadata.mode, "llm_structured_claims");
-  assert.equal(memoryMaturationMetadata.schedule_kind, "cron");
-  assert.equal(memoryMaturationMetadata.schedule_expr, "10 3 * * *");
-  assert.equal(memoryMaturationMetadata.schedule_display, "daily at 03:10");
+  assert.equal(memoryMaturationMetadata.schedule_kind, "manual_or_cycle");
+  assert.equal(memoryMaturationMetadata.schedule_expr, "0 3 * * *");
+  assert.equal(memoryMaturationMetadata.schedule_display, "phase inside nightly memory cycle");
   assert.equal(memoryMaturationMetadata.llm_runtime_policy, "uses_hermes_runtime_model_harness");
   assert.equal(memoryMaturationMetadata.remote_llm_opt_in, "runtime_harness_execution");
   assert.equal(memoryMaturationMetadata.remote_full_summary_default, true);
@@ -276,25 +312,35 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.match(memoryMaturationCronScript, /"--evidence-output"/);
   assert.match(memoryMaturationCronScript, /apply_command/);
   assert.doesNotMatch(memoryMaturationCronScript, /CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED/);
+  const memoryCycleMetadata = JSON.parse(await readFile(metadata.memory_cycle_metadata_path, "utf8")) as {
+    enabled: boolean;
+    schedule_kind: string;
+    schedule_expr: string;
+    schedule_display: string;
+    phases: string[];
+  };
+  assert.equal(memoryCycleMetadata.enabled, true);
+  assert.equal(memoryCycleMetadata.schedule_kind, "cron");
+  assert.equal(memoryCycleMetadata.schedule_expr, "0 3 * * *");
+  assert.equal(memoryCycleMetadata.schedule_display, "daily at 03:00");
+  assert.deepEqual(memoryCycleMetadata.phases, ["memory_consolidation", "memory_maturation"]);
+  const memoryCycleCronScript = await readFile(metadata.memory_cycle_cron_script_path, "utf8");
+  assert.match(memoryCycleCronScript, /consolidation_cmd/);
+  assert.match(memoryCycleCronScript, /prepare_cmd/);
+  assert.match(memoryCycleCronScript, /apply_command/);
   const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
     jobs: Array<{ id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; script: string; deliver: string }>;
   };
   assert.ok(cronJobs.jobs.some((job) =>
-    job.id === metadata.memory_consolidation_cron_job_id &&
-    job.name === "cristalina-nightly-memory-consolidation" &&
+    job.id === metadata.memory_cycle_cron_job_id &&
+    job.name === "cristalina-nightly-memory-cycle" &&
     job.schedule.kind === "cron" &&
     job.schedule.expr === "0 3 * * *" &&
     job.schedule.display === "daily at 03:00" &&
-    job.script === "cristalina-memory-consolidation.py" &&
+    job.script === "cristalina-memory-cycle.py" &&
     job.deliver === "local"));
-  assert.ok(cronJobs.jobs.some((job) =>
-    job.id === metadata.memory_maturation_cron_job_id &&
-    job.name === "cristalina-nightly-memory-maturation" &&
-    job.schedule.kind === "cron" &&
-    job.schedule.expr === "10 3 * * *" &&
-    job.schedule.display === "daily at 03:10" &&
-    job.script === "cristalina-memory-maturation.py" &&
-    job.deliver === "local"));
+  assert.ok(!cronJobs.jobs.some((job) => job.name === "cristalina-nightly-memory-consolidation"));
+  assert.ok(!cronJobs.jobs.some((job) => job.name === "cristalina-nightly-memory-maturation"));
 
   const hermesConfig = await readFile(hermesConfigPath, "utf8");
   assert.match(hermesConfig, /memory:\n  provider: cristalina/);
