@@ -65,6 +65,19 @@ Cristalina validates the output before writing anything. Invalid JSON, missing
 evidence refs, illegal enum values, unsupported dispositions, or unsafe authority
 classification fail closed.
 
+Remote LLM calls are explicit at the execution boundary. In normal product use,
+semantic maturation runs from the installed Hermes/OpenClaw provider jobs and
+inherits the same LLM environment used by the agent's ordinary crons and
+heartbeats; Cristalina does not require a separate memory-specific LLM
+configuration.
+
+The `memory mature` CLI path is an operator/debug interface, not the expected
+user experience. It uses `--llm-output` for offline/local review and recovery;
+remote LLM maturation is reserved for runtime-managed execution through the
+installed provider jobs. Remote prompts redact full observation summaries by
+default and send only previews plus refs unless
+`CRISTALINA_MEMORY_MATURATION_ALLOW_FULL_SUMMARY=1` is also set.
+
 ---
 
 ## Authority

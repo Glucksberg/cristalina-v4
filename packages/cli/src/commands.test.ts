@@ -771,6 +771,43 @@ test("memory mature turns consolidated evidence into governed structured memory 
     write: true,
   });
 
+  const previousApiKey = process.env.OPENAI_API_KEY;
+  const previousRuntimeManaged = process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED;
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  process.env.OPENAI_API_KEY = "test-memory-maturation-key";
+  delete process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED;
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    throw new Error("fetch should not be called outside runtime-managed execution");
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => executeCristalinaCommand({
+        name: "memory",
+        action: "mature",
+        configPath,
+        runtime: "hermes",
+        write: true,
+        maxItems: 5,
+      }),
+      /runtime-managed execution/,
+    );
+    assert.equal(fetchCalled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = previousApiKey;
+    }
+    if (previousRuntimeManaged === undefined) {
+      delete process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED;
+    } else {
+      process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED = previousRuntimeManaged;
+    }
+  }
+
   await writeFile(
     llmOutputPath,
     `${JSON.stringify({
@@ -848,6 +885,28 @@ test("memory mature turns consolidated evidence into governed structured memory 
   assert.equal((await readdir(join(storeRoot, "wiki", "pages"))).length, 2);
   assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);
   assert.equal((await readdir(join(storeRoot, "audits", "diagnostics"))).length, 3);
+
+  const rerun = await executeCristalinaCommand({
+    name: "memory",
+    action: "mature",
+    configPath,
+    runtime: "hermes",
+    write: true,
+    maxItems: 5,
+    llmOutputPath,
+  });
+  const rerunPayload = JSON.parse(rerun.stdout) as {
+    status: string;
+    applied: { canonical_record_refs: string[]; queued_review_refs: string[]; diagnostic_refs: string[] };
+  };
+  assert.equal(rerun.exitCode, 0);
+  assert.equal(rerunPayload.status, "applied");
+  assert.deepEqual(rerunPayload.applied.canonical_record_refs, []);
+  assert.deepEqual(rerunPayload.applied.queued_review_refs, []);
+  assert.deepEqual(rerunPayload.applied.diagnostic_refs, []);
+  assert.equal((await readdir(join(storeRoot, "governance", "curation"))).length, 1);
+  assert.equal((await readdir(join(storeRoot, "canon", "facts"))).length, 1);
+  assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);
 });
 
 test("CLI checkpoint create emits a new generation instead of overwriting the previous checkpoint", async () => {

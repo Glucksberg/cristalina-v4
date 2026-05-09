@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { applyApprovedCanonicalProposal } from "./canon/engine.js";
@@ -11,6 +11,7 @@ import {
   SUBJECT_AUTHORITY_ROLES,
   type AuthenticatedPrincipal,
   type CanonicalMemoryObject,
+  type CoreRecord,
   type CurationPacket,
   type Diagnostic,
   type DispositionOutcome,
@@ -30,6 +31,7 @@ import {
   initializeStore,
   loadCanonicalRecords,
   loadRuntimeObservations,
+  loadSourceRecords,
   loadWikiPages,
   writeCoreRecord,
 } from "./store/io.js";
@@ -108,10 +110,28 @@ export interface RunMemoryMaturationResult {
   };
 }
 
+interface MemoryMaturationRawFile {
+  relative_path: string;
+  payload: unknown;
+}
+
+interface MemoryMaturationRecoveryJournal {
+  version: 1;
+  operation: "memory_maturation";
+  created_at: string;
+  raw_files: MemoryMaturationRawFile[];
+  records: CoreRecord[];
+}
+
 const CLAIM_KIND_SET = new Set<string>(CANONICAL_CLAIM_KINDS);
 const EPISTEMIC_STATE_SET = new Set<string>(EPISTEMIC_STATES);
 const AUTHORITY_ROLE_SET = new Set<string>(SUBJECT_AUTHORITY_ROLES);
 const DISPOSITION_SET = new Set<string>(DISPOSITION_OUTCOMES);
+const MEMORY_MATURATION_RECOVERY_PREFIX = "recovery-memory-maturation-";
+const MEMORY_MATURATION_RECOVERY_SUFFIX = ".json";
+const MEMORY_MATURATION_LOCK_TIMEOUT_MS = 120_000;
+const MEMORY_MATURATION_LOCK_STALE_MS = 120_000;
+const MEMORY_MATURATION_LOCK_POLL_MS = 25;
 
 function stableDigest(value: unknown, length = 16): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, length);
@@ -386,6 +406,167 @@ async function writeRawJson(rootDir: string, relativePath: string, payload: unkn
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function acquireMemoryMaturationLock(rootDir: string, stableId: string): Promise<() => Promise<void>> {
+  const lockPath = join(rootDir, "audits", "snapshots", `.memory-maturation-${safeIdPart(stableId)}.lock`);
+  const deadline = Date.now() + MEMORY_MATURATION_LOCK_TIMEOUT_MS;
+  await mkdir(dirname(lockPath), { recursive: true });
+
+  while (true) {
+    try {
+      await mkdir(lockPath, { recursive: false });
+      await writeFile(join(lockPath, "holder.json"), `${JSON.stringify({
+        created_at: new Date().toISOString(),
+        stable_id: stableId,
+      }, null, 2)}\n`);
+      return () => rm(lockPath, { recursive: true, force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+      const lockStat = await stat(lockPath).catch(() => null);
+      if (lockStat && Date.now() - lockStat.mtimeMs > MEMORY_MATURATION_LOCK_STALE_MS) {
+        await rm(lockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out acquiring memory maturation lock for ${stableId}`);
+      }
+      await sleep(MEMORY_MATURATION_LOCK_POLL_MS);
+    }
+  }
+}
+
+async function withMemoryMaturationLock<T>(rootDir: string, stableId: string, fn: () => Promise<T>): Promise<T> {
+  const release = await acquireMemoryMaturationLock(rootDir, stableId);
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
+function memoryMaturationRecoveryJournalPath(rootDir: string, stableId: string): string {
+  return join(
+    rootDir,
+    "audits",
+    "snapshots",
+    `${MEMORY_MATURATION_RECOVERY_PREFIX}${safeIdPart(stableId)}${MEMORY_MATURATION_RECOVERY_SUFFIX}`,
+  );
+}
+
+async function writeMemoryMaturationRecoveryJournal(
+  rootDir: string,
+  stableId: string,
+  journal: MemoryMaturationRecoveryJournal,
+): Promise<string> {
+  const journalPath = memoryMaturationRecoveryJournalPath(rootDir, stableId);
+  await mkdir(dirname(journalPath), { recursive: true });
+  await writeFile(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
+  return journalPath;
+}
+
+async function recoverMemoryMaturationJournal(rootDir: string, journalPath: string): Promise<void> {
+  const parsed = JSON.parse(await readFile(journalPath, "utf8")) as Partial<MemoryMaturationRecoveryJournal>;
+  if (parsed.operation !== "memory_maturation" || !Array.isArray(parsed.raw_files) || !Array.isArray(parsed.records)) {
+    throw new Error(`Memory maturation recovery journal is malformed: ${journalPath}`);
+  }
+  for (const rawFile of parsed.raw_files) {
+    if (
+      typeof rawFile !== "object" ||
+      rawFile === null ||
+      typeof rawFile.relative_path !== "string" ||
+      !rawFile.relative_path.startsWith("raw/sources/")
+    ) {
+      throw new Error(`Memory maturation recovery journal contains an invalid raw file ref`);
+    }
+    await writeRawJson(rootDir, rawFile.relative_path, rawFile.payload);
+  }
+  for (const record of parsed.records) {
+    await writeCoreRecord(rootDir, record);
+  }
+  await rm(journalPath, { force: true });
+}
+
+async function recoverPendingMemoryMaturationJournals(rootDir: string): Promise<void> {
+  const snapshotDir = join(rootDir, "audits", "snapshots");
+  if (!(await pathExists(snapshotDir))) return;
+  const entries = await readdir(snapshotDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (
+      entry.isFile() &&
+      entry.name.startsWith(MEMORY_MATURATION_RECOVERY_PREFIX) &&
+      entry.name.endsWith(MEMORY_MATURATION_RECOVERY_SUFFIX)
+    ) {
+      await recoverMemoryMaturationJournal(rootDir, join(snapshotDir, entry.name));
+    }
+  }
+}
+
+async function materializeMemoryMaturationBatch(input: {
+  rootDir: string;
+  stableId: string;
+  now: string;
+  raw_files: MemoryMaturationRawFile[];
+  records: CoreRecord[];
+}): Promise<void> {
+  if (input.raw_files.length === 0 && input.records.length === 0) return;
+  const journalPath = await writeMemoryMaturationRecoveryJournal(input.rootDir, input.stableId, {
+    version: 1,
+    operation: "memory_maturation",
+    created_at: input.now,
+    raw_files: input.raw_files,
+    records: input.records,
+  });
+  for (const rawFile of input.raw_files) {
+    await writeRawJson(input.rootDir, rawFile.relative_path, rawFile.payload);
+  }
+  for (const record of input.records) {
+    await writeCoreRecord(input.rootDir, record);
+  }
+  await rm(journalPath, { force: true });
+}
+
+async function findCompletedMemoryMaturationSource(
+  rootDir: string,
+  sourceConsolidationRef: string,
+): Promise<SourceRecord | undefined> {
+  const candidates = (await loadSourceRecords(rootDir)).filter(
+    (record) =>
+      record.provenance.source_type === "memory_maturation" &&
+      record.provenance.evidence_refs?.includes(sourceConsolidationRef),
+  );
+  for (const record of candidates) {
+    if (!record.content_ref.startsWith("raw/sources/")) continue;
+    try {
+      const payload = JSON.parse(await readFile(join(rootDir, record.content_ref), "utf8")) as {
+        maturation?: { diagnostics?: unknown };
+      };
+      if (Array.isArray(payload.maturation?.diagnostics) && payload.maturation.diagnostics.length === 0) {
+        return record;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 async function applyCandidate(input: {
   rootDir: string;
   now: string;
@@ -409,8 +590,8 @@ async function applyCandidate(input: {
   const canonicalRefs: string[] = [];
   const queuedReviewRefs: string[] = [];
   const diagnosticRefs: string[] = [];
-
-  await writeRawJson(rootDir, rawContentRef, { maturation, candidate });
+  const rawFiles: MemoryMaturationRawFile[] = [{ relative_path: rawContentRef, payload: { maturation, candidate } }];
+  const records: CoreRecord[] = [];
 
   const source: SourceRecord = {
     id: `src_${idPart}`,
@@ -427,7 +608,7 @@ async function applyCandidate(input: {
     intake_runner_contract_version: "registered_intake_profile.v1",
     semantic_profile_fingerprint: `structured_memory_claim:${candidate.memory_kind}:${candidate.semantic_slot}`,
   };
-  await writeCoreRecord(rootDir, source);
+  records.push(source);
   recordRefs.push(source.id);
 
   const observation: Observation = {
@@ -446,7 +627,7 @@ async function applyCandidate(input: {
     runtime_session_ref: null,
     conversation_thread_ref: null,
   };
-  await writeCoreRecord(rootDir, observation);
+  records.push(observation);
   recordRefs.push(observation.id);
 
   let worldClaim: WorldClaim | undefined;
@@ -476,7 +657,7 @@ async function applyCandidate(input: {
       support_refs: candidate.support_refs,
       upstream_refs: [source.id, observation.id, maturation.source_consolidation_ref, ...candidate.support_refs],
     };
-    await writeCoreRecord(rootDir, worldClaim);
+    records.push(worldClaim);
     recordRefs.push(worldClaim.id);
   }
 
@@ -529,8 +710,7 @@ async function applyCandidate(input: {
       retention_priority: wikiClaim.retention_priority,
       staleness_state: "current",
     };
-    await writeCoreRecord(rootDir, wikiPage);
-    await writeCoreRecord(rootDir, wikiClaim);
+    records.push(wikiPage, wikiClaim);
     recordRefs.push(wikiPage.id, wikiClaim.id);
   }
 
@@ -579,12 +759,11 @@ async function applyCandidate(input: {
       diagnostic_id: `diag_eval_${idPart}`,
     });
     ratification = evaluation.ratification_record;
-    await writeCoreRecord(rootDir, proposal);
-    await writeCoreRecord(rootDir, ratification);
+    records.push(proposal, ratification);
     recordRefs.push(proposal.id, ratification.id);
 
     if (evaluation.diagnostic) {
-      await writeCoreRecord(rootDir, evaluation.diagnostic);
+      records.push(evaluation.diagnostic);
       diagnosticRefs.push(evaluation.diagnostic.id);
       recordRefs.push(evaluation.diagnostic.id);
     }
@@ -597,7 +776,7 @@ async function applyCandidate(input: {
         now,
       });
       for (const record of [...(canonical.created_record ? [canonical.created_record] : []), ...canonical.updated_records]) {
-        await writeCoreRecord(rootDir, record);
+        records.push(record);
         recordRefs.push(record.id);
         canonicalRefs.push(record.id);
       }
@@ -623,7 +802,7 @@ async function applyCandidate(input: {
         wiki_claim_ref: wikiClaim?.id ?? null,
         status: "pending",
       };
-      await writeCoreRecord(rootDir, queue);
+      records.push(queue);
       queuedReviewRefs.push(queue.id);
       recordRefs.push(queue.id);
     }
@@ -644,7 +823,7 @@ async function applyCandidate(input: {
       message: candidate.statement,
       related_refs: [source.id, observation.id, ...candidate.support_refs],
     };
-    await writeCoreRecord(rootDir, diagnostic);
+    records.push(diagnostic);
     diagnosticRefs.push(diagnostic.id);
     recordRefs.push(diagnostic.id);
   }
@@ -680,8 +859,16 @@ async function applyCandidate(input: {
       ...candidate.recommended_dispositions,
     ],
   };
-  await writeCoreRecord(rootDir, disposition);
+  records.push(disposition);
   recordRefs.push(disposition.id);
+
+  await materializeMemoryMaturationBatch({
+    rootDir,
+    stableId: idPart,
+    now,
+    raw_files: rawFiles,
+    records,
+  });
 
   return {
     record_refs: recordRefs,
@@ -719,82 +906,106 @@ export async function runMemoryMaturation(input: RunMemoryMaturationInput): Prom
   }
 
   await initializeStore(input.rootDir, now);
-  let existingCanon = await loadCanonicalRecords(input.rootDir);
-  let existingWikiPages = await loadWikiPages(input.rootDir);
-  const applied = {
-    record_refs: [] as string[],
-    canonical_record_refs: [] as string[],
-    queued_review_refs: [] as string[],
-    diagnostic_refs: [] as string[],
-  };
-
-  if (maturation.diagnostics.length === 0) {
-    for (const candidate of maturation.candidates) {
-      const result = await applyCandidate({
-        rootDir: input.rootDir,
-        now,
+  return withMemoryMaturationLock(input.rootDir, evidence.source_consolidation_ref, async () => {
+    await recoverPendingMemoryMaturationJournals(input.rootDir);
+    const completedSource = await findCompletedMemoryMaturationSource(input.rootDir, evidence.source_consolidation_ref);
+    if (completedSource) {
+      return {
+        schema_version: 1,
+        status: "applied",
         maturation,
-        candidate,
-        principal,
-        existingCanon,
-        existingWikiPages,
-      });
-      applied.record_refs.push(...result.record_refs);
-      applied.canonical_record_refs.push(...result.canonical_record_refs);
-      applied.queued_review_refs.push(...result.queued_review_refs);
-      applied.diagnostic_refs.push(...result.diagnostic_refs);
-      existingCanon = await loadCanonicalRecords(input.rootDir);
-      existingWikiPages = await loadWikiPages(input.rootDir);
+        evidence_package: evidence,
+        applied: {
+          record_refs: [completedSource.id],
+          canonical_record_refs: [],
+          queued_review_refs: [],
+          diagnostic_refs: [],
+        },
+      };
     }
-  }
 
-  const maturationContentRef = `raw/sources/${safeIdPart(maturation.maturation_id)}.json`;
-  await writeRawJson(input.rootDir, maturationContentRef, { evidence_package: evidence, maturation });
-  const maturationSource: SourceRecord = {
-    id: `src_${safeIdPart(maturation.maturation_id)}`,
-    kind: "source_record",
-    layer: "raw",
-    authoritative_home: "raw",
-    created_at: now,
-    updated_at: now,
-    visibility_state: { privacy_scope: "owner_private" },
-    provenance: {
-      source_type: "memory_maturation",
-      source_ref: `memory-maturation/${input.runtime}/${maturation.maturation_id}`,
-      actor_ref: principal.actor_ref,
-      evidence_refs: [evidence.source_consolidation_ref, ...evidence.observations.map((observation) => observation.observation_ref)],
-    },
-    content_ref: maturationContentRef,
-    observed_at: now,
-    intake_profile_ref: "structured_memory_claim",
-    intake_runner_contract_version: "registered_intake_profile.v1",
-    semantic_profile_fingerprint: `memory_maturation:${input.runtime}:${evidence.source_consolidation_id}`,
-  };
-  const maturationObservation: Observation = {
-    id: `obs_${safeIdPart(maturation.maturation_id)}`,
-    kind: "observation",
-    layer: "runtime",
-    authoritative_home: "runtime",
-    created_at: now,
-    updated_at: now,
-    visibility_state: { privacy_scope: "owner_private" },
-    provenance: maturationSource.provenance,
-    summary: JSON.stringify({ event_type: "memory_maturation", maturation }),
-    epistemic_state: maturation.diagnostics.length === 0 ? "observed" : "disputed",
-    observed_at: now,
-    runtime_instance_ref: null,
-    runtime_session_ref: null,
-    conversation_thread_ref: null,
-  };
-  await writeCoreRecord(input.rootDir, maturationSource);
-  await writeCoreRecord(input.rootDir, maturationObservation);
-  applied.record_refs.push(maturationSource.id, maturationObservation.id);
+    let existingCanon = await loadCanonicalRecords(input.rootDir);
+    let existingWikiPages = await loadWikiPages(input.rootDir);
+    const applied = {
+      record_refs: [] as string[],
+      canonical_record_refs: [] as string[],
+      queued_review_refs: [] as string[],
+      diagnostic_refs: [] as string[],
+    };
 
-  return {
-    schema_version: 1,
-    status: "applied",
-    maturation,
-    evidence_package: evidence,
-    applied,
-  };
+    if (maturation.diagnostics.length === 0) {
+      for (const candidate of maturation.candidates) {
+        const result = await applyCandidate({
+          rootDir: input.rootDir,
+          now,
+          maturation,
+          candidate,
+          principal,
+          existingCanon,
+          existingWikiPages,
+        });
+        applied.record_refs.push(...result.record_refs);
+        applied.canonical_record_refs.push(...result.canonical_record_refs);
+        applied.queued_review_refs.push(...result.queued_review_refs);
+        applied.diagnostic_refs.push(...result.diagnostic_refs);
+        existingCanon = await loadCanonicalRecords(input.rootDir);
+        existingWikiPages = await loadWikiPages(input.rootDir);
+      }
+    }
+
+    const maturationIdPart = safeIdPart(maturation.maturation_id);
+    const maturationContentRef = `raw/sources/${maturationIdPart}.json`;
+    const maturationSource: SourceRecord = {
+      id: `src_${maturationIdPart}`,
+      kind: "source_record",
+      layer: "raw",
+      authoritative_home: "raw",
+      created_at: now,
+      updated_at: now,
+      visibility_state: { privacy_scope: "owner_private" },
+      provenance: {
+        source_type: "memory_maturation",
+        source_ref: `memory-maturation/${input.runtime}/${maturation.maturation_id}`,
+        actor_ref: principal.actor_ref,
+        evidence_refs: [evidence.source_consolidation_ref, ...evidence.observations.map((observation) => observation.observation_ref)],
+      },
+      content_ref: maturationContentRef,
+      observed_at: now,
+      intake_profile_ref: "structured_memory_claim",
+      intake_runner_contract_version: "registered_intake_profile.v1",
+      semantic_profile_fingerprint: `memory_maturation:${input.runtime}:${evidence.source_consolidation_id}`,
+    };
+    const maturationObservation: Observation = {
+      id: `obs_${maturationIdPart}`,
+      kind: "observation",
+      layer: "runtime",
+      authoritative_home: "runtime",
+      created_at: now,
+      updated_at: now,
+      visibility_state: { privacy_scope: "owner_private" },
+      provenance: maturationSource.provenance,
+      summary: JSON.stringify({ event_type: "memory_maturation", maturation }),
+      epistemic_state: maturation.diagnostics.length === 0 ? "observed" : "disputed",
+      observed_at: now,
+      runtime_instance_ref: null,
+      runtime_session_ref: null,
+      conversation_thread_ref: null,
+    };
+    await materializeMemoryMaturationBatch({
+      rootDir: input.rootDir,
+      stableId: maturationIdPart,
+      now,
+      raw_files: [{ relative_path: maturationContentRef, payload: { evidence_package: evidence, maturation } }],
+      records: [maturationSource, maturationObservation],
+    });
+    applied.record_refs.push(maturationSource.id, maturationObservation.id);
+
+    return {
+      schema_version: 1,
+      status: "applied",
+      maturation,
+      evidence_package: evidence,
+      applied,
+    };
+  });
 }

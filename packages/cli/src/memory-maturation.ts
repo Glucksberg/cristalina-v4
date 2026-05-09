@@ -54,6 +54,28 @@ function buildPrompt(evidence: MemoryMaturationEvidencePackage): string {
   ].join("\n");
 }
 
+function envFlag(name: string): boolean {
+  const value = process.env[name];
+  return value === "1" || value?.toLowerCase() === "true" || value?.toLowerCase() === "yes";
+}
+
+function evidenceForRemoteLlm(evidence: MemoryMaturationEvidencePackage): MemoryMaturationEvidencePackage {
+  if (envFlag("CRISTALINA_MEMORY_MATURATION_ALLOW_FULL_SUMMARY")) {
+    return evidence;
+  }
+  return {
+    ...evidence,
+    observations: evidence.observations.map((observation) => ({
+      ...observation,
+      full_summary: "[redacted for remote LLM request; use summary_preview and support_refs]",
+    })),
+    instructions: [
+      ...evidence.instructions,
+      "Remote LLM payload is redacted by default; use summary_preview and support_refs instead of full private transcripts.",
+    ],
+  };
+}
+
 function extractJsonObject(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
@@ -68,6 +90,9 @@ function extractJsonObject(text: string): unknown {
 }
 
 async function requestLlmOutput(evidence: MemoryMaturationEvidencePackage): Promise<unknown> {
+  if (!envFlag("CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED")) {
+    throw new Error("memory mature remote LLM calls require runtime-managed execution; use the installed runtime job or --llm-output for offline/local review");
+  }
   const apiKey = process.env.CRISTALINA_MEMORY_MATURATION_API_KEY ??
     process.env.CRISTALINA_LLM_API_KEY ??
     process.env.OPENAI_API_KEY;
@@ -99,7 +124,7 @@ async function requestLlmOutput(evidence: MemoryMaturationEvidencePackage): Prom
         },
         {
           role: "user",
-          content: buildPrompt(evidence),
+          content: buildPrompt(evidenceForRemoteLlm(evidence)),
         },
       ],
     }),

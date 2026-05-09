@@ -76,7 +76,15 @@ Semantic maturation is the next governed step. It may create world/wiki updates,
 review packets, proposals, or canon records, but only through existing
 disposition and governance contracts.
 
-## CLI
+## Operator CLI
+
+The normal product path is seamless: `cristalina install hermes` or
+`cristalina install openclaw` installs the provider, metadata, scripts, and
+scheduled jobs. Users should not need to run memory consolidation or maturation
+commands during ordinary use.
+
+The commands below exist for tests, recovery, fixture generation, and operator
+debugging.
 
 Compile a consolidation without writing:
 
@@ -96,11 +104,22 @@ Limit the consolidated window:
 cristalina memory consolidation --runtime hermes --write --max-recent-events 200 --config .cristalina-v4/config.json
 ```
 
-Run semantic maturation after consolidation:
+Run semantic maturation after consolidation in an operator/debug flow:
 
 ```bash
 cristalina memory mature --runtime hermes --write --max-items 40 --config .cristalina-v4/config.json
 ```
+
+Operator CLI use does not call a remote LLM just because an API key exists. It
+uses `--llm-output` for offline/local review and recovery. Remote LLM maturation
+is reserved for runtime-managed execution through the installed provider jobs.
+
+Installed runtime jobs are different: they are part of the Hermes/OpenClaw
+runtime that already owns the normal agent LLM configuration. The generated
+nightly maturation script marks the execution as runtime-managed and inherits
+the same environment/model/API keys used by the agent and its crons.
+Full summaries remain redacted from remote prompts unless
+`CRISTALINA_MEMORY_MATURATION_ALLOW_FULL_SUMMARY=1` is also set.
 
 ## Hermes Install
 
