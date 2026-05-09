@@ -107,17 +107,18 @@ cristalina memory consolidation --runtime hermes --write --max-recent-events 200
 Run semantic maturation after consolidation in an operator/debug flow:
 
 ```bash
-cristalina memory mature --runtime hermes --write --max-items 40 --config .cristalina-v4/config.json
+cristalina memory mature --runtime hermes --write --max-items 40 --llm-output llm-output.json --config .cristalina-v4/config.json
 ```
 
 Operator CLI use does not call a remote LLM just because an API key exists. It
-uses `--llm-output` for offline/local review and recovery. Remote LLM maturation
-is reserved for runtime-managed execution through the installed provider jobs.
+uses `--llm-output` for offline/local review and recovery.
 
 Installed runtime jobs are different: they are part of the Hermes/OpenClaw
 runtime that already owns the normal agent LLM configuration. The generated
-nightly maturation script marks the execution as runtime-managed and inherits
-the same environment/model/API keys used by the agent and its crons.
+nightly maturation job prepares a Cristalina evidence package, wakes the Hermes
+cron agent, lets that agent produce the structured JSON through the same
+Hermes model/provider harness used for ordinary cron turns, and then applies the
+JSON with `--llm-output`.
 
 When that runtime is configured for remote inference, semantic maturation sends
 the full selected evidence text to the same remote LLM provider. This is

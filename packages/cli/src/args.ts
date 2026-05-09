@@ -65,6 +65,7 @@ export type CristalinaCommand =
       write?: boolean;
       maxItems?: number;
       llmOutputPath?: string;
+      evidenceOutputPath?: string;
     }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
@@ -383,6 +384,7 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
         ...commonOptions,
         ["--max-items", "value"],
         ["--llm-output", "value"],
+        ["--evidence-output", "value"],
       ]));
       const runtime = readOption(argv, "--runtime") ?? "hermes";
       if (runtime !== "openclaw" && runtime !== "hermes") {
@@ -402,6 +404,7 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
         write: hasFlag(argv, "--write"),
         maxItems,
         llmOutputPath: readOption(argv, "--llm-output"),
+        evidenceOutputPath: readOption(argv, "--evidence-output"),
       };
     }
     rejectUnknownOptions(rest, new Map([
@@ -610,7 +613,7 @@ export function helpText(): string {
     "  bridge start [--config PATH]",
     "  bridge event --event PATH [--config PATH]",
     "  memory consolidation [--runtime openclaw|hermes] [--write] [--max-recent-events N] [--config PATH] [--store-root PATH]",
-    "  memory mature [--runtime openclaw|hermes] [--write] [--max-items N] [--llm-output PATH] [--config PATH] [--store-root PATH]",
+    "  memory mature [--runtime openclaw|hermes] [--write] [--max-items N] [--evidence-output PATH] [--llm-output PATH] [--config PATH] [--store-root PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",
     "  session-pack compile --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
     "  session-pack latest --runtime openclaw|hermes [--config PATH]",

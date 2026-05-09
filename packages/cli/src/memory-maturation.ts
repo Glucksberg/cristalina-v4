@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import {
   prepareMemoryMaturationEvidence,
@@ -19,6 +20,14 @@ export interface RunCliMemoryMaturationInput {
   write?: boolean;
   maxItems?: number;
   llmOutputPath?: string;
+}
+
+export interface PrepareCliMemoryMaturationEvidenceInput {
+  config: CristalinaConfig;
+  storeRootOverride?: string;
+  runtime: RuntimeName;
+  maxItems?: number;
+  outputPath: string;
 }
 
 function principalFromConfig(config: CristalinaConfig): AuthenticatedPrincipal {
@@ -54,77 +63,23 @@ function buildPrompt(evidence: MemoryMaturationEvidencePackage): string {
   ].join("\n");
 }
 
-function envFlag(name: string): boolean {
-  const value = process.env[name];
-  return value === "1" || value?.toLowerCase() === "true" || value?.toLowerCase() === "yes";
-}
-
-function extractJsonObject(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      return JSON.parse(text.slice(start, end + 1)) as unknown;
-    }
-    throw new Error("LLM response did not contain a JSON object");
+export async function prepareCliMemoryMaturationEvidence(input: PrepareCliMemoryMaturationEvidenceInput) {
+  const storeRoot = resolveStoreRoot(input.config, input.storeRootOverride);
+  if (!storeRoot) {
+    throw new Error("memory mature requires config.store_root");
   }
-}
-
-async function requestLlmOutput(evidence: MemoryMaturationEvidencePackage): Promise<unknown> {
-  if (!envFlag("CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED")) {
-    throw new Error("memory mature remote LLM calls require runtime-managed execution; use the installed runtime job or --llm-output for offline/local review");
-  }
-  const apiKey = process.env.CRISTALINA_MEMORY_MATURATION_API_KEY ??
-    process.env.CRISTALINA_LLM_API_KEY ??
-    process.env.OPENAI_API_KEY;
-  const baseUrl = (process.env.CRISTALINA_MEMORY_MATURATION_BASE_URL ??
-    process.env.CRISTALINA_LLM_BASE_URL ??
-    "https://api.openai.com/v1").replace(/\/+$/, "");
-  const model = process.env.CRISTALINA_MEMORY_MATURATION_MODEL ??
-    process.env.CRISTALINA_LLM_MODEL ??
-    "gpt-4.1-mini";
-
-  if (!apiKey) {
-    throw new Error("memory mature requires CRISTALINA_MEMORY_MATURATION_API_KEY, CRISTALINA_LLM_API_KEY, OPENAI_API_KEY, or --llm-output");
-  }
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: "Return strict JSON only. You propose structured memory candidates; Cristalina validates and governs them.",
-        },
-        {
-          role: "user",
-          content: buildPrompt(evidence),
-        },
-      ],
-    }),
+  const evidence = await prepareMemoryMaturationEvidence({
+    rootDir: storeRoot,
+    runtime: input.runtime,
+    maxItems: input.maxItems,
   });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`memory maturation LLM request failed ${response.status}: ${body.slice(0, 1000)}`);
-  }
-  const payload = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
+  const payload = {
+    evidence,
+    prompt: buildPrompt(evidence),
   };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("memory maturation LLM response did not include choices[0].message.content");
-  }
-  return extractJsonObject(content);
+  await mkdir(dirname(input.outputPath), { recursive: true });
+  await writeFile(input.outputPath, `${JSON.stringify(payload, null, 2)}\n`);
+  return payload;
 }
 
 export async function runCliMemoryMaturation(input: RunCliMemoryMaturationInput) {
@@ -137,9 +92,10 @@ export async function runCliMemoryMaturation(input: RunCliMemoryMaturationInput)
     runtime: input.runtime,
     maxItems: input.maxItems,
   });
-  const llmOutput = input.llmOutputPath
-    ? JSON.parse(await readFile(input.llmOutputPath, "utf8")) as unknown
-    : await requestLlmOutput(evidence);
+  if (!input.llmOutputPath) {
+    throw new Error("memory mature requires --llm-output; installed Hermes jobs must use the Hermes runtime model harness to produce the JSON candidates");
+  }
+  const llmOutput = JSON.parse(await readFile(input.llmOutputPath, "utf8")) as unknown;
 
   return runMemoryMaturation({
     rootDir: storeRoot,

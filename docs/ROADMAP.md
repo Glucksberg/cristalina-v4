@@ -2,10 +2,11 @@
 ## Roadmap
 
 **Status:** Active Draft
-**Updated:** 2026-05-03
-**Current posture:** executable memory kernel with thin Hermes and OpenClaw
-boundaries; beginning controlled real-runtime wiring tests through generated
-hook contracts
+**Updated:** 2026-05-09
+**Current posture:** executable memory kernel with a live native Hermes memory
+provider, runtime-managed memory maturation, installation registration, and a
+first `cristalina update` flow; OpenClaw parity remains a future integration
+phase after the Hermes loop is satisfactory
 
 ---
 
@@ -23,14 +24,15 @@ The build order still remains:
 
 `docs -> types -> schemas -> fixtures -> kernel code -> adapters`
 
-For the current phase, that means the already implemented bridge and installer
-surface should be tested against real OpenClaw and Hermes sessions before any
-new memory semantics are added.
+For the current phase, that means the Hermes native provider, runtime-managed
+consolidation/maturation jobs, and update/install surfaces should be tested as
+one real runtime loop before broader product surfaces are expanded.
 
-For Hermes specifically, the current integration target is a bridge/runtime
-hook, not a native Hermes memory-provider plugin. A future native plugin may be
-valuable, but it must be built as a thin consumer of the proven bridge and core
-contracts after the first live Hermes bridge loop is validated.
+The bridge remains useful as an event-ingress and compatibility surface, but
+the preferred Hermes path is now the native memory provider. That provider must
+stay thin: Hermes may prefetch derived context and emit evidence, while
+Cristalina owns memory law, governance, promotion, diagnostics, and
+runtime-managed maturation.
 
 ---
 
@@ -67,30 +69,39 @@ Already executable:
 - public API boundary that keeps raw persistence and canon mutation primitives
   behind the internal entrypoint
 
-This baseline is strong enough for runtime wiring. It is not yet an installable
-product loop.
+This baseline is now strong enough for live Hermes testing. It is not yet a
+finished product loop.
 
 ---
 
 ## 3. Current Runtime-Wiring Gaps
 
-The main gaps before a seamless OpenClaw/Hermes experience are now integration
-gaps, not kernel gaps:
+The main gaps before a seamless product experience are now installation,
+configuration, and long-run validation gaps, not kernel gaps:
 
-- the generated OpenClaw hook descriptor still needs to be pointed at the real
-  OpenClaw hook/config location
-- the generated Hermes hook descriptor still needs to be pointed at the real
-  Hermes hook/config location
-- fixture event files prove the bridge contract, but live OpenClaw and Hermes
-  sessions still need to emit those events
-- the first live bridge is hook-driven; a daemon is still deferred until a live
-  runtime proves it is needed
-- a native Hermes memory-provider plugin is intentionally deferred until the
-  bridge and generated Hermes general hook plugin have proven event writeback,
-  projection consumption, review behavior, diagnostics, and handoff against a
-  real Hermes instance
-- production-style operator docs still need to cover install, inspect, review,
-  recover, projection refresh, and handoff against real runtimes
+- the live Hermes native provider needs continued soak testing across normal
+  chat, Telegram gateway operation, memory prefetch, evidence sync, nightly
+  consolidation, memory maturation, diagnostics, and recovery
+- the one-line installer needs to become the stable public install path before
+  package publishing is available
+- `cristalina config` needs a small initial-configuration UX that validates the
+  runtime root, Cristalina store/config path, integration mode, update registry,
+  default internal job schedules, and runtime LLM/privacy posture
+- advanced configuration should exist, but normal users should not need to
+  operate internal commands such as `memory mature`, `bridge event`, hook
+  scripts, event paths, or environment variables
+- `cristalina update` exists and must become the standard update path: pull the
+  upstream checkout, refresh dependencies/build artifacts, and reapply every
+  registered runtime installation
+- runtime-managed memory maturation must use the host runtime's own model
+  harness; in the Hermes path this means the cron agent receives a Cristalina
+  evidence package and produces structured candidates through Hermes' configured
+  provider/OAuth, not through a separate Cristalina API key
+- memory maturation needs a progressive backlog/cursor contract so repeated
+  nightly runs can advance through unprocessed candidate observations instead of
+  repeatedly selecting the same top items from each fresh consolidation
+- OpenClaw should receive the same install/config/update pattern only after the
+  Hermes loop is running satisfactorily
 
 ---
 
@@ -99,29 +110,38 @@ gaps, not kernel gaps:
 The desired first product shape is:
 
 ```bash
-curl -fsSL https://.../install-openclaw.sh | sh
 curl -fsSL https://.../install-hermes.sh | sh
 ```
+
+OpenClaw should eventually receive an equivalent one-line installer, but the
+current product priority is proving the Hermes loop first.
 
 After installation:
 
 - Cristalina is available as a local command named `cristalina`
-- each installer can write metadata, a hook descriptor, and a hook script under
-  the relevant runtime location
-- if required configuration is missing, the installer opens `cristalina config`
-- the config menu writes a validated local config
-- OpenClaw and Hermes can write runtime evidence through their adapters
+- the Hermes installer writes native provider files, runtime metadata, internal
+  job scripts, cron registrations, and installation registry entries
+- if required configuration is missing, the installer opens or instructs the
+  user through `cristalina config`
+- the config flow writes a validated local config with conservative defaults
+- Hermes can prefetch derived memory context through the provider before model
+  calls and can sync completed turns as evidence after responses
+- runtime-managed consolidation and maturation can process accumulated evidence
+  without requiring manual CLI operation from the user
+- maturation records which observations/support refs were successfully
+  processed, skips already-matured items on later runs, and revisits old
+  evidence only when new support, conflict, or confidence changes justify it
+- OpenClaw and Hermes can still write runtime evidence through their adapters
+  where bridge/event compatibility is needed
 - OpenClaw and Hermes can load their latest compatible Cristalina projection
-- OpenClaw and Hermes can emit event files matching
-  `cristalina.runtime_bridge_event.v1`
-- generated hook scripts can invoke `cristalina bridge event` with
-  `CRISTALINA_EVENT_PATH`
 - pending reviews and diagnostics are visible without manually browsing the
   store
 - queue actions still require explicit authenticated owner/system authority
 - the bridge never imports internal store writers or canon mutation primitives
 - runtime projections, session packs, retrieval results, wiki pages, and
   summaries remain derived surfaces rather than truth sources
+- `cristalina update` refreshes the installed checkout and reapplies registered
+  runtime installations
 
 The first release target is a local trusted-collaborator installation, not a
 hostile multi-tenant service.
@@ -148,14 +168,20 @@ Primary outcome:
 - a `cristalina` command can initialize, configure, inspect, and run bridge
   flows without exposing internal memory-law primitives
 
-### Step 3. Configuration Menu
+### Step 3. Configuration And Installer UX
 
-Create an interactive configuration flow in the style of `openclaw config`.
+Create a minimal initial configuration flow and a small advanced configuration
+surface.
 
 Primary outcome:
 
-- a human can configure Cristalina once and then let the runtime bridge operate
-  from validated config
+- a human can run a one-line installer, confirm only essential choices, and
+  then let the runtime operate from validated config
+- `cristalina config` can inspect and change advanced settings without making
+  normal operation depend on manual CLI work
+- the configuration flow makes the LLM/privacy posture explicit: remote runtime
+  inference sends full selected memory evidence to the remote provider; local
+  privacy requires local runtime inference
 
 ### Step 4. Runtime-Neutral Event Bridge
 
@@ -167,23 +193,45 @@ Primary outcome:
 - OpenClaw and Hermes event adapters call the same bridge semantics instead of
   creating two memory models
 
-### Step 5. OpenClaw Installer
-
-Create the one-line OpenClaw installation path.
+### Step 5. Hermes Native Provider Product Loop
 
 Primary outcome:
 
-- OpenClaw can discover and use Cristalina with minimal manual setup
+- Hermes can discover and use Cristalina as its native memory provider with
+  minimal manual setup, runtime-managed internal jobs, and no manual event path
+  operation
 
-### Step 6. Hermes Installer
+### Step 6. Update Flow
 
-Create the one-line Hermes installation path.
+Make `cristalina update` the normal maintenance path.
 
 Primary outcome:
 
-- Hermes can discover and use Cristalina with the same memory law as OpenClaw
+- a user can update Cristalina from upstream and automatically reapply the
+  registered Hermes installation without remembering runtime paths or hook
+  details
 
-### Step 7. Session Continuity
+### Step 7. Memory Maturation Backlog
+
+Make nightly maturation advance through accumulated evidence predictably.
+
+Primary outcome:
+
+- maturation stores processed observation/support refs, excludes already
+  matured items from the next nightly batch, and only reopens old evidence when
+  fresh support, conflict, or confidence changes make another pass meaningful
+
+### Step 8. OpenClaw Installer Parity
+
+Create the one-line OpenClaw installation path after the Hermes path is
+validated.
+
+Primary outcome:
+
+- OpenClaw can discover and use Cristalina with the same memory law as Hermes,
+  adapted to OpenClaw's runtime surface rather than copied mechanically
+
+### Step 9. Session Continuity
 
 Expose checkpoint, session pack, and resume receipt behavior through adapter
 and bridge surfaces.
@@ -193,7 +241,7 @@ Primary outcome:
 - sessions can hand off or resume across OpenClaw and Hermes without turning
   derived packs into authority
 
-### Step 8. Seamless Operation
+### Step 10. Seamless Operation
 
 Add operator diagnostics, recovery commands, projection refresh behavior, and
 runtime-facing summaries.

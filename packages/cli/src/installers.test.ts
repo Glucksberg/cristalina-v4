@@ -264,17 +264,18 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(memoryMaturationMetadata.schedule_kind, "cron");
   assert.equal(memoryMaturationMetadata.schedule_expr, "10 3 * * *");
   assert.equal(memoryMaturationMetadata.schedule_display, "daily at 03:10");
-  assert.equal(memoryMaturationMetadata.llm_runtime_policy, "inherits_runtime_llm_environment");
-  assert.equal(memoryMaturationMetadata.remote_llm_opt_in, "runtime_managed_execution");
+  assert.equal(memoryMaturationMetadata.llm_runtime_policy, "uses_hermes_runtime_model_harness");
+  assert.equal(memoryMaturationMetadata.remote_llm_opt_in, "runtime_harness_execution");
   assert.equal(memoryMaturationMetadata.remote_full_summary_default, true);
   assert.match(memoryMaturationMetadata.command, /memory mature --runtime hermes --write/);
   const memoryMaturationScript = await readFile(metadata.memory_maturation_script_path, "utf8");
-  assert.match(memoryMaturationScript, /CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED/);
-  assert.match(memoryMaturationScript, /memory mature --runtime 'hermes' --write/);
+  assert.match(memoryMaturationScript, /CRISTALINA_MEMORY_MATURATION_LLM_OUTPUT/);
+  assert.match(memoryMaturationScript, /--llm-output "\$CRISTALINA_MEMORY_MATURATION_LLM_OUTPUT"/);
   const memoryMaturationCronScript = await readFile(metadata.memory_maturation_cron_script_path, "utf8");
   assert.match(memoryMaturationCronScript, /"memory","mature"/);
-  assert.match(memoryMaturationCronScript, /env\.setdefault\('CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED', '1'\)/);
-  assert.match(memoryMaturationCronScript, /if completed\.returncode != 0 and completed\.stdout:/);
+  assert.match(memoryMaturationCronScript, /"--evidence-output"/);
+  assert.match(memoryMaturationCronScript, /apply_command/);
+  assert.doesNotMatch(memoryMaturationCronScript, /CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED/);
   const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
     jobs: Array<{ id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; script: string; deliver: string }>;
   };

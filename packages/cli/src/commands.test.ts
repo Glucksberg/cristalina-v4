@@ -117,7 +117,7 @@ test("update reapplies a registered Hermes installation without source update", 
   assert.equal(second.exitCode, 0);
   assert.equal(secondPayload.installations[0]?.runtime, "hermes");
   assert.equal(secondPayload.installations[0]?.runtime_root, runtimeRoot);
-  assert.match(await readFile(join(runtimeRoot, "scripts", "cristalina-memory-maturation.sh"), "utf8"), /CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED/);
+  assert.match(await readFile(join(runtimeRoot, "scripts", "cristalina-memory-maturation.sh"), "utf8"), /CRISTALINA_MEMORY_MATURATION_LLM_OUTPUT/);
 });
 
 test("runtime preflight reports concrete hook install commands for selected roots", async () => {
@@ -823,42 +823,34 @@ test("memory mature turns consolidated evidence into governed structured memory 
     write: true,
   });
 
-  const previousApiKey = process.env.OPENAI_API_KEY;
-  const previousRuntimeManaged = process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED;
-  const originalFetch = globalThis.fetch;
-  let fetchCalled = false;
-  process.env.OPENAI_API_KEY = "test-memory-maturation-key";
-  delete process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED;
-  globalThis.fetch = (async () => {
-    fetchCalled = true;
-    throw new Error("fetch should not be called outside runtime-managed execution");
-  }) as typeof fetch;
-  try {
-    await assert.rejects(
-      () => executeCristalinaCommand({
-        name: "memory",
-        action: "mature",
-        configPath,
-        runtime: "hermes",
-        write: true,
-        maxItems: 5,
-      }),
-      /runtime-managed execution/,
-    );
-    assert.equal(fetchCalled, false);
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (previousApiKey === undefined) {
-      delete process.env.OPENAI_API_KEY;
-    } else {
-      process.env.OPENAI_API_KEY = previousApiKey;
-    }
-    if (previousRuntimeManaged === undefined) {
-      delete process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED;
-    } else {
-      process.env.CRISTALINA_MEMORY_MATURATION_RUNTIME_MANAGED = previousRuntimeManaged;
-    }
-  }
+  await assert.rejects(
+    () => executeCristalinaCommand({
+      name: "memory",
+      action: "mature",
+      configPath,
+      runtime: "hermes",
+      write: true,
+      maxItems: 5,
+    }),
+    /requires --llm-output/,
+  );
+
+  const evidenceOutputPath = join(root, "maturation-evidence.json");
+  const evidenceResult = await executeCristalinaCommand({
+    name: "memory",
+    action: "mature",
+    configPath,
+    runtime: "hermes",
+    maxItems: 5,
+    evidenceOutputPath,
+  });
+  assert.equal(evidenceResult.exitCode, 0);
+  const evidencePayload = JSON.parse(await readFile(evidenceOutputPath, "utf8")) as {
+    evidence: { selected_items: unknown[] };
+    prompt: string;
+  };
+  assert.equal(evidencePayload.evidence.selected_items.length, 1);
+  assert.match(evidencePayload.prompt, /source-neutral semantic maturation compiler/);
 
   await writeFile(
     llmOutputPath,

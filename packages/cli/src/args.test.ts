@@ -154,6 +154,18 @@ test("CLI parser recognizes the planned command surface", () => {
     write: true,
     maxItems: 12,
     llmOutputPath: "maturation.json",
+    evidenceOutputPath: undefined,
+  });
+  assert.deepEqual(parseCristalinaCommand(["memory", "mature", "--runtime", "hermes", "--max-items", "12", "--evidence-output", "evidence.json"]), {
+    name: "memory",
+    action: "mature",
+    configPath: undefined,
+    storeRoot: undefined,
+    runtime: "hermes",
+    write: false,
+    maxItems: 12,
+    llmOutputPath: undefined,
+    evidenceOutputPath: "evidence.json",
   });
   assert.deepEqual(parseCristalinaCommand(["diagnostics", "list"]), {
     name: "diagnostics",

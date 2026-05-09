@@ -35,7 +35,7 @@ import { checkRuntimeBridgeEventFile, validateRuntimeBridgeEventContract, verify
 import { verifyRuntimeProjections } from "./projection-verify.js";
 import { verifyOpenClawToHermesHandoff } from "./session-handoff-verify.js";
 import { runMemoryConsolidation } from "./memory-consolidation.js";
-import { runCliMemoryMaturation } from "./memory-maturation.js";
+import { prepareCliMemoryMaturationEvidence, runCliMemoryMaturation } from "./memory-maturation.js";
 import { runCristalinaUpdate } from "./update.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -335,6 +335,26 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
 
   if (command.name === "memory" && command.action === "mature") {
     const { config, storeRoot } = await loadRequiredConfig(command.configPath, command.storeRoot);
+    if (command.evidenceOutputPath) {
+      const result = await prepareCliMemoryMaturationEvidence({
+        config,
+        storeRootOverride: storeRoot,
+        runtime: command.runtime,
+        maxItems: command.maxItems,
+        outputPath: command.evidenceOutputPath,
+      });
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify({
+          status: "evidence_prepared",
+          evidence_path: command.evidenceOutputPath,
+          selected_items: result.evidence.selected_items.length,
+          source_consolidation_ref: result.evidence.source_consolidation_ref,
+          source_consolidation_id: result.evidence.source_consolidation_id,
+        }, null, 2)}\n`,
+        stderr: "",
+      };
+    }
     const result = await runCliMemoryMaturation({
       config,
       storeRootOverride: storeRoot,
