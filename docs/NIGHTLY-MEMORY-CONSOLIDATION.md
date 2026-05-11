@@ -111,6 +111,12 @@ Run semantic maturation after consolidation in an operator/debug flow:
 cristalina memory mature --runtime hermes --write --max-items 40 --llm-output llm-output.json --config .cristalina-v4/config.json
 ```
 
+Inspect accumulated canon candidates and corroboration state:
+
+```bash
+cristalina memory candidates --runtime hermes --config .cristalina-v4/config.json
+```
+
 Operator CLI use does not call a remote LLM just because an API key exists. It
 uses `--llm-output` for offline/local review and recovery.
 
@@ -168,12 +174,23 @@ advance through accumulated evidence instead of repeatedly selecting the same
 top items. Old evidence should only be reopened when new support, conflict, or
 confidence changes justify another pass.
 
+Canon promotion is no longer gated only by a single LLM confidence label.
+Corroboration across recurring `semantic_slot` clusters can elevate low-risk,
+non-owner claims into `world_update`, `wiki_update`, and `proposal_for_canon`.
+When support is strong enough and governance gates pass, system ratification may
+create canon without owner review. Owner-scoped claims and higher-risk claims
+still route to review.
+
 ## Farol
 
 Farol observes the memory consolidation as part of maturation:
 
 - whether the nightly memory consolidation script and metadata are installed
+- whether the unified `cristalina-nightly-memory-cycle` cron is installed
 - how many `memory_consolidation` observations exist
+- how many maturation runs, selected items, skipped backlog items, and LLM
+  candidates exist
+- how many semantic slots are already canon or ready for automatic canon
 - store counts for runtime, proposals, wiki, canon, world, and derived layers
 - research heartbeat and AI Pulse artifact counts
 

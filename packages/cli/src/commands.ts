@@ -15,6 +15,7 @@ import {
   recordSessionResumeReceiptToStore,
   compileHermesRecognitionProjectionFromStore,
   formatHermesRecognitionContext,
+  summarizeMemoryCanonCandidates,
   writeHermesRecognitionProjectionToStore,
   type AuthenticatedPrincipal,
 } from "@cristalina-v4/core";
@@ -379,6 +380,20 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
     }
     return {
       exitCode: result.maturation.diagnostics.length === 0 ? 0 : 1,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+    };
+  }
+
+  if (command.name === "memory" && command.action === "candidates") {
+    const { storeRoot } = await loadRequiredConfig(command.configPath, command.storeRoot);
+    const result = await summarizeMemoryCanonCandidates({
+      rootDir: storeRoot,
+      runtime: command.runtime,
+      limit: command.limit,
+    });
+    return {
+      exitCode: 0,
       stdout: `${JSON.stringify(result, null, 2)}\n`,
       stderr: "",
     };

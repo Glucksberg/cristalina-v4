@@ -97,6 +97,29 @@ contract, not a second memory store: old evidence may be revisited later when
 new support, conflict, or confidence changes create a fresh reason to reprocess
 it.
 
+Cristalina also applies corroboration after the LLM proposes candidates. The LLM
+does not need to mark every useful claim as `high` confidence for the system to
+learn. Recurring `semantic_slot` clusters accumulate support refs across
+maturation runs. A low-risk, non-owner claim can be elevated from `evidence_only`
+into `world_update`, `wiki_update`, and `proposal_for_canon` when it is supported
+by enough observations across the backlog.
+
+The current conservative auto-canon rule is:
+
+```text
+non-owner authority
++ risk=low
++ confidence is medium or high
++ epistemic state is not hypothesized/disputed
++ at least 3 support refs across 2 observed days, or at least 5 support refs
+=> system ratification may pass without owner review
+```
+
+Owner-scoped preferences, identity, authorization, and high-impact decisions
+still require explicit review. Corroboration is a way to prevent weeks of
+evidence from staying forever in runtime/evidence layers; it is not a way to
+grant owner authority to external or agent-originated claims.
+
 ---
 
 ## Authority
@@ -117,6 +140,16 @@ evidence -> proposal -> governance gates -> ratification record -> canon
 ```
 
 There is no direct `runtime -> canon` or `raw -> canon` promotion.
+
+The operator/debug view for this funnel is:
+
+```bash
+cristalina memory candidates --runtime hermes --config .cristalina-v4/config.json
+```
+
+It summarizes recurring `semantic_slot` clusters, support counts, distinct
+observation days, already-canonical slots, and candidates ready for automatic
+canon.
 
 ---
 

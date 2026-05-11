@@ -36,6 +36,10 @@ const hermesHookScriptPath = join(hermesRoot, ".cristalina-v4", "hooks", "crista
 const hermesMemoryConsolidationMetadataPath = join(hermesRoot, ".cristalina-v4", "memory-consolidation-hermes.json");
 const hermesMemoryConsolidationScriptPath = join(hermesRoot, "scripts", "cristalina-memory-consolidation.sh");
 const hermesMemoryConsolidationCronScriptPath = join(hermesRoot, "scripts", "cristalina-memory-consolidation.py");
+const hermesMemoryMaturationMetadataPath = join(hermesRoot, ".cristalina-v4", "memory-maturation-hermes.json");
+const hermesMemoryCycleMetadataPath = join(hermesRoot, ".cristalina-v4", "memory-cycle-hermes.json");
+const hermesMemoryCycleScriptPath = join(hermesRoot, "scripts", "cristalina-memory-cycle.py");
+const hermesMemoryMaturationRunsDir = join(hermesRoot, ".cristalina-v4", "maturation-runs");
 const hermesCronJobsPath = join(hermesRoot, "cron", "jobs.json");
 const cristalResearchHeartbeatsDir = join(hermesRoot, "scratch", "cristal-heartbeats");
 const aiPulseDir = join(hermesRoot, "scratch", "ai-pulse");
@@ -254,6 +258,37 @@ function scanMaturation() {
   };
 }
 
+function scanMaturationRuns() {
+  if (!existsSync(hermesMemoryMaturationRunsDir)) {
+    return { count: 0, latest: null };
+  }
+  const runs = readdirSync(hermesMemoryMaturationRunsDir)
+    .map((name) => {
+      const dir = join(hermesMemoryMaturationRunsDir, name);
+      if (!statSync(dir).isDirectory()) return null;
+      const evidencePath = join(dir, "evidence.json");
+      const llmOutputPath = join(dir, "llm-output.json");
+      const evidence = tryJson(safeRead(evidencePath, 2000000));
+      const evidencePayload = evidence?.evidence ?? evidence;
+      const llmOutput = tryJson(safeRead(llmOutputPath, 1000000));
+      return {
+        run_id: name,
+        evidence_path: existsSync(evidencePath) ? evidencePath : null,
+        llm_output_path: existsSync(llmOutputPath) ? llmOutputPath : null,
+        selected_items: evidencePayload?.selected_items?.length ?? null,
+        skipped_already_matured: evidencePayload?.skipped_already_matured_observation_refs?.length ?? null,
+        llm_candidates: llmOutput?.candidates?.length ?? null,
+        mtime: statSync(dir).mtime.toISOString(),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.mtime.localeCompare(right.mtime));
+  return {
+    count: runs.length,
+    latest: runs.at(-1) ?? null,
+  };
+}
+
 function recognitionArgsFor(latestEvent) {
   const args = ["projection", "recognition", "--config", configPath, "--format", "json"];
   const provider = providerConfig();
@@ -272,6 +307,7 @@ function makeSnapshot() {
   const latestEvent = hermesEvents.at(-1);
   const hermesCronJobs = tryJson(safeRead(hermesCronJobsPath, 1000000))?.jobs ?? [];
   const memoryConsolidationCronJob = hermesCronJobs.find((job) => job?.name === "cristalina-nightly-memory-consolidation") ?? null;
+  const memoryCycleCronJob = hermesCronJobs.find((job) => job?.name === "cristalina-nightly-memory-cycle") ?? null;
   const snapshot = {
     schema_version: 1,
     captured_at: now.toISOString(),
@@ -292,6 +328,10 @@ function makeSnapshot() {
       hermes_memory_consolidation_metadata: pathState(hermesMemoryConsolidationMetadataPath),
       hermes_memory_consolidation_script: pathState(hermesMemoryConsolidationScriptPath),
       hermes_memory_consolidation_cron_script: pathState(hermesMemoryConsolidationCronScriptPath),
+      hermes_memory_maturation_metadata: pathState(hermesMemoryMaturationMetadataPath),
+      hermes_memory_cycle_metadata: pathState(hermesMemoryCycleMetadataPath),
+      hermes_memory_cycle_script: pathState(hermesMemoryCycleScriptPath),
+      hermes_memory_maturation_runs: pathState(hermesMemoryMaturationRunsDir),
       hermes_cron_jobs: pathState(hermesCronJobsPath),
       hermes_hook_script: pathState(hermesHookScriptPath),
       cristalina_config: pathState(configPath),
@@ -316,6 +356,14 @@ function makeSnapshot() {
       cron_job_installed: Boolean(memoryConsolidationCronJob),
       cron_job: memoryConsolidationCronJob,
     },
+    memory_cycle: {
+      metadata: tryJson(safeRead(hermesMemoryCycleMetadataPath, 100000)),
+      maturation_metadata: tryJson(safeRead(hermesMemoryMaturationMetadataPath, 100000)),
+      script_installed: existsSync(hermesMemoryCycleScriptPath),
+      cron_job_installed: Boolean(memoryCycleCronJob),
+      cron_job: memoryCycleCronJob,
+      runs: scanMaturationRuns(),
+    },
     hermes_events: hermesEvents,
     cristalina: {
       status: runJson("status", ["status", "--config", configPath]),
@@ -323,6 +371,7 @@ function makeSnapshot() {
       projections: runJson("projection list", ["projection", "list", "--config", configPath]),
       diagnostics: runJson("diagnostics list", ["diagnostics", "list", "--config", configPath]),
       reviews: runJson("reviews list hermes", ["reviews", "list", "--runtime", "hermes", "--config", configPath]),
+      memory_candidates: runJson("memory candidates hermes", ["memory", "candidates", "--runtime", "hermes", "--config", configPath]),
       store: runJson("store inspect", ["store", "inspect", "--config", configPath]),
       maturation: scanMaturation(),
     },
@@ -343,6 +392,8 @@ function makeSnapshot() {
     recognition_entries: snapshot.cristalina.recognition.json?.snapshot?.recognition_index?.length ?? null,
     diagnostics_count: snapshot.cristalina.diagnostics.json?.diagnostics?.length ?? null,
     memory_consolidations: snapshot.cristalina.maturation.memory_consolidations.count,
+    memory_cycle_runs: snapshot.memory_cycle.runs.count,
+    memory_auto_canon_ready: snapshot.cristalina.memory_candidates.json?.totals?.auto_canon_ready ?? null,
     wiki_pages: snapshot.cristalina.maturation.store_counts.wiki_pages,
     canon_records: snapshot.cristalina.maturation.store_counts.canon_records,
   })}\n`);
@@ -364,6 +415,17 @@ function makeSnapshot() {
       next_run_at: snapshot.memory_consolidation.cron_job?.next_run_at ?? null,
       consolidations_seen: snapshot.cristalina.maturation.memory_consolidations.count,
     },
+    nightly_memory_cycle: {
+      installed: snapshot.memory_cycle.script_installed,
+      cron_installed: snapshot.memory_cycle.cron_job_installed,
+      enabled: snapshot.memory_cycle.metadata?.enabled ?? null,
+      schedule: snapshot.memory_cycle.cron_job?.schedule ?? null,
+      next_run_at: snapshot.memory_cycle.cron_job?.next_run_at ?? null,
+      last_run_at: snapshot.memory_cycle.cron_job?.last_run_at ?? null,
+      last_status: snapshot.memory_cycle.cron_job?.last_status ?? null,
+      runs_seen: snapshot.memory_cycle.runs.count,
+      latest_run: snapshot.memory_cycle.runs.latest,
+    },
     recognition_entries: snapshot.cristalina.recognition.json?.snapshot?.recognition_index?.length ?? null,
     events_seen: snapshot.hermes_events.length,
     latest_event: latest ? {
@@ -380,6 +442,8 @@ function makeSnapshot() {
       proposals: snapshot.cristalina.maturation.store_counts.proposals,
       wiki_pages: snapshot.cristalina.maturation.store_counts.wiki_pages,
       canon_records: snapshot.cristalina.maturation.store_counts.canon_records,
+      auto_canon_ready: snapshot.cristalina.memory_candidates.json?.totals?.auto_canon_ready ?? null,
+      already_canon_slots: snapshot.cristalina.memory_candidates.json?.totals?.already_canon ?? null,
       ai_pulse_files: snapshot.cristalina.maturation.ai_pulse.file_count,
       research_heartbeat_count: snapshot.cristalina.maturation.research_heartbeats.state?.count ?? null,
     },

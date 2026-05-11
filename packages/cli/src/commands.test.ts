@@ -953,6 +953,119 @@ test("memory mature turns consolidated evidence into governed structured memory 
   assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);
 });
 
+test("memory mature promotes corroborated low-risk external claims without owner review", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-memory-corroboration-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const llmOutputPath = join(root, "maturation-output.json");
+  const config = buildDefaultCristalinaConfig({
+    storeRoot,
+    ownerIdentityRef: "actor_owner_cli_memory_corroboration_001",
+    agentIdentityRef: "actor_agent_cli_memory_corroboration_001",
+    hermesRuntimeRef: "runtime_hermes_cli_memory_corroboration_001",
+  });
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+  for (const [index, occurredAt] of ["2026-05-01T12:00:00.000Z", "2026-05-02T12:00:00.000Z", "2026-05-03T12:00:00.000Z"].entries()) {
+    await handleRuntimeBridgeEvent(config, {
+      event_id: `evt_cli_memory_corroboration_observed_00${index + 1}`,
+      event_type: "message_observed",
+      runtime: "hermes",
+      occurred_at: occurredAt,
+      actor_ref: "system:hermes-test",
+      authenticated_principal: {
+        kind: "system",
+        actor_ref: "system:hermes-test",
+        system_scope: "memory-corroboration-test",
+      },
+      runtime_instance_ref: "runtime_hermes_cli_memory_corroboration_001",
+      runtime_session_ref: "session_memory_corroboration_test",
+      conversation_thread_ref: "thread_memory_corroboration_test",
+      source_ref: `runtime/hermes/test/evt_cli_memory_corroboration_observed_00${index + 1}`,
+      message: "Agent memory research keeps repeating that operational logs should be separated from usable semantic memory.",
+    });
+  }
+
+  await executeCristalinaCommand({
+    name: "memory",
+    action: "consolidation",
+    configPath,
+    runtime: "hermes",
+    runtimeSessionRef: "session_memory_corroboration_test",
+    conversationThreadRef: "thread_memory_corroboration_test",
+    maxRecentEvents: 10,
+    write: true,
+  });
+
+  await writeFile(
+    llmOutputPath,
+    `${JSON.stringify({
+      candidates: [
+        {
+          statement: "Long-running agents benefit from separating operational logs from usable semantic memory.",
+          memory_kind: "belief",
+          epistemic_state: "inferred",
+          semantic_slot: "agent_memory.architecture.operational_trace_separation",
+          subject_authority_role: "external",
+          confidence: "medium",
+          risk: "low",
+          support_refs: [
+            "obs_hermes_evt_cli_memory_corroboration_observed_001",
+            "obs_hermes_evt_cli_memory_corroboration_observed_002",
+            "obs_hermes_evt_cli_memory_corroboration_observed_003",
+          ],
+          recommended_dispositions: ["evidence_only"],
+          rationale: "The pattern appears across repeated low-risk external research observations.",
+          wiki_title: "Agent Memory Architecture",
+        },
+      ],
+    }, null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "memory",
+    action: "mature",
+    configPath,
+    runtime: "hermes",
+    write: true,
+    maxItems: 10,
+    llmOutputPath,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    maturation: { candidates: Array<{ recommended_dispositions: string[]; corroboration?: { auto_canon_eligible: boolean; support_count: number } }> };
+    applied: { canonical_record_refs: string[]; queued_review_refs: string[] };
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "applied");
+  assert.equal(payload.maturation.candidates[0]?.corroboration?.auto_canon_eligible, true);
+  assert.equal(payload.maturation.candidates[0]?.corroboration?.support_count, 3);
+  assert.ok(payload.maturation.candidates[0]?.recommended_dispositions.includes("proposal_for_canon"));
+  assert.ok(payload.maturation.candidates[0]?.recommended_dispositions.includes("wiki_update"));
+  assert.equal(payload.applied.canonical_record_refs.length, 1);
+  assert.equal(payload.applied.queued_review_refs.length, 0);
+  assert.equal((await readdir(join(storeRoot, "canon", "beliefs"))).length, 1);
+  assert.equal((await readdir(join(storeRoot, "wiki", "pages"))).length, 1);
+
+  const candidatesResult = await executeCristalinaCommand({
+    name: "memory",
+    action: "candidates",
+    configPath,
+    runtime: "hermes",
+    limit: 10,
+  });
+  const candidatesPayload = JSON.parse(candidatesResult.stdout) as {
+    totals: { already_canon: number };
+    candidates: Array<{ semantic_slot: string; suggested_action: string; has_active_canon: boolean }>;
+  };
+  assert.equal(candidatesResult.exitCode, 0);
+  assert.equal(candidatesPayload.totals.already_canon, 1);
+  assert.equal(candidatesPayload.candidates[0]?.semantic_slot, "agent_memory.architecture.operational_trace_separation");
+  assert.equal(candidatesPayload.candidates[0]?.suggested_action, "already_canon");
+  assert.equal(candidatesPayload.candidates[0]?.has_active_canon, true);
+});
+
 test("CLI checkpoint create emits a new generation instead of overwriting the previous checkpoint", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-checkpoint-"));
   const storeRoot = join(root, "store");

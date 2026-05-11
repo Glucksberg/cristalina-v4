@@ -54,6 +54,15 @@ export interface StructuredMemoryClaimCandidate {
   rationale: string;
   wiki_title?: string;
   wiki_path?: string;
+  corroboration?: {
+    semantic_slot: string;
+    support_count: number;
+    prior_candidate_count: number;
+    distinct_observation_days: number;
+    support_refs: string[];
+    auto_canon_eligible: boolean;
+    rationale: string;
+  };
 }
 
 export interface MemoryMaturationEvidencePackage {
@@ -109,6 +118,37 @@ export interface RunMemoryMaturationResult {
     queued_review_refs: string[];
     diagnostic_refs: string[];
   };
+}
+
+export interface MemoryCanonCandidateSummary {
+  semantic_slot: string;
+  candidate_count: number;
+  support_count: number;
+  distinct_observation_days: number;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  latest_statement: string | null;
+  latest_confidence: MemoryMaturationConfidence | null;
+  latest_risk: MemoryMaturationRisk | null;
+  subject_authority_roles: SubjectAuthorityRole[];
+  has_active_canon: boolean;
+  auto_canon_eligible: boolean;
+  suggested_action: "already_canon" | "auto_canon_ready" | "needs_more_support" | "owner_review" | "keep_evidence";
+  support_refs: string[];
+}
+
+export interface MemoryCanonCandidateReport {
+  schema_version: 1;
+  runtime: RuntimeKind;
+  generated_at: string;
+  totals: {
+    semantic_slots: number;
+    auto_canon_ready: number;
+    already_canon: number;
+    needs_more_support: number;
+    owner_review: number;
+  };
+  candidates: MemoryCanonCandidateSummary[];
 }
 
 interface MemoryMaturationRawFile {
@@ -191,6 +231,187 @@ function sameStringSet(left: string[], right: string[]): boolean {
   if (left.length !== right.length) return false;
   const rightSet = new Set(right);
   return left.every((entry) => rightSet.has(entry));
+}
+
+function normalizeDay(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function mergeUniqueStrings(...groups: string[][]): string[] {
+  const out: string[] = [];
+  for (const group of groups) {
+    for (const value of group) {
+      if (value && !out.includes(value)) out.push(value);
+    }
+  }
+  return out;
+}
+
+function emptySlotSummary(semanticSlot: string): MemoryCanonCandidateSummary {
+  return {
+    semantic_slot: semanticSlot,
+    candidate_count: 0,
+    support_count: 0,
+    distinct_observation_days: 0,
+    first_seen_at: null,
+    last_seen_at: null,
+    latest_statement: null,
+    latest_confidence: null,
+    latest_risk: null,
+    subject_authority_roles: [],
+    has_active_canon: false,
+    auto_canon_eligible: false,
+    suggested_action: "needs_more_support",
+    support_refs: [],
+  };
+}
+
+function updateSlotSummary(input: {
+  summary: MemoryCanonCandidateSummary;
+  candidate: StructuredMemoryClaimCandidate;
+  createdAt: string | null;
+  observationDaysByRef: Map<string, string>;
+}): MemoryCanonCandidateSummary {
+  const supportRefs = mergeUniqueStrings(input.summary.support_refs, input.candidate.support_refs);
+  const days = new Set(
+    supportRefs
+      .map((ref) => input.observationDaysByRef.get(ref))
+      .filter((day): day is string => Boolean(day)),
+  );
+  const firstSeen = [input.summary.first_seen_at, input.createdAt].filter((entry): entry is string => Boolean(entry)).sort()[0] ?? null;
+  const lastSeen = [input.summary.last_seen_at, input.createdAt].filter((entry): entry is string => Boolean(entry)).sort().at(-1) ?? null;
+  return {
+    ...input.summary,
+    candidate_count: input.summary.candidate_count + 1,
+    support_count: supportRefs.length,
+    distinct_observation_days: days.size,
+    first_seen_at: firstSeen,
+    last_seen_at: lastSeen,
+    latest_statement: input.candidate.statement,
+    latest_confidence: input.candidate.confidence,
+    latest_risk: input.candidate.risk,
+    subject_authority_roles: mergeUniqueStrings(input.summary.subject_authority_roles, [input.candidate.subject_authority_role]) as SubjectAuthorityRole[],
+    support_refs: supportRefs,
+  };
+}
+
+function isLowRiskCanonEligible(input: {
+  candidate: StructuredMemoryClaimCandidate;
+  supportCount: number;
+  distinctDays: number;
+  priorCandidateCount: number;
+}): boolean {
+  if (input.candidate.subject_authority_role === "owner") return false;
+  if (input.candidate.risk !== "low") return false;
+  if (input.candidate.confidence === "low") return false;
+  if (input.candidate.epistemic_state === "hypothesized" || input.candidate.epistemic_state === "disputed") return false;
+  if (input.supportCount >= 5) return true;
+  if (input.supportCount >= 3 && input.distinctDays >= 2) return true;
+  return input.priorCandidateCount >= 1 && input.supportCount >= 3;
+}
+
+function shouldProposeReviewFromCorroboration(input: {
+  candidate: StructuredMemoryClaimCandidate;
+  supportCount: number;
+  distinctDays: number;
+}): boolean {
+  if (input.candidate.subject_authority_role === "owner") return true;
+  if (input.candidate.risk === "high") return false;
+  return input.supportCount >= 5 || input.distinctDays >= 3;
+}
+
+function applyCorroborationPolicy(
+  candidate: StructuredMemoryClaimCandidate,
+  historical: MemoryCanonCandidateSummary | undefined,
+  observationDaysByRef: Map<string, string>,
+): StructuredMemoryClaimCandidate {
+  const supportRefs = mergeUniqueStrings(historical?.support_refs ?? [], candidate.support_refs);
+  const distinctDays = new Set(
+    supportRefs
+      .map((ref) => observationDaysByRef.get(ref))
+      .filter((day): day is string => Boolean(day)),
+  ).size;
+  const priorCandidateCount = historical?.candidate_count ?? 0;
+  const supportCount = supportRefs.length;
+  const autoCanonEligible = isLowRiskCanonEligible({ candidate, supportCount, distinctDays, priorCandidateCount });
+  const reviewProposalEligible = !autoCanonEligible && shouldProposeReviewFromCorroboration({ candidate, supportCount, distinctDays });
+  const dispositions = new Set(candidate.recommended_dispositions);
+
+  if (autoCanonEligible || reviewProposalEligible) {
+    dispositions.delete("evidence_only");
+    dispositions.add("world_update");
+    dispositions.add("wiki_update");
+    dispositions.add("proposal_for_canon");
+  }
+  if (autoCanonEligible) {
+    dispositions.delete("queued_review");
+  } else if (reviewProposalEligible) {
+    dispositions.add("queued_review");
+  }
+
+  return {
+    ...candidate,
+    recommended_dispositions: [...dispositions],
+    corroboration: {
+      semantic_slot: candidate.semantic_slot,
+      support_count: supportCount,
+      prior_candidate_count: priorCandidateCount,
+      distinct_observation_days: distinctDays,
+      support_refs: supportRefs,
+      auto_canon_eligible: autoCanonEligible,
+      rationale: autoCanonEligible
+        ? "Promoted by corroboration policy: low risk, non-owner authority, repeated support, and no disputed epistemic state."
+        : reviewProposalEligible
+          ? "Escalated by corroboration policy: repeated support deserves governed review before canon."
+          : "Retained below auto-canon threshold.",
+    },
+  };
+}
+
+async function loadObservationDaysByRef(rootDir: string): Promise<Map<string, string>> {
+  const observations = await loadRuntimeObservations(rootDir);
+  return new Map(
+    observations
+      .map((observation) => [observation.id, normalizeDay(observation.observed_at ?? observation.created_at)] as const)
+      .filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+  );
+}
+
+async function loadMemoryMaturationSlotSummaries(rootDir: string, runtime: RuntimeKind): Promise<Map<string, MemoryCanonCandidateSummary>> {
+  const observationDaysByRef = await loadObservationDaysByRef(rootDir);
+  const summaries = new Map<string, MemoryCanonCandidateSummary>();
+  const sources = await loadSourceRecords(rootDir);
+  for (const record of sources) {
+    if (record.provenance.source_type !== "memory_maturation") continue;
+    if (!record.content_ref.startsWith("raw/sources/")) continue;
+    try {
+      const payload = JSON.parse(await readFile(join(rootDir, record.content_ref), "utf8")) as {
+        evidence_package?: { runtime?: unknown };
+        maturation?: { diagnostics?: unknown; candidates?: unknown[]; created_at?: unknown };
+      };
+      if (payload.evidence_package?.runtime !== runtime) continue;
+      if (!Array.isArray(payload.maturation?.diagnostics) || payload.maturation.diagnostics.length !== 0) continue;
+      for (const entry of payload.maturation.candidates ?? []) {
+        const candidate = entry as Partial<StructuredMemoryClaimCandidate>;
+        if (typeof candidate.semantic_slot !== "string" || !candidate.semantic_slot) continue;
+        if (!Array.isArray(candidate.support_refs)) continue;
+        const normalized = candidate as StructuredMemoryClaimCandidate;
+        const current = summaries.get(candidate.semantic_slot) ?? emptySlotSummary(candidate.semantic_slot);
+        summaries.set(candidate.semantic_slot, updateSlotSummary({
+          summary: current,
+          candidate: normalized,
+          createdAt: typeof payload.maturation.created_at === "string" ? payload.maturation.created_at : record.created_at,
+          observationDaysByRef,
+        }));
+      }
+    } catch {
+      continue;
+    }
+  }
+  return summaries;
 }
 
 async function loadCompletedMemoryMaturationObservationRefs(rootDir: string, runtime: RuntimeKind): Promise<Set<string>> {
@@ -280,6 +501,8 @@ export async function prepareMemoryMaturationEvidence(input: {
       "Use existing Cristalina memory kinds, epistemic states, authority roles, and disposition outcomes.",
       "Do not create source-specific routes for X/Twitter, Telegram, heartbeat, or direct chat.",
       "Do not propose Cristalina code changes as product self-modification.",
+      "Prefer stable semantic_slot names because Cristalina uses them to corroborate recurring claims over time.",
+      "Low-risk, non-owner claims with repeated support may become canon through governance; owner-scoped claims still require review.",
       "Return strict JSON with a top-level candidates array.",
     ],
   };
@@ -360,11 +583,19 @@ export function compileMemoryMaturation(input: {
   evidence: MemoryMaturationEvidencePackage;
   llmOutput: unknown;
   now?: string;
+  historicalSlots?: ReadonlyMap<string, MemoryCanonCandidateSummary>;
+  observationDaysByRef?: ReadonlyMap<string, string>;
 }): MemoryMaturation {
   const now = input.now ?? new Date().toISOString();
   const output = asRecord(input.llmOutput);
   const rawCandidates = Array.isArray(output?.candidates) ? output.candidates : [];
   const allowedRefs = new Set(input.evidence.observations.map((observation) => observation.observation_ref));
+  const observationDaysByRef = input.observationDaysByRef instanceof Map
+    ? input.observationDaysByRef
+    : new Map(input.evidence.observations.map((observation) => [
+        observation.observation_ref,
+        normalizeDay(observation.observed_at) ?? normalizeDay(now) ?? now.slice(0, 10),
+      ]));
   const diagnostics: string[] = [];
   const candidates: StructuredMemoryClaimCandidate[] = [];
 
@@ -380,7 +611,12 @@ export function compileMemoryMaturation(input: {
     const issues = candidateDiagnostics(candidate, allowedRefs, index);
     diagnostics.push(...issues);
     if (issues.length === 0) {
-      candidates.push(normalizeCandidate(candidate, index));
+      const normalized = normalizeCandidate(candidate, index);
+      candidates.push(applyCorroborationPolicy(
+        normalized,
+        input.historicalSlots?.get(normalized.semantic_slot),
+        observationDaysByRef,
+      ));
     }
   });
 
@@ -410,8 +646,10 @@ function canSystemRatify(candidate: StructuredMemoryClaimCandidate): boolean {
   return (
     candidate.recommended_dispositions.includes("proposal_for_canon") &&
     candidate.subject_authority_role !== "owner" &&
-    candidate.confidence === "high" &&
-    candidate.risk !== "high"
+    (
+      (candidate.confidence === "high" && candidate.risk !== "high") ||
+      candidate.corroboration?.auto_canon_eligible === true
+    )
   );
 }
 
@@ -627,6 +865,70 @@ async function findCompletedMemoryMaturationSource(
     }
   }
   return undefined;
+}
+
+function finalizeCanonCandidateSummary(summary: MemoryCanonCandidateSummary, existingCanon: CanonicalMemoryObject[]): MemoryCanonCandidateSummary {
+  const hasActiveCanon = existingCanon.some((record) =>
+    record.semantic_slot === summary.semantic_slot &&
+    record.governance_state === "ratified" &&
+    record.temporal_state?.temporal_status === "active"
+  );
+  const ownerScoped = summary.subject_authority_roles.includes("owner");
+  const lowRisk = summary.latest_risk === "low";
+  const confidenceUsable = summary.latest_confidence === "medium" || summary.latest_confidence === "high";
+  const autoCanonEligible = !hasActiveCanon && !ownerScoped && lowRisk && confidenceUsable && (
+    summary.support_count >= 5 ||
+    (summary.support_count >= 3 && summary.distinct_observation_days >= 2) ||
+    (summary.candidate_count >= 2 && summary.support_count >= 3)
+  );
+  const suggestedAction: MemoryCanonCandidateSummary["suggested_action"] = hasActiveCanon
+    ? "already_canon"
+    : autoCanonEligible
+      ? "auto_canon_ready"
+      : ownerScoped
+        ? "owner_review"
+        : summary.support_count >= 3
+          ? "needs_more_support"
+          : "keep_evidence";
+  return {
+    ...summary,
+    has_active_canon: hasActiveCanon,
+    auto_canon_eligible: autoCanonEligible,
+    suggested_action: suggestedAction,
+  };
+}
+
+export async function summarizeMemoryCanonCandidates(input: {
+  rootDir: string;
+  runtime: RuntimeKind;
+  limit?: number;
+  now?: string;
+}): Promise<MemoryCanonCandidateReport> {
+  const summaries = await loadMemoryMaturationSlotSummaries(input.rootDir, input.runtime);
+  const existingCanon = await loadCanonicalRecords(input.rootDir);
+  const limit = Math.max(1, Math.min(Math.floor(input.limit ?? 50), 500));
+  const finalized = [...summaries.values()]
+    .map((summary) => finalizeCanonCandidateSummary(summary, existingCanon))
+    .sort((left, right) =>
+      Number(right.auto_canon_eligible) - Number(left.auto_canon_eligible) ||
+      Number(right.has_active_canon) - Number(left.has_active_canon) ||
+      right.support_count - left.support_count ||
+      right.candidate_count - left.candidate_count ||
+      String(right.last_seen_at ?? "").localeCompare(String(left.last_seen_at ?? "")));
+  const candidates = finalized.slice(0, limit);
+  return {
+    schema_version: 1,
+    runtime: input.runtime,
+    generated_at: input.now ?? new Date().toISOString(),
+    totals: {
+      semantic_slots: summaries.size,
+      auto_canon_ready: finalized.filter((candidate) => candidate.suggested_action === "auto_canon_ready").length,
+      already_canon: finalized.filter((candidate) => candidate.suggested_action === "already_canon").length,
+      needs_more_support: finalized.filter((candidate) => candidate.suggested_action === "needs_more_support").length,
+      owner_review: finalized.filter((candidate) => candidate.suggested_action === "owner_review").length,
+    },
+    candidates,
+  };
 }
 
 async function applyCandidate(input: {
@@ -952,10 +1254,16 @@ export async function runMemoryMaturation(input: RunMemoryMaturationInput): Prom
     runtime: input.runtime,
     maxItems: input.maxItems,
   });
+  const [historicalSlots, observationDaysByRef] = await Promise.all([
+    loadMemoryMaturationSlotSummaries(input.rootDir, input.runtime),
+    loadObservationDaysByRef(input.rootDir),
+  ]);
   const maturation = compileMemoryMaturation({
     evidence,
     llmOutput: input.llmOutput,
     now,
+    historicalSlots,
+    observationDaysByRef,
   });
 
   if (!input.write) {

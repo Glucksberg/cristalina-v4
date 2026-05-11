@@ -98,9 +98,9 @@ configuration, and long-run validation gaps, not kernel gaps:
   harness; in the Hermes path this means the cron agent receives a Cristalina
   evidence package and produces structured candidates through Hermes' configured
   provider/OAuth, not through a separate Cristalina API key
-- the nightly memory cycle and progressive maturation selection need live soak
-  validation over several days of Hermes heartbeats, crons, gateway turns, and
-  recovery scenarios
+- the nightly memory cycle, progressive maturation selection, and corroborated
+  auto-canon policy need live soak validation over several days of Hermes
+  heartbeats, crons, gateway turns, and recovery scenarios
 - OpenClaw should receive the same install/config/update pattern only after the
   Hermes loop is running satisfactorily
 
@@ -132,6 +132,9 @@ After installation:
 - maturation records which observations/support refs were successfully
   processed, skips already-matured items on later runs, and revisits old
   evidence only when new support, conflict, or confidence changes justify it
+- recurring `semantic_slot` clusters accumulate support across maturation runs
+  so low-risk, non-owner claims can reach canon by corroboration instead of
+  waiting for a single LLM pass to label them `high` confidence
 - OpenClaw and Hermes can still write runtime evidence through their adapters
   where bridge/event compatibility is needed
 - OpenClaw and Hermes can load their latest compatible Cristalina projection
@@ -227,7 +230,22 @@ Status:
 - implemented for successful maturation observation refs; remaining work is
   long-run validation and a future reopen policy for fresh support/conflict
 
-### Step 8. OpenClaw Installer Parity
+### Step 8. Corroborated Canon Promotion
+
+Prevent useful repeated evidence from remaining forever in runtime/evidence
+layers.
+
+Primary outcome:
+
+- low-risk, non-owner semantic slots with repeated support across observations
+  can be promoted through world/wiki/proposal/canon with system ratification
+  when governance gates pass
+- owner-scoped, identity, authorization, preference, and higher-risk claims stay
+  review-gated
+- `memory candidates` and Farol show why a slot is already canon, ready for
+  auto-canon, needs more support, or requires owner review
+
+### Step 9. OpenClaw Installer Parity
 
 Create the one-line OpenClaw installation path after the Hermes path is
 validated.
@@ -237,7 +255,7 @@ Primary outcome:
 - OpenClaw can discover and use Cristalina with the same memory law as Hermes,
   adapted to OpenClaw's runtime surface rather than copied mechanically
 
-### Step 9. Session Continuity
+### Step 10. Session Continuity
 
 Expose checkpoint, session pack, and resume receipt behavior through adapter
 and bridge surfaces.
@@ -1135,6 +1153,10 @@ Implemented boundaries:
 - repeated maturation skips observation refs that were already successfully
   matured so the cycle advances through backlog instead of looping on the same
   selected items
+- corroborated low-risk, non-owner semantic slots can now be promoted to canon
+  even when the LLM labels the individual nightly claim as medium confidence
+- `memory candidates` exposes the maturation/canon funnel for operators and
+  Farol
 - Farol reports memory consolidation installation and maturation counts
 - [NIGHTLY-MEMORY-CONSOLIDATION.md](NIGHTLY-MEMORY-CONSOLIDATION.md) documents the
   product posture and current command surface
