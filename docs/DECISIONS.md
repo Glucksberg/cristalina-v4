@@ -212,6 +212,68 @@ Reason:
 - it reduces the chance of hidden semantics forming first inside fixtures, adapters, or UI surfaces
 - it keeps implementation pressure pointed at the core instead of at presentational completeness
 
+### D-018. Hermes uses the native provider as the default integration
+
+Decision:
+
+- Hermes installs should default to `memory.provider=cristalina`
+- the old `cristalina-bridge` plugin remains a rollback and compatibility mode,
+  not the normal product path
+
+Reason:
+
+- a seamless memory experience needs provider prefetch and post-turn evidence
+  sync inside the runtime loop
+- running both provider mode and bridge-plugin mode in parallel risks duplicate
+  capture and confusing operator diagnostics
+
+### D-019. Runtime-managed maturation uses the host runtime model harness
+
+Decision:
+
+- installed memory maturation jobs should use the model/provider configuration
+  already owned by the host runtime
+- Cristalina should not require a separate memory-specific API key for normal
+  operation
+
+Reason:
+
+- users should not need to configure multiple LLM stacks to get memory
+- remote inference privacy is already a runtime-level choice: if the runtime is
+  configured for remote inference, full selected memory evidence may be sent to
+  that provider; local privacy requires local runtime inference
+
+### D-020. Farol is observability, not product memory
+
+Decision:
+
+- Farol may observe live tests, write monitor snapshots, and document test
+  findings
+- Farol must not write Cristalina memory, steer Cristal as a hidden control
+  loop, or become required for the product to work
+
+Reason:
+
+- Farol exists to help development while the Hermes loop is being validated
+- the finished memory system must stand on Cristalina's own store, governance,
+  runtime jobs, diagnostics, and projections
+
+### D-021. Corroborated non-owner canon may be autonomous
+
+Decision:
+
+- low-risk non-owner claims may reach canon through proposal, governance gates,
+  and system ratification when corroboration is strong enough
+- owner-scoped preferences, identity, authorization, overrides, and higher-risk
+  decisions remain review-gated
+
+Reason:
+
+- requiring owner approval for every durable memory would make the system too
+  dependent and too conservative
+- allowing direct runtime-to-canon writes would break governance; autonomous
+  canon still has to travel through auditable proposal and ratification records
+
 ---
 
 ## 3. When To Update This Document

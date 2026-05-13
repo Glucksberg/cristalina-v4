@@ -1,6 +1,8 @@
 # Project Status
 
-**Current status:** Executable kernel baseline with thin authenticated Hermes and OpenClaw boundaries; ready for controlled runtime wiring tests through generated hook contracts
+**Current status:** Executable governed-memory kernel with a live native Hermes
+memory provider under controlled long-run testing; OpenClaw remains on the
+bridge/hook parity path until the Hermes loop is satisfactory.
 
 What already exists:
 
@@ -26,7 +28,8 @@ What already exists:
 - working-memory checkpoints, session packs, and resume receipts
 - executable core fixtures and tests
 - thin OpenClaw adapter package with projection reads and authenticated write-through
-- thin Hermes adapter package with projection reads and authenticated write-through
+- thin Hermes adapter package with projection reads and authenticated
+  write-through
 - clean workspace typecheck from a fresh no-`dist` state
 - shared dual-runtime smoke fixture against the same store
 - initial `@cristalina-v4/cli` package with `cristalina` command, config loader,
@@ -36,7 +39,20 @@ What already exists:
 - runtime-neutral event bridge for OpenClaw and Hermes preference, feedback,
   diagnostic, review, projection-refresh, and declared continuity events
 - local OpenClaw installer command and metadata writer
-- local Hermes installer command sharing the OpenClaw metadata contract
+- local Hermes installer command with native `memory.provider=cristalina`
+  default mode and explicit bridge fallback
+- native Hermes provider files, provider metadata, recognition/prefetch path,
+  post-turn evidence sync, and background bridge dispatch
+- runtime-managed nightly memory cycle for Hermes: deterministic memory
+  consolidation, source-neutral semantic maturation through the Hermes model
+  harness, and deterministic candidate promotion
+- progressive maturation backlog tracking so already-matured observation refs
+  are skipped unless later support/conflict justifies reopening
+- corroborated canon promotion for low-risk non-owner semantic slots, with
+  owner-scoped, identity, authorization, preference, and higher-risk claims
+  staying review-gated
+- installation registry plus `cristalina update` flow for refreshing the
+  checkout and reapplying registered runtime installations
 - generated OpenClaw and Hermes hook descriptors plus hook scripts that call
   `cristalina bridge event` through `CRISTALINA_EVENT_PATH`
 - versioned OpenClaw and Hermes runtime-event fixtures for the shared bridge
@@ -68,21 +84,32 @@ What already exists:
 
 What is next:
 
-- run `cristalina runtime preflight` with the selected OpenClaw/Hermes runtime
-  roots before installing hooks into those locations
-- run `cristalina runtime hook-map` with the real OpenClaw/Hermes config files
-  once the runtime-side hook locations are known
-- run the runtime-wiring hook scripts from local OpenClaw and Hermes sessions
-  instead of the generated event-template files
-- richer proposal operations only after the first live loop proves the need
+- continue the Hermes soak test across normal chat, Telegram gateway operation,
+  heartbeats, AI Pulse jobs, provider prefetch, evidence sync, nightly
+  consolidation/maturation/promotion, missed-run recovery, diagnostics, and
+  owner-review surfacing
+- harden the public one-line installer and minimal `cristalina config` UX before
+  publishing a package
+- refine the runtime-facing review digest for owner-scoped claims that should
+  not be auto-ratified
+- keep Farol read-only and development-only while using it to catch congestion,
+  stale projections, invalid events, skipped cycles, and semantic-maturation
+  drift
+- add OpenClaw installer/provider parity after the Hermes product loop is
+  reliable enough to copy the pattern intentionally
 
 What does not exist yet:
 
-- polished runtime-specific UX beyond the current thin authenticated write-through surfaces
-- a live-session bridge/daemon that translates real Hermes and OpenClaw events into adapter calls
-- native runtime config patching for OpenClaw and Hermes
+- polished runtime-specific UX beyond the current Hermes provider and thin
+  adapter surfaces
+- a published package or final public installer
+- automatic editing of native OpenClaw config files
+- OpenClaw native-provider parity
+- hosted synchronization or hostile multi-tenant deployment hardening
+- a product dependency on Farol; Farol is only a development monitor
 
-This project is now ready for controlled runtime wiring tests. The main
-remaining work is connecting the generated hook contract to the real
-OpenClaw/Hermes hook points and deciding whether the first live bridge should
-stay hook-driven or become a daemon.
+The project is past the bridge-demo stage for Hermes. The central question now
+is whether the native provider plus nightly memory cycle can keep producing
+useful wiki/canon/proposal state over several days of ordinary runtime evidence
+without becoming too conservative, too noisy, or too dependent on manual CLI
+operation.

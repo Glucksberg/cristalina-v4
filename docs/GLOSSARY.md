@@ -96,3 +96,55 @@ The same claim may be echoed elsewhere, but its authority must have one home.
 ### Intake Profile
 
 A semantic configuration contract that shapes how a source is normalized into the shared intake flow without changing memory law or layer ownership.
+
+### Semantic Maturation
+
+The governed LLM-assisted step that compiles accumulated runtime observations
+into structured memory claim candidates.
+
+It uses the host runtime's configured model harness in product operation. It is
+not a separate user-facing API-key requirement and it is not an authority grant.
+
+### Semantic Slot
+
+A stable claim-cluster name used to accumulate support across maturation runs.
+
+Repeated evidence in the same semantic slot may become eligible for wiki,
+proposal, review, or canon movement depending on risk, authority role,
+confidence, support refs, and governance gates.
+
+### Nightly Memory Cycle
+
+The installed runtime job that runs memory consolidation, semantic maturation,
+and deterministic candidate promotion once per day.
+
+For Hermes provider installs, this is currently scheduled as
+`cristalina-nightly-memory-cycle` at 03:00 local runtime time.
+
+### Native Hermes Provider
+
+The normal Hermes integration mode where Hermes config contains:
+
+```yaml
+memory:
+  provider: cristalina
+```
+
+The provider reads derived Cristalina recognition context before model calls and
+emits completed turns as evidence after responses.
+
+### Bridge
+
+The runtime-neutral event-ingress contract behind `cristalina bridge event`.
+
+In Hermes provider mode, the bridge remains the public evidence intake boundary
+used by the provider. It is not the product integration itself and should not be
+run in parallel through the old `cristalina-bridge` plugin unless rollback mode
+is explicitly selected.
+
+### Farol
+
+The temporary external monitor for the live Hermes/Cristalina test.
+
+Farol is read-only development observability. It is not store truth, owner
+authority, product memory, or a hidden steering layer.

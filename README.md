@@ -4,7 +4,7 @@
 > Raw sources + runtime self + temporal world model + governed canonical memory + persistent knowledge wiki — with a hard line between **evidence**, **operational state**, and **truth**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-22d3ee.svg)](LICENSE)
-[![Status: kernel implementation](https://img.shields.io/badge/status-kernel%20implementation-fbbf24.svg)](PROJECT-STATUS.md)
+[![Status: Hermes live testing](https://img.shields.io/badge/status-Hermes%20live%20testing-34d399.svg)](PROJECT-STATUS.md)
 [![pnpm workspace](https://img.shields.io/badge/pnpm-monorepo-fb923c.svg)](https://pnpm.io/workspaces)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-34d399.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6.svg)](https://www.typescriptlang.org/)
@@ -46,7 +46,9 @@ Cristalina v4 keeps those concerns separate at the architectural level, with exe
 
 ## Status
 
-**Current phase:** operational foundation for the first runtime bridge. See [PROJECT-STATUS.md](PROJECT-STATUS.md) for a precise rundown of what is and isn't built.
+**Current phase:** native Hermes provider live testing. See
+[PROJECT-STATUS.md](PROJECT-STATUS.md) for a precise rundown of what is and
+isn't built.
 
 What runs today:
 - Source intake profiles (3 normalized intake kinds)
@@ -58,15 +60,24 @@ What runs today:
 - Audit log, recovery journals, and executable end-to-end fixture flows
 - Retrieval, vector, external-candidate, maintenance, and eval boundaries
 - Working-memory checkpoints, session packs, and resume receipts
-- Minimal authenticated write-through and projection surfaces in the OpenClaw and Hermes adapters
+- Minimal authenticated write-through and projection surfaces in the OpenClaw
+  and Hermes adapters
 - Dual-runtime smoke flow proving one OpenClaw session and one Hermes session against the same store
 - Initial `cristalina` CLI package with help, init, config, doctor, status, and smoke command boundaries
 - Versioned config writer for store root, identity refs, runtime refs, projection policy, review behavior, and hook metadata paths
 - Runtime-neutral bridge event handler shared by OpenClaw and Hermes events
 - Local OpenClaw installer metadata command with generated hook descriptor and
   hook script
-- Local Hermes installer metadata command using the same bridge contract and
-  generated hook shape
+- Native Hermes `memory.provider=cristalina` installer path
+- Hermes provider prefetch, background evidence sync, runtime metadata, and
+  fallback bridge compatibility
+- Runtime-managed nightly memory cycle: deterministic consolidation, LLM-assisted
+  semantic maturation through the host runtime model harness, and deterministic
+  candidate promotion
+- Corroborated canon promotion for low-risk non-owner semantic slots, with
+  owner-scoped and higher-risk claims kept review-gated
+- `cristalina update` registry flow for refreshing the checkout and reapplying
+  registered runtime installations
 - Session continuity helpers for checkpoint, session-pack, and resume receipt flows
 - Operator commands for projections, reviews, diagnostics, store inspection, and recovery planning
 - Runtime-wiring smoke fixture proving install hooks, fixture events,
@@ -74,12 +85,14 @@ What runs today:
 - Runtime wiring runbook for install, inspect, review, recover, and handoff
 
 What's planned:
-- wiring the generated hook descriptors into real OpenClaw and Hermes config
-  files
-- running the fixture event contract from live OpenClaw and Hermes sessions
-- deciding whether live operation remains hook-driven or grows a daemon
-- production-style operator docs for install, inspect, review, recover, and
-  handoff
+- long-run Hermes soak testing across gateway turns, crons, memory prefetch,
+  evidence sync, nightly maturation, recovery, and missed-run behavior
+- a stable public one-line installer and minimal `cristalina config` UX before
+  package publishing is available
+- polishing the runtime-facing owner review digest and diagnostics
+- OpenClaw installer/provider parity after the Hermes loop is satisfactory
+- production-style operator docs for install, inspect, review, recover, update,
+  and handoff
 
 ## Quick start
 
@@ -121,6 +134,37 @@ pnpm fixture:mvp-flow-002   # canonical create → revise → supersede → audi
 pnpm fixture:mvp-flow-003   # contradiction detection → resolution → projection recompilation
 ```
 
+### Current Hermes Sandbox Install Shape
+
+Until Cristalina is published as a package, the Hermes path is installed from a
+checkout. For a fresh Hermes instance, use the runtime home as `HERMES_ROOT` and
+a separate checkout/runtime directory as `CRISTALINA_ROOT`:
+
+```bash
+HERMES_ROOT=/path/to/hermes/home \
+CRISTALINA_ROOT=/path/to/cristalina-v4-runtime \
+bash -lc 'set -eu; mkdir -p "$(dirname "$CRISTALINA_ROOT")"; if [ ! -d "$CRISTALINA_ROOT/.git" ]; then git clone https://github.com/Glucksberg/cristalina-v4.git "$CRISTALINA_ROOT"; fi; git -C "$CRISTALINA_ROOT" pull --ff-only; CRISTALINA_REPO_ROOT="$CRISTALINA_ROOT" sh "$CRISTALINA_ROOT/scripts/install-hermes.sh" --runtime-root "$HERMES_ROOT" --config "$CRISTALINA_ROOT/.cristalina-v4/config.json"'
+```
+
+The default Hermes installer mode writes a native provider:
+
+```text
+$HERMES_ROOT/plugins/cristalina/plugin.yaml
+$HERMES_ROOT/plugins/cristalina/__init__.py
+$HERMES_ROOT/.cristalina-v4/provider-hermes.json
+```
+
+and sets:
+
+```yaml
+memory:
+  provider: cristalina
+```
+
+Restart Hermes after install or update so the provider and scheduled jobs are
+loaded. Normal users should not need to run `bridge event`, `memory mature`, or
+manual event-path commands during ordinary operation.
+
 After running a fixture, inspect `examples/mvp-flow-00X/.cristalina-v4/` to see the materialized store layout — every layer, every record, every audit entry.
 
 After running `pnpm smoke:dual-runtime`, inspect `examples/dual-runtime-smoke/.cristalina-v4/smoke-summary.json` for the shared store root, OpenClaw/Hermes projection manifests, stable runtime refs, review action count, and audit/validation log counts.
@@ -131,12 +175,14 @@ generated hook descriptors under each generated runtime root. The versioned
 event fixtures in `examples/runtime-wiring/events/` are the current bridge
 contract for the first OpenClaw/Hermes live-session tests.
 
-Use `cristalina runtime hook-map` after install to write a Cristalina-owned
-mapping manifest next to the generated hook descriptor. The map does not edit
-OpenClaw or Hermes config directly; it records the descriptor path, executable
-hook script, target runtime config path, and required `CRISTALINA_EVENT_PATH`
-invocation so the real runtime config can reference the generated hook without
-inventing runtime-specific memory semantics.
+Use `cristalina runtime hook-map` after OpenClaw install to write a
+Cristalina-owned mapping manifest next to the generated hook descriptor. The map
+does not edit OpenClaw config directly; it records the descriptor path,
+executable hook script, target runtime config path, and required
+`CRISTALINA_EVENT_PATH` invocation so the real runtime config can reference the
+generated hook without inventing runtime-specific memory semantics. Hermes uses
+the native memory provider by default; bridge mode remains available as an
+explicit fallback.
 
 Use `cristalina runtime event-template` and `cristalina runtime event-check` to
 generate or validate the event JSON a runtime must write before invoking the
@@ -178,12 +224,14 @@ The docs are organized by purpose. Start with the first three if you're new.
 **Start here**
 - [docs/VISION.md](docs/VISION.md) — what Cristalina v4 is and why
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the six layers and their relationships
+- [docs/RUNTIME-WIRING-RUNBOOK.md](docs/RUNTIME-WIRING-RUNBOOK.md) — current Hermes provider install/update/test path
 - [docs/NEXT-GEN-MEMORY-SYNTHESIS.md](docs/NEXT-GEN-MEMORY-SYNTHESIS.md) — synthesis of the design
 
 **Contracts**
 - [docs/CORE-TYPES.md](docs/CORE-TYPES.md), [docs/OBJECT-ENVELOPE.md](docs/OBJECT-ENVELOPE.md)
 - [docs/STORAGE-MODEL.md](docs/STORAGE-MODEL.md), [docs/LEGAL-TRANSITIONS.md](docs/LEGAL-TRANSITIONS.md)
 - [docs/RUNTIME-IDENTITY.md](docs/RUNTIME-IDENTITY.md), [docs/DISPOSITION-AND-CONSOLIDATION.md](docs/DISPOSITION-AND-CONSOLIDATION.md)
+- [docs/NIGHTLY-MEMORY-CONSOLIDATION.md](docs/NIGHTLY-MEMORY-CONSOLIDATION.md), [docs/SEMANTIC-MATURATION.md](docs/SEMANTIC-MATURATION.md)
 - [docs/ADAPTER-CONTRACTS.md](docs/ADAPTER-CONTRACTS.md), [docs/SOURCE-INTAKE-PROFILES.md](docs/SOURCE-INTAKE-PROFILES.md)
 - [docs/PROJECTION-READ-DISCIPLINE.md](docs/PROJECTION-READ-DISCIPLINE.md), [docs/KNOWLEDGE-WIKI-LAYER.md](docs/KNOWLEDGE-WIKI-LAYER.md)
 - [docs/OPERATIONAL-SESSION-MEMORY-RFC-V2.md](docs/OPERATIONAL-SESSION-MEMORY-RFC-V2.md) — continuity contract for checkpoints and derived session packs
@@ -197,7 +245,7 @@ The docs are organized by purpose. Start with the first three if you're new.
 - [docs/ROADMAP.md](docs/ROADMAP.md), [docs/HARDENING-PLAN.md](docs/HARDENING-PLAN.md)
 - [docs/MODULARIZATION-PLAN.md](docs/MODULARIZATION-PLAN.md), [docs/REUSE-MATRIX.md](docs/REUSE-MATRIX.md)
 - [docs/MODEL-DEPENDENCY-MAP.md](docs/MODEL-DEPENDENCY-MAP.md), [docs/NEXT-KERNEL-EXTENSIONS.md](docs/NEXT-KERNEL-EXTENSIONS.md)
-- [docs/RUNTIME-WIRING-RUNBOOK.md](docs/RUNTIME-WIRING-RUNBOOK.md) — operator path for OpenClaw/Hermes install, inspect, review, recover, and handoff
+- [docs/CRISTAL-HERMES-TEST-MONITOR.md](docs/CRISTAL-HERMES-TEST-MONITOR.md) — Farol, the read-only live-test monitor
 
 **Reference**
 - [docs/GLOSSARY.md](docs/GLOSSARY.md), [docs/DECISIONS.md](docs/DECISIONS.md), [docs/NON-GOALS.md](docs/NON-GOALS.md)

@@ -4,7 +4,9 @@
 **Scope:** local OpenClaw wiring through hooks and Hermes wiring through the native memory provider
 
 This runbook is the operator path for connecting one OpenClaw runtime and one
-Hermes runtime to the same Cristalina store.
+Hermes runtime to the same Cristalina store. The current production-shaped path
+is Hermes first: Hermes loads Cristalina as a native memory provider, while
+OpenClaw still uses generated hook metadata until its parity phase begins.
 
 It assumes the current trust model:
 
@@ -109,7 +111,7 @@ Fix diagnostics before continuing.
 
 ## 4. Install Hook Metadata And Hermes Provider
 
-Install generated hook descriptors and hook scripts:
+Install OpenClaw hook metadata and the Hermes provider:
 
 ```bash
 pnpm cristalina install openclaw \
@@ -124,7 +126,7 @@ pnpm cristalina install hermes \
 ```
 
 Each install writes Cristalina-owned metadata under the runtime root. For
-Hermes, the default installer mode is now the native memory provider:
+Hermes, the default installer mode is the native memory provider:
 
 ```text
 /path/to/hermes/plugins/cristalina/plugin.yaml
@@ -177,18 +179,13 @@ pnpm cristalina update \
   --config .cristalina-v4/config.json
 ```
 
-Record where the real runtime config should point:
+Record where the real OpenClaw runtime config should point:
 
 ```bash
 pnpm cristalina runtime hook-map \
   --runtime openclaw \
   --runtime-root /path/to/openclaw \
   --target-config /path/to/openclaw/config/hooks.json
-
-pnpm cristalina runtime hook-map \
-  --runtime hermes \
-  --runtime-root /path/to/hermes \
-  --target-config /path/to/hermes/config/hooks.json
 ```
 
 The generated map records:
@@ -451,10 +448,14 @@ Before a real OpenClaw/Hermes session:
 - `pnpm smoke:runtime-wiring` passes
 - `doctor` reports a valid config
 - `runtime preflight` names the intended OpenClaw and Hermes roots
-- both installers have written hook descriptors and executable hook scripts
-- `runtime hook-map` exists for both runtime config targets
-- captured OpenClaw and Hermes event files pass `event-check`
-- `runtime event-verify` writes both events into the same store
+- the Hermes installer has written `plugins/cristalina/` and set
+  `memory.provider: cristalina`
+- the OpenClaw installer has written hook descriptors and executable hook
+  scripts
+- `runtime hook-map` exists for the OpenClaw runtime config target
+- captured OpenClaw event files pass `event-check`
+- Hermes provider turns create runtime evidence without manual
+  `CRISTALINA_EVENT_PATH`
 - `projection verify` passes
 - `session-pack verify-handoff` passes
 - `diagnostics list` contains no unexplained blocking diagnostics
@@ -474,8 +475,8 @@ This runbook does not yet provide:
 
 - a daemon that watches runtime event directories
 - automatic editing of native OpenClaw config files
-- full Hermes native config management beyond enabling `cristalina-bridge`
-- a native Hermes memory-provider plugin
+- OpenClaw native-provider parity
+- a final package-published installer
 - polished runtime-specific UI
 - hosted synchronization
 - hostile multi-tenant hardening as the main operating model

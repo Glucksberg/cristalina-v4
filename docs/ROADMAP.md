@@ -2,12 +2,13 @@
 ## Roadmap
 
 **Status:** Active Draft
-**Updated:** 2026-05-09
+**Updated:** 2026-05-13
 **Current posture:** executable memory kernel with a live native Hermes memory
-provider, runtime-managed memory maturation, installation registration, and a
-first `cristalina update` flow; Hermes now uses a single nightly memory cycle
-with progressive maturation selection; OpenClaw parity remains a future
-integration phase after the Hermes loop is satisfactory
+provider, runtime-managed memory maturation, installation registration, a first
+`cristalina update` flow, progressive maturation selection, and deterministic
+candidate promotion; Hermes now uses a single nightly memory cycle that can
+move corroborated low-risk non-owner claims into wiki/proposal/canon; OpenClaw
+parity remains a future integration phase after the Hermes loop is satisfactory
 
 ---
 
@@ -101,6 +102,9 @@ configuration, and long-run validation gaps, not kernel gaps:
 - the nightly memory cycle, progressive maturation selection, and corroborated
   auto-canon policy need live soak validation over several days of Hermes
   heartbeats, crons, gateway turns, and recovery scenarios
+- missed-run behavior needs an operator story: if the host machine is offline or
+  Windows/WSL misses the scheduled 03:00 window, the job may fast-forward to the
+  next day and should be easy to detect and manually trigger when appropriate
 - OpenClaw should receive the same install/config/update pattern only after the
   Hermes loop is running satisfactorily
 
@@ -146,6 +150,8 @@ After installation:
   summaries remain derived surfaces rather than truth sources
 - `cristalina update` refreshes the installed checkout and reapplies registered
   runtime installations
+- Farol can observe the live test during development, but Cristalina's product
+  behavior does not depend on Farol
 
 The first release target is a local trusted-collaborator installation, not a
 hostile multi-tenant service.
@@ -227,8 +233,9 @@ Primary outcome:
 
 Status:
 
-- implemented for successful maturation observation refs; remaining work is
-  long-run validation and a future reopen policy for fresh support/conflict
+- implemented for successful maturation observation refs and validated in the
+  Hermes live test; remaining work is long-run validation and a future reopen
+  policy for fresh support/conflict
 
 ### Step 8. Corroborated Canon Promotion
 
@@ -271,7 +278,7 @@ Primary outcome:
 - sessions can hand off or resume across OpenClaw and Hermes without turning
   derived packs into authority
 
-### Step 10. Seamless Operation
+### Step 11. Seamless Operation
 
 Add operator diagnostics, recovery commands, projection refresh behavior, and
 runtime-facing summaries.

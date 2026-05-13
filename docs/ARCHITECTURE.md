@@ -4,6 +4,10 @@
 **Status:** Draft  
 **Scope:** Repository architecture for the v4 line
 
+**Current implementation posture:** Hermes native-provider live testing. The
+bridge remains an evidence-ingress and compatibility contract, but Hermes no
+longer depends on the older `cristalina-bridge` plugin in the normal path.
+
 ---
 
 ## 1. Repository Goal
@@ -47,6 +51,23 @@ That means:
 - durable truth is governed and ratified
 - synthesized knowledge remains readable, navigable, and compounding over time
 - adapters project that memory into specific runtimes without letting runtimes become the source of truth
+
+The current live pipeline is:
+
+```text
+message_observed
+-> raw source and runtime observation
+-> runtime-only disposition
+-> nightly memory consolidation
+-> semantic maturation through the host runtime LLM harness
+-> structured memory candidates
+-> world/wiki/proposal/canon/review/diagnostic outcomes
+-> derived projections back to the runtime
+```
+
+Runtime events prove provenance. They do not prove truth or owner authority.
+LLM-assisted maturation proposes structured claims. It does not bypass
+governance.
 
 ---
 
@@ -100,12 +121,16 @@ Owns:
 - runtime-specific projection surfaces for Hermes
 - compatibility layer between Hermes runtime expectations and Cristalina core memory law
 - Hermes-facing runtime package assembly
+- native Hermes memory-provider integration surface
+- recognition/prefetch and post-turn evidence sync boundaries
 
 Does not own:
 
 - canonical truth
 - governance logic
 - global memory schema
+- owner authority
+- memory maturation law
 
 ---
 
@@ -227,6 +252,11 @@ In architectural terms:
 This distinction matters because many systems confuse "good accumulated documentation" with "true governed memory".
 
 They are related, but not identical.
+
+In the live Hermes test, the wiki is where Cristalina should accumulate useful
+operational and research synthesis that is too useful to leave buried in runtime
+evidence but not suitable as durable canon. Canon remains reserved for governed
+truth that passed proposal and ratification rules.
 
 ## 5.1 Source Intake Contract
 
