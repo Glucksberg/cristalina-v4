@@ -1066,6 +1066,141 @@ test("memory mature promotes corroborated low-risk external claims without owner
   assert.equal(candidatesPayload.candidates[0]?.has_active_canon, true);
 });
 
+test("memory promote-candidates promotes historical auto-ready slots and keeps operational self observations in wiki", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-memory-promote-candidates-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const config = buildDefaultCristalinaConfig({
+    storeRoot,
+    ownerIdentityRef: "actor_owner_cli_memory_promote_001",
+    agentIdentityRef: "actor_agent_cli_memory_promote_001",
+    hermesRuntimeRef: "runtime_hermes_cli_memory_promote_001",
+  });
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+  for (const [index, occurredAt] of ["2026-05-01T12:00:00.000Z", "2026-05-02T12:00:00.000Z", "2026-05-03T12:00:00.000Z"].entries()) {
+    await handleRuntimeBridgeEvent(config, {
+      event_id: `evt_cli_memory_promote_observed_00${index + 1}`,
+      event_type: "message_observed",
+      runtime: "hermes",
+      occurred_at: occurredAt,
+      actor_ref: "system:hermes-test",
+      authenticated_principal: {
+        kind: "system",
+        actor_ref: "system:hermes-test",
+        system_scope: "memory-promote-candidates-test",
+      },
+      runtime_instance_ref: "runtime_hermes_cli_memory_promote_001",
+      runtime_session_ref: "session_memory_promote_test",
+      conversation_thread_ref: "thread_memory_promote_test",
+      source_ref: `runtime/hermes/test/evt_cli_memory_promote_observed_00${index + 1}`,
+      message: "Agent memory research repeats that decay and supersession matter for durable memory.",
+    });
+  }
+
+  const supportRefs = [
+    "obs_hermes_evt_cli_memory_promote_observed_001",
+    "obs_hermes_evt_cli_memory_promote_observed_002",
+    "obs_hermes_evt_cli_memory_promote_observed_003",
+  ];
+  const contentRef = "raw/sources/historical-memory-maturation.json";
+  await writeFile(join(storeRoot, contentRef), `${JSON.stringify({
+    evidence_package: { runtime: "hermes" },
+    maturation: {
+      diagnostics: [],
+      created_at: "2026-05-04T00:00:00.000Z",
+      candidates: [
+        {
+          candidate_id: "claim_decay",
+          statement: "Agent memory systems benefit from decay and supersession handling.",
+          memory_kind: "belief",
+          epistemic_state: "inferred",
+          semantic_slot: "agent_memory.research_synthesis.decay_and_supersession",
+          subject_authority_role: "external",
+          confidence: "medium",
+          risk: "low",
+          support_refs: supportRefs,
+          recommended_dispositions: ["evidence_only"],
+          rationale: "Repeated external research observations support this low-risk memory architecture claim.",
+        },
+        {
+          candidate_id: "claim_workflow",
+          statement: "Cristal research heartbeats repeatedly run X/Twitter scans about agent memory.",
+          memory_kind: "procedure",
+          epistemic_state: "observed",
+          semantic_slot: "research_heartbeat_workflow",
+          subject_authority_role: "agent",
+          confidence: "high",
+          risk: "low",
+          support_refs: supportRefs,
+          recommended_dispositions: ["evidence_only"],
+          rationale: "This is useful operational process knowledge about the experiment.",
+        },
+      ],
+    },
+  }, null, 2)}\n`);
+  await writeFile(join(storeRoot, "raw", "sources", "src_historical_memory_maturation.json"), `${JSON.stringify({
+    id: "src_historical_memory_maturation",
+    kind: "source_record",
+    layer: "raw",
+    authoritative_home: "raw",
+    created_at: "2026-05-04T00:00:00.000Z",
+    updated_at: "2026-05-04T00:00:00.000Z",
+    visibility_state: { privacy_scope: "owner_private" },
+    provenance: {
+      source_type: "memory_maturation",
+      source_ref: "memory-maturation/hermes/historical-memory-maturation",
+      actor_ref: "system:test",
+      evidence_refs: supportRefs,
+    },
+    content_ref: contentRef,
+    observed_at: "2026-05-04T00:00:00.000Z",
+    intake_profile_ref: "structured_memory_claim",
+    intake_runner_contract_version: "registered_intake_profile.v1",
+    semantic_profile_fingerprint: "memory_maturation:hermes:historical",
+  }, null, 2)}\n`);
+
+  const planned = await executeCristalinaCommand({
+    name: "memory",
+    action: "promote-candidates",
+    configPath,
+    runtime: "hermes",
+    limit: 10,
+    write: false,
+  });
+  const plannedPayload = JSON.parse(planned.stdout) as {
+    status: string;
+    selected: Array<{ semantic_slot: string; action: string }>;
+  };
+  assert.equal(planned.exitCode, 0);
+  assert.equal(plannedPayload.status, "planned");
+  assert.deepEqual(plannedPayload.selected.map((entry) => [entry.semantic_slot, entry.action]), [
+    ["agent_memory.research_synthesis.decay_and_supersession", "canon"],
+    ["research_heartbeat_workflow", "wiki"],
+  ]);
+
+  const applied = await executeCristalinaCommand({
+    name: "memory",
+    action: "promote-candidates",
+    configPath,
+    runtime: "hermes",
+    limit: 10,
+    write: true,
+  });
+  const appliedPayload = JSON.parse(applied.stdout) as {
+    status: string;
+    applied: { canonical_record_refs: string[]; queued_review_refs: string[] };
+  };
+  assert.equal(applied.exitCode, 0);
+  assert.equal(appliedPayload.status, "applied");
+  assert.equal(appliedPayload.applied.canonical_record_refs.length, 1);
+  assert.equal(appliedPayload.applied.queued_review_refs.length, 0);
+  assert.equal((await readdir(join(storeRoot, "canon", "beliefs"))).length, 1);
+  assert.equal((await readdir(join(storeRoot, "canon", "procedures"))).length, 0);
+  assert.equal((await readdir(join(storeRoot, "wiki", "pages"))).length, 2);
+});
+
 test("CLI checkpoint create emits a new generation instead of overwriting the previous checkpoint", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-checkpoint-"));
   const storeRoot = join(root, "store");

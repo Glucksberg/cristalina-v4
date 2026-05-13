@@ -240,10 +240,16 @@ Primary outcome:
 - low-risk, non-owner semantic slots with repeated support across observations
   can be promoted through world/wiki/proposal/canon with system ratification
   when governance gates pass
+- historical `auto_canon_ready` candidates are promoted by a deterministic
+  nightly step instead of waiting for the same topic to reappear in a later LLM
+  batch
+- operational self-observations about the live experiment are promoted to wiki
+  context first, not canon, unless they become general durable principles
 - owner-scoped, identity, authorization, preference, and higher-risk claims stay
   review-gated
-- `memory candidates` and Farol show why a slot is already canon, ready for
-  auto-canon, needs more support, or requires owner review
+- `memory candidates`, `memory promote-candidates`, and Farol show why a slot is
+  already canon, ready for auto-canon, needs more support, or requires owner
+  review
 
 ### Step 9. OpenClaw Installer Parity
 
@@ -1155,9 +1161,13 @@ Implemented boundaries:
   selected items
 - corroborated low-risk, non-owner semantic slots can now be promoted to canon
   even when the LLM labels the individual nightly claim as medium confidence
+- `memory promote-candidates` advances already-matured auto-ready slots through
+  the legal proposal/ratification/canon path and keeps operational
+  self-observations in wiki context by default
 - `memory candidates` exposes the maturation/canon funnel for operators and
   Farol
-- Farol reports memory consolidation installation and maturation counts
+- Farol reports memory consolidation installation, maturation counts, and
+  candidate-promotion actions
 - [NIGHTLY-MEMORY-CONSOLIDATION.md](NIGHTLY-MEMORY-CONSOLIDATION.md) documents the
   product posture and current command surface
 

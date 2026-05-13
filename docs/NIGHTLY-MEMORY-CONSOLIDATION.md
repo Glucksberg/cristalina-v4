@@ -45,6 +45,8 @@ runtime observations
 -> memory mature
 -> structured_memory_claim candidates
 -> disposition and governance
+-> memory promote-candidates
+-> historical auto-ready slots promoted or staged
 ```
 
 ## Event Contract
@@ -117,6 +119,21 @@ Inspect accumulated canon candidates and corroboration state:
 cristalina memory candidates --runtime hermes --config .cristalina-v4/config.json
 ```
 
+Promote already-matured candidates that have become eligible through
+corroboration:
+
+```bash
+cristalina memory promote-candidates --runtime hermes --write --config .cristalina-v4/config.json
+```
+
+This command is deterministic. It does not call an LLM. Low-risk non-owner
+historical candidates that are `auto_canon_ready` move through proposal,
+ratification, and canon. Operational self-observations about the running
+experiment are kept in wiki context rather than being canonized by default.
+The result also includes a short `owner_review` question list for candidates
+that need explicit owner direction; the runtime may deliver that digest, while
+Cristalina keeps the memory decision and refs auditable.
+
 Operator CLI use does not call a remote LLM just because an API key exists. It
 uses `--llm-output` for offline/local review and recovery.
 
@@ -126,6 +143,8 @@ nightly memory cycle first writes deterministic consolidation, then prepares a
 Cristalina maturation evidence package, wakes the Hermes cron agent, lets that
 agent produce the structured JSON through the same Hermes model/provider harness
 used for ordinary cron turns, and then applies the JSON with `--llm-output`.
+The cycle also runs deterministic candidate promotion so older matured slots do
+not wait forever for the same topic to reappear in a later LLM batch.
 
 When that runtime is configured for remote inference, semantic maturation sends
 the full selected evidence text to the same remote LLM provider. This is

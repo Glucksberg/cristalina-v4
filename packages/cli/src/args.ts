@@ -75,6 +75,15 @@ export type CristalinaCommand =
       runtime: "openclaw" | "hermes";
       limit?: number;
     }
+  | {
+      name: "memory";
+      action: "promote-candidates";
+      configPath?: string;
+      storeRoot?: string;
+      runtime: "openclaw" | "hermes";
+      limit?: number;
+      write?: boolean;
+    }
   | { name: "checkpoint"; action: "create"; configPath?: string; runtime: "openclaw" | "hermes" }
   | { name: "session-pack"; action: "compile" | "latest" | "consume" | "apply"; configPath?: string; runtime: "openclaw" | "hermes"; checkpointId?: string }
   | { name: "session-pack"; action: "verify-handoff"; configPath?: string; checkpointId?: string; createCheckpoint?: boolean }
@@ -378,8 +387,8 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "memory") {
-    if (subcommand !== "consolidation" && subcommand !== "mature" && subcommand !== "candidates") {
-      throw new CommandUsageError("memory requires action consolidation, mature, or candidates");
+    if (subcommand !== "consolidation" && subcommand !== "mature" && subcommand !== "candidates" && subcommand !== "promote-candidates") {
+      throw new CommandUsageError("memory requires action consolidation, mature, candidates, or promote-candidates");
     }
     const commonOptions = new Map<string, OptionKind>([
       ["--config", "value"],
@@ -436,6 +445,31 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
         storeRoot: readOption(argv, "--store-root"),
         runtime,
         limit,
+      };
+    }
+    if (subcommand === "promote-candidates") {
+      rejectUnknownOptions(rest, new Map([
+        ...commonOptions,
+        ["--limit", "value"],
+        ["--write", "flag"],
+      ]));
+      const runtime = readOption(argv, "--runtime") ?? "hermes";
+      if (runtime !== "openclaw" && runtime !== "hermes") {
+        throw new CommandUsageError("memory promote-candidates requires --runtime openclaw or hermes");
+      }
+      const limitRaw = readOption(argv, "--limit");
+      const limit = limitRaw === undefined ? undefined : Number(limitRaw);
+      if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
+        throw new CommandUsageError("--limit must be a positive integer");
+      }
+      return {
+        name: "memory",
+        action: "promote-candidates",
+        configPath: readOption(argv, "--config"),
+        storeRoot: readOption(argv, "--store-root"),
+        runtime,
+        limit,
+        write: hasFlag(argv, "--write"),
       };
     }
     rejectUnknownOptions(rest, new Map([
@@ -646,6 +680,7 @@ export function helpText(): string {
     "  memory consolidation [--runtime openclaw|hermes] [--write] [--max-recent-events N] [--config PATH] [--store-root PATH]",
     "  memory mature [--runtime openclaw|hermes] [--write] [--max-items N] [--evidence-output PATH] [--llm-output PATH] [--config PATH] [--store-root PATH]",
     "  memory candidates [--runtime openclaw|hermes] [--limit N] [--config PATH] [--store-root PATH]",
+    "  memory promote-candidates [--runtime openclaw|hermes] [--write] [--limit N] [--config PATH] [--store-root PATH]",
     "  checkpoint create --runtime openclaw|hermes [--config PATH]",
     "  session-pack compile --runtime openclaw|hermes [--checkpoint-id ID] [--config PATH]",
     "  session-pack latest --runtime openclaw|hermes [--config PATH]",

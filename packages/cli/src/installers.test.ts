@@ -224,6 +224,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
       hermes_cron_jobs_path: string;
       hermes_cron_job_id: string;
       phases: string[];
+      candidate_promotion_command: string;
     };
   };
   assert.equal(providerConfig.provider, "cristalina");
@@ -260,7 +261,8 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(providerConfig.memory_cycle.hermes_cron_job_id, metadata.memory_cycle_cron_job_id);
   assert.equal(providerConfig.memory_consolidation.hermes_cron_job_id, metadata.memory_cycle_cron_job_id);
   assert.equal(providerConfig.memory_maturation.hermes_cron_job_id, metadata.memory_cycle_cron_job_id);
-  assert.deepEqual(providerConfig.memory_cycle.phases, ["memory_consolidation", "memory_maturation"]);
+  assert.deepEqual(providerConfig.memory_cycle.phases, ["memory_consolidation", "memory_maturation", "memory_candidate_promotion"]);
+  assert.match(providerConfig.memory_cycle.candidate_promotion_command, /memory promote-candidates --runtime hermes --write/);
 
   const memoryConsolidationMetadata = JSON.parse(await readFile(metadata.memory_consolidation_metadata_path, "utf8")) as {
     enabled: boolean;
@@ -318,16 +320,19 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     schedule_expr: string;
     schedule_display: string;
     phases: string[];
+    candidate_promotion_command: string;
   };
   assert.equal(memoryCycleMetadata.enabled, true);
   assert.equal(memoryCycleMetadata.schedule_kind, "cron");
   assert.equal(memoryCycleMetadata.schedule_expr, "0 3 * * *");
   assert.equal(memoryCycleMetadata.schedule_display, "daily at 03:00");
-  assert.deepEqual(memoryCycleMetadata.phases, ["memory_consolidation", "memory_maturation"]);
+  assert.deepEqual(memoryCycleMetadata.phases, ["memory_consolidation", "memory_maturation", "memory_candidate_promotion"]);
+  assert.match(memoryCycleMetadata.candidate_promotion_command, /memory promote-candidates --runtime hermes --write/);
   const memoryCycleCronScript = await readFile(metadata.memory_cycle_cron_script_path, "utf8");
   assert.match(memoryCycleCronScript, /consolidation_cmd/);
   assert.match(memoryCycleCronScript, /prepare_cmd/);
   assert.match(memoryCycleCronScript, /apply_command/);
+  assert.match(memoryCycleCronScript, /candidate_promotion_cmd/);
   const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
     jobs: Array<{ id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; script: string; deliver: string }>;
   };

@@ -15,6 +15,7 @@ import {
   recordSessionResumeReceiptToStore,
   compileHermesRecognitionProjectionFromStore,
   formatHermesRecognitionContext,
+  promoteMemoryCanonCandidates,
   summarizeMemoryCanonCandidates,
   writeHermesRecognitionProjectionToStore,
   type AuthenticatedPrincipal,
@@ -392,6 +393,36 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
       runtime: command.runtime,
       limit: command.limit,
     });
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+    };
+  }
+
+  if (command.name === "memory" && command.action === "promote-candidates") {
+    const { config, storeRoot } = await loadRequiredConfig(command.configPath, command.storeRoot);
+    const result = await promoteMemoryCanonCandidates({
+      rootDir: storeRoot,
+      runtime: command.runtime,
+      limit: command.limit,
+      write: command.write,
+      authenticated_principal: commandPrincipal(config),
+    });
+    if (command.write && command.runtime === "hermes" && result.applied && result.applied.record_refs.length > 0) {
+      await writeHermesRecognitionProjectionToStore({
+        rootDir: storeRoot,
+        read_context: {
+          adapter: "hermes",
+          audience: "memory_provider",
+          owner_identity_ref: config.owner_identity_ref ?? null,
+          actor_identity_ref: config.agent_identity_ref ?? null,
+          runtime_instance_ref: config.runtimes?.hermes?.runtime_instance_ref ?? null,
+          runtime_session_ref: config.runtimes?.hermes?.default_session_ref ?? null,
+          conversation_thread_ref: config.runtimes?.hermes?.default_thread_ref ?? null,
+        },
+      }).catch(() => undefined);
+    }
     return {
       exitCode: 0,
       stdout: `${JSON.stringify(result, null, 2)}\n`,

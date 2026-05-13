@@ -128,8 +128,12 @@ export interface MemoryCanonCandidateSummary {
   first_seen_at: string | null;
   last_seen_at: string | null;
   latest_statement: string | null;
+  latest_memory_kind: typeof CANONICAL_CLAIM_KINDS[number] | null;
+  latest_epistemic_state: EpistemicState | null;
   latest_confidence: MemoryMaturationConfidence | null;
   latest_risk: MemoryMaturationRisk | null;
+  latest_subject_authority_role: SubjectAuthorityRole | null;
+  latest_rationale: string | null;
   subject_authority_roles: SubjectAuthorityRole[];
   has_active_canon: boolean;
   auto_canon_eligible: boolean;
@@ -149,6 +153,36 @@ export interface MemoryCanonCandidateReport {
     owner_review: number;
   };
   candidates: MemoryCanonCandidateSummary[];
+}
+
+export interface PromoteMemoryCanonCandidatesResult {
+  schema_version: 1;
+  status: "planned" | "applied";
+  runtime: RuntimeKind;
+  generated_at: string;
+  selected: Array<{
+    semantic_slot: string;
+    action: "canon" | "wiki";
+    reason: string;
+    support_count: number;
+    distinct_observation_days: number;
+  }>;
+  skipped: Array<{
+    semantic_slot: string;
+    reason: string;
+  }>;
+  owner_review: Array<{
+    semantic_slot: string;
+    question: string;
+    support_count: number;
+    distinct_observation_days: number;
+  }>;
+  applied?: {
+    record_refs: string[];
+    canonical_record_refs: string[];
+    queued_review_refs: string[];
+    diagnostic_refs: string[];
+  };
 }
 
 interface MemoryMaturationRawFile {
@@ -259,8 +293,12 @@ function emptySlotSummary(semanticSlot: string): MemoryCanonCandidateSummary {
     first_seen_at: null,
     last_seen_at: null,
     latest_statement: null,
+    latest_memory_kind: null,
+    latest_epistemic_state: null,
     latest_confidence: null,
     latest_risk: null,
+    latest_subject_authority_role: null,
+    latest_rationale: null,
     subject_authority_roles: [],
     has_active_canon: false,
     auto_canon_eligible: false,
@@ -291,8 +329,12 @@ function updateSlotSummary(input: {
     first_seen_at: firstSeen,
     last_seen_at: lastSeen,
     latest_statement: input.candidate.statement,
+    latest_memory_kind: input.candidate.memory_kind,
+    latest_epistemic_state: input.candidate.epistemic_state,
     latest_confidence: input.candidate.confidence,
     latest_risk: input.candidate.risk,
+    latest_subject_authority_role: input.candidate.subject_authority_role,
+    latest_rationale: input.candidate.rationale,
     subject_authority_roles: mergeUniqueStrings(input.summary.subject_authority_roles, [input.candidate.subject_authority_role]) as SubjectAuthorityRole[],
     support_refs: supportRefs,
   };
@@ -898,6 +940,64 @@ function finalizeCanonCandidateSummary(summary: MemoryCanonCandidateSummary, exi
   };
 }
 
+function isOperationalSelfObservationSummary(summary: MemoryCanonCandidateSummary): boolean {
+  if (summary.subject_authority_roles.some((role) => role !== "agent")) return false;
+  const text = `${summary.semantic_slot} ${summary.latest_statement ?? ""}`.toLowerCase();
+  return (
+    text.includes("heartbeat") ||
+    text.includes("maturation_batch") ||
+    text.includes("research workflow") ||
+    text.includes("research method") ||
+    text.includes("x/twitter scan") ||
+    text.includes("x/twitter research")
+  );
+}
+
+function candidateFromSummary(input: {
+  summary: MemoryCanonCandidateSummary;
+  action: "canon" | "wiki";
+}): StructuredMemoryClaimCandidate | null {
+  const { summary } = input;
+  if (
+    !summary.latest_statement ||
+    !summary.latest_memory_kind ||
+    !summary.latest_epistemic_state ||
+    !summary.latest_confidence ||
+    !summary.latest_risk ||
+    !summary.latest_subject_authority_role
+  ) {
+    return null;
+  }
+  const supportRefs = [...summary.support_refs];
+  const dispositions: DispositionOutcome[] = input.action === "canon"
+    ? ["world_update", "wiki_update", "proposal_for_canon"]
+    : ["world_update", "wiki_update"];
+  return {
+    candidate_id: `candidate_${safeIdPart(summary.semantic_slot)}`,
+    statement: summary.latest_statement,
+    memory_kind: summary.latest_memory_kind,
+    epistemic_state: summary.latest_epistemic_state,
+    semantic_slot: summary.semantic_slot,
+    subject_authority_role: summary.latest_subject_authority_role,
+    confidence: summary.latest_confidence,
+    risk: summary.latest_risk,
+    support_refs: supportRefs,
+    recommended_dispositions: dispositions,
+    rationale: summary.latest_rationale ?? `Promoted from corroborated memory candidate ${summary.semantic_slot}.`,
+    corroboration: {
+      semantic_slot: summary.semantic_slot,
+      support_count: summary.support_count,
+      prior_candidate_count: summary.candidate_count,
+      distinct_observation_days: summary.distinct_observation_days,
+      support_refs: supportRefs,
+      auto_canon_eligible: input.action === "canon",
+      rationale: input.action === "canon"
+        ? "Promoted by nightly candidate promotion: historical candidate was corroborated and auto-canon-ready."
+        : "Kept in wiki by nightly candidate promotion: operational self-observation is useful context but not durable canon by default.",
+    },
+  };
+}
+
 export async function summarizeMemoryCanonCandidates(input: {
   rootDir: string;
   runtime: RuntimeKind;
@@ -929,6 +1029,140 @@ export async function summarizeMemoryCanonCandidates(input: {
     },
     candidates,
   };
+}
+
+export async function promoteMemoryCanonCandidates(input: {
+  rootDir: string;
+  runtime: RuntimeKind;
+  write?: boolean;
+  limit?: number;
+  now?: string;
+  authenticated_principal?: AuthenticatedPrincipal;
+}): Promise<PromoteMemoryCanonCandidatesResult> {
+  const now = input.now ?? new Date().toISOString();
+  const principal = input.authenticated_principal ?? {
+    kind: "system",
+    actor_ref: "system:cristalina-memory-candidate-promotion",
+    system_scope: "cristalina-memory-candidate-promotion",
+  } satisfies AuthenticatedPrincipal;
+  const report = await summarizeMemoryCanonCandidates({
+    rootDir: input.rootDir,
+    runtime: input.runtime,
+    limit: input.limit ?? 100,
+    now,
+  });
+  const existingWikiPages = await loadWikiPages(input.rootDir).catch(() => [] as WikiPage[]);
+  const selected: PromoteMemoryCanonCandidatesResult["selected"] = [];
+  const skipped: PromoteMemoryCanonCandidatesResult["skipped"] = [];
+  const ownerReview: PromoteMemoryCanonCandidatesResult["owner_review"] = [];
+  const candidates: StructuredMemoryClaimCandidate[] = [];
+
+  for (const summary of report.candidates) {
+    if (summary.suggested_action === "already_canon") {
+      skipped.push({ semantic_slot: summary.semantic_slot, reason: "already_canon" });
+      continue;
+    }
+    if (summary.suggested_action !== "auto_canon_ready") {
+      if (summary.suggested_action === "owner_review") {
+        ownerReview.push({
+          semantic_slot: summary.semantic_slot,
+          question: `Should Cristalina ratify this owner-scoped memory candidate? ${summary.latest_statement ?? summary.semantic_slot}`,
+          support_count: summary.support_count,
+          distinct_observation_days: summary.distinct_observation_days,
+        });
+      }
+      skipped.push({ semantic_slot: summary.semantic_slot, reason: summary.suggested_action });
+      continue;
+    }
+    const operationalSelfObservation = isOperationalSelfObservationSummary(summary);
+    if (
+      operationalSelfObservation &&
+      existingWikiPages.some((page) => page.id === `wpg_${safeIdPart(summary.semantic_slot)}` || page.path === `wiki/pages/${safeIdPart(summary.semantic_slot)}.md`)
+    ) {
+      skipped.push({ semantic_slot: summary.semantic_slot, reason: "operational_self_observation_already_wiki" });
+      continue;
+    }
+    const action: "canon" | "wiki" = operationalSelfObservation ? "wiki" : "canon";
+    const candidate = candidateFromSummary({ summary, action });
+    if (!candidate) {
+      skipped.push({ semantic_slot: summary.semantic_slot, reason: "incomplete_candidate_summary" });
+      continue;
+    }
+    selected.push({
+      semantic_slot: summary.semantic_slot,
+      action,
+      reason: operationalSelfObservation
+        ? "operational_self_observation_promoted_to_wiki"
+        : "historical_auto_canon_ready",
+      support_count: summary.support_count,
+      distinct_observation_days: summary.distinct_observation_days,
+    });
+    candidates.push(candidate);
+  }
+
+  const resultBase = {
+    schema_version: 1 as const,
+    status: input.write ? "applied" as const : "planned" as const,
+    runtime: input.runtime,
+    generated_at: now,
+    selected,
+    skipped,
+    owner_review: ownerReview.slice(0, 5),
+  };
+
+  if (!input.write || candidates.length === 0) {
+    return resultBase;
+  }
+
+  await initializeStore(input.rootDir, now);
+  return withMemoryMaturationLock(input.rootDir, `candidate-promotion-${input.runtime}`, async () => {
+    await recoverPendingMemoryMaturationJournals(input.rootDir);
+    let existingCanon = await loadCanonicalRecords(input.rootDir);
+    let existingWikiPages = await loadWikiPages(input.rootDir);
+    const applied = {
+      record_refs: [] as string[],
+      canonical_record_refs: [] as string[],
+      queued_review_refs: [] as string[],
+      diagnostic_refs: [] as string[],
+    };
+    const maturation: MemoryMaturation = {
+      schema_version: 1,
+      maturation_contract: "cristalina.memory_maturation.v1",
+      maturation_id: `memory_candidate_promotion_${input.runtime}`,
+      created_at: now,
+      runtime: input.runtime,
+      source_consolidation_ref: `memory_candidates:${input.runtime}`,
+      source_consolidation_id: `memory_candidates_${input.runtime}`,
+      mode: "llm_structured_claims",
+      llm_contract_version: "structured_memory_claims.v1",
+      candidates,
+      diagnostics: [],
+      authority_note: "Deterministic nightly candidate promotion reuses previously matured structured claims and still routes promotion through proposal, ratification, and canon governance.",
+    };
+
+    for (const candidate of candidates) {
+      const applyResult = await applyCandidate({
+        rootDir: input.rootDir,
+        now,
+        maturation,
+        candidate,
+        principal,
+        existingCanon,
+        existingWikiPages,
+      });
+      applied.record_refs.push(...applyResult.record_refs);
+      applied.canonical_record_refs.push(...applyResult.canonical_record_refs);
+      applied.queued_review_refs.push(...applyResult.queued_review_refs);
+      applied.diagnostic_refs.push(...applyResult.diagnostic_refs);
+      existingCanon = await loadCanonicalRecords(input.rootDir);
+      existingWikiPages = await loadWikiPages(input.rootDir);
+    }
+
+    return {
+      ...resultBase,
+      applied,
+    };
+  });
 }
 
 async function applyCandidate(input: {
@@ -1373,6 +1607,21 @@ export async function runMemoryMaturation(input: RunMemoryMaturationInput): Prom
       records: [maturationSource, maturationObservation],
     });
     applied.record_refs.push(maturationSource.id, maturationObservation.id);
+
+    const historicalPromotion = await promoteMemoryCanonCandidates({
+      rootDir: input.rootDir,
+      runtime: input.runtime,
+      write: true,
+      limit: 100,
+      now,
+      authenticated_principal: principal,
+    });
+    if (historicalPromotion.applied) {
+      applied.record_refs.push(...historicalPromotion.applied.record_refs);
+      applied.canonical_record_refs.push(...historicalPromotion.applied.canonical_record_refs);
+      applied.queued_review_refs.push(...historicalPromotion.applied.queued_review_refs);
+      applied.diagnostic_refs.push(...historicalPromotion.applied.diagnostic_refs);
+    }
 
     return {
       schema_version: 1,

@@ -690,6 +690,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   const memoryMaturationScheduleDisplay = "phase inside nightly memory cycle";
   const memoryMaturationMaxItems = 40;
   const memoryMaturationCommand = `cristalina memory mature --runtime ${input.runtime} --write --config ${loaded.configPath}`;
+  const memoryCandidatePromotionCommand = `cristalina memory promote-candidates --runtime ${input.runtime} --write --config ${loaded.configPath}`;
   const memoryConsolidationCronJobId = input.runtime === "hermes" && input.runtimeRoot
     ? stableHermesNamedCronJobId({ runtimeRoot: resolve(input.runtimeRoot), configPath: resolve(loaded.configPath), name: "cristalina-nightly-memory-cycle" })
     : undefined;
@@ -764,7 +765,8 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
               cron_script_path: pluginPaths.memoryCycleCronScriptPath,
               hermes_cron_jobs_path: pluginPaths.memoryConsolidationCronJobsPath,
               hermes_cron_job_id: memoryCycleCronJobId,
-              phases: ["memory_consolidation", "memory_maturation"],
+              phases: ["memory_consolidation", "memory_maturation", "memory_candidate_promotion"],
+              candidate_promotion_command: memoryCandidatePromotionCommand,
             }
           : undefined,
         authority_note: "Provider payloads are evidence and derived context only; owner authority remains in Cristalina consolidation flows.",
@@ -940,8 +942,9 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         cron_script_path: pluginPaths.memoryCycleCronScriptPath,
         hermes_cron_jobs_path: pluginPaths.memoryConsolidationCronJobsPath,
         hermes_cron_job_id: memoryCycleCronJobId,
-        phases: ["memory_consolidation", "memory_maturation"],
-        authority_note: "Nightly memory cycle orchestrates deterministic consolidation before Hermes-harness semantic maturation; Cristalina still validates authority and governance before promotion.",
+        phases: ["memory_consolidation", "memory_maturation", "memory_candidate_promotion"],
+        candidate_promotion_command: memoryCandidatePromotionCommand,
+        authority_note: "Nightly memory cycle orchestrates deterministic consolidation, Hermes-harness semantic maturation, and deterministic candidate promotion; Cristalina still validates authority and governance before canon writes.",
       }
     : null;
   const memoryConsolidationScript = pluginPaths.memoryConsolidationScriptPath
@@ -1064,6 +1067,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         `consolidation_cmd = ${JSON.stringify([process.execPath, cliPath, "memory", "consolidation", "--runtime", input.runtime, "--write", "--config", loaded.configPath, "--max-recent-events"])} + [max_recent_events]`,
         `prepare_cmd = ${JSON.stringify([process.execPath, cliPath, "memory", "mature", "--runtime", input.runtime, "--config", loaded.configPath, "--max-items"])} + [max_items, "--evidence-output", evidence_path]`,
         `apply_command = ${JSON.stringify([process.execPath, cliPath, "memory", "mature", "--runtime", input.runtime, "--write", "--config", loaded.configPath, "--max-items"])} + [max_items, "--llm-output", llm_output_path]`,
+        `candidate_promotion_cmd = ${JSON.stringify([process.execPath, cliPath, "memory", "promote-candidates", "--runtime", input.runtime, "--write", "--config", loaded.configPath, "--limit", "100"])}`,
         "payload = {",
         "    'status': 'started',",
         "    'cycle_id': run_id,",
@@ -1072,6 +1076,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         "    'evidence_path': evidence_path,",
         "    'llm_output_path': llm_output_path,",
         "    'apply_command': apply_command,",
+        "    'candidate_promotion_command': candidate_promotion_cmd,",
         "}",
         "consolidation = subprocess.run(consolidation_cmd, capture_output=True, text=True, timeout=consolidation_timeout)",
         "payload['consolidation_returncode'] = consolidation.returncode",
@@ -1105,6 +1110,16 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         "if int(prepared_payload.get('selected_items') or 0) == 0:",
         "    payload['status'] = 'nothing_to_mature'",
         "    payload['wakeAgent'] = False",
+        "promotion = subprocess.run(candidate_promotion_cmd, capture_output=True, text=True, timeout=60)",
+        "payload['candidate_promotion_returncode'] = promotion.returncode",
+        "if promotion.stdout:",
+        "    payload['candidate_promotion_stdout_tail'] = promotion.stdout[-4000:]",
+        "if promotion.stderr:",
+        "    payload['candidate_promotion_stderr_tail'] = promotion.stderr[-4000:]",
+        "if promotion.returncode != 0:",
+        "    payload['status'] = 'candidate_promotion_error'",
+        "    print(json.dumps(payload, ensure_ascii=True))",
+        "    sys.exit(promotion.returncode)",
         "print(json.dumps(payload, ensure_ascii=True))",
         "sys.exit(0)",
         "",

@@ -151,6 +151,24 @@ It summarizes recurring `semantic_slot` clusters, support counts, distinct
 observation days, already-canonical slots, and candidates ready for automatic
 canon.
 
+The deterministic promotion step is:
+
+```bash
+cristalina memory promote-candidates --runtime hermes --write --config .cristalina-v4/config.json
+```
+
+It reads previously matured candidates and advances historical `auto_canon_ready`
+slots through the same world/wiki/proposal/ratification/canon path. Operational
+self-observations about the live experiment, such as heartbeat workflow notes,
+are promoted to wiki context instead of canon by default. This keeps current
+runtime process knowledge useful without treating every temporary method detail
+as durable truth.
+
+The same report includes a short `owner_review` section for candidates that need
+human direction. Delivery is owned by the host runtime, not by the memory core:
+Cristalina produces the questions and refs; Hermes/OpenClaw may decide how to
+surface them.
+
 ---
 
 ## Product Boundary
