@@ -732,16 +732,34 @@ function dashboardHtml() {
         '</tbody></table>';
     }
 
+    function renderLoading() {
+      $('overview').innerHTML = [
+        metric('Provider', 'loading', 'waiting for Farol snapshot'),
+        metric('Status', 'loading', 'waiting for Farol snapshot'),
+        metric('Owner Decisions', 'loading', 'waiting for Farol snapshot'),
+        metric('Recognition', 'loading', 'waiting for Farol snapshot'),
+        metric('Canon / Wiki', 'loading', 'waiting for Farol snapshot'),
+        metric('Nightly', 'loading', 'waiting for Farol snapshot'),
+      ].join('');
+      $('owner-decisions').innerHTML = '<div class="small">Loading owner decisions...</div>';
+      $('nightly').innerHTML = '<div class="small">Loading nightly cycle...</div>';
+      $('events').innerHTML = '<div class="small">Loading recent events...</div>';
+      $('raw').textContent = 'Loading Farol snapshot...';
+    }
+
+    let refreshInFlight = false;
+
     async function refresh() {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
       try {
-        const [snapshotResponse, boardResponse] = await Promise.all([
-          fetch('/api/snapshot', { cache: 'no-store' }),
-          fetch('/api/board', { cache: 'no-store' }),
-        ]);
-        const snapshotPayload = await snapshotResponse.json();
+        const boardResponse = await fetch('/api/board', { cache: 'no-store' });
         const board = await boardResponse.json();
-        const snapshot = snapshotPayload.snapshot;
         renderFronts(board);
+
+        const snapshotResponse = await fetch('/api/snapshot', { cache: 'no-store' });
+        const snapshotPayload = await snapshotResponse.json();
+        const snapshot = snapshotPayload.snapshot;
         renderOverview(snapshot);
         renderOwner(snapshot);
         renderNightly(snapshot);
@@ -751,9 +769,12 @@ function dashboardHtml() {
       } catch (error) {
         $('load-error').hidden = false;
         $('load-error').textContent = 'Farol refresh failed: ' + (error?.message || error);
+      } finally {
+        refreshInFlight = false;
       }
     }
 
+    renderLoading();
     refresh();
     setInterval(refresh, 10000);
   </script>
