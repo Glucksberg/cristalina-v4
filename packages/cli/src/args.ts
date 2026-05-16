@@ -100,7 +100,7 @@ export type CristalinaCommand =
       runtimeSessionRef?: string;
       conversationThreadRef?: string;
     }
-  | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string }
+  | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string; ownerDecisions?: boolean }
   | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
   | { name: "store"; action: "inspect" | "recover"; configPath?: string; storeRoot?: string }
   | {
@@ -593,6 +593,7 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       ["--store-root", "value"],
       ["--runtime", "value"],
       ["--queue-id", "value"],
+      ["--owner-decisions", "flag"],
     ]));
     const runtime = readOption(argv, "--runtime");
     if (runtime !== undefined && runtime !== "openclaw" && runtime !== "hermes") {
@@ -605,6 +606,7 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       storeRoot: readOption(argv, "--store-root"),
       runtime,
       queueId: readOption(argv, "--queue-id"),
+      ownerDecisions: hasFlag(argv, "--owner-decisions"),
     };
   }
 
@@ -692,7 +694,7 @@ export function helpText(): string {
     "  projection refresh [--config PATH] [--store-root PATH]",
     "  projection recognition [--query TEXT] [--format json|context] [--runtime-session-ref ID] [--conversation-thread-ref ID] [--write] [--config PATH] [--store-root PATH]",
     "  projection verify [--config PATH] [--store-root PATH]",
-    "  reviews list [--config PATH] [--store-root PATH]",
+    "  reviews list [--owner-decisions] [--config PATH] [--store-root PATH]",
     "  reviews apply --runtime openclaw|hermes --queue-id ID [--config PATH] [--store-root PATH]",
     "  diagnostics list [--config PATH] [--store-root PATH]",
     "  store inspect [--config PATH] [--store-root PATH]",

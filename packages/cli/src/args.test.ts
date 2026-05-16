@@ -190,6 +190,15 @@ test("CLI parser recognizes the planned command surface", () => {
     configPath: undefined,
     storeRoot: undefined,
   });
+  assert.deepEqual(parseCristalinaCommand(["reviews", "list", "--owner-decisions"]), {
+    name: "reviews",
+    action: "list",
+    configPath: undefined,
+    storeRoot: undefined,
+    runtime: undefined,
+    queueId: undefined,
+    ownerDecisions: true,
+  });
   assert.deepEqual(parseCristalinaCommand(["projection", "verify", "--config", "config.json", "--store-root", "tmp/store"]), {
     name: "projection",
     action: "verify",

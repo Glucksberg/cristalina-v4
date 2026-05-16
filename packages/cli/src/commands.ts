@@ -8,6 +8,7 @@ import { parseCristalinaCommand, helpText, CommandUsageError, type CristalinaCom
 import {
   compileSessionPackToStore,
   inspectCristalinaStore,
+  listOwnerDecisionRequests,
   listStoreDiagnostics,
   listStoreProjectionManifests,
   loadLatestSessionPackManifest,
@@ -608,6 +609,20 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
           runtime: command.runtime,
           status: result.records.owner_ratification_queue?.status,
           projection_manifest_ref: result.records.projection_manifest.id,
+        }, null, 2)}\n`,
+        stderr: "",
+      };
+    }
+    if (command.ownerDecisions) {
+      const loaded = await loadRequiredConfig(command.configPath, command.storeRoot);
+      const ownerDecisions = await listOwnerDecisionRequests({ rootDir: loaded.storeRoot });
+      return {
+        exitCode: 0,
+        stdout: `${JSON.stringify({
+          action: command.action,
+          pending_owner_reviews: status.pending_owner_reviews,
+          ...ownerDecisions,
+          diagnostics: status.diagnostics,
         }, null, 2)}\n`,
         stderr: "",
       };
