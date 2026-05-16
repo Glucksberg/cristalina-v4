@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-05-16T09:30:00-04:00",
+  "updated_at": "2026-05-16T09:57:35-04:00",
   "title": "Farol Live Test Board",
   "summary": "External read-only board for the Hermes/Cristalina live test. This is development coordination, not Cristalina memory truth.",
   "fronts": [
@@ -11,15 +11,17 @@
       "goal": "Verify that Cristal can inspect pending owner decisions through Cristalina surfaces without falling back to filesystem tools.",
       "next_questions": [
         "Nao use session_search, search_files nem execute_code. Use apenas cristalina_memory_status. A partir de owner_decisions, proponha uma acao para cada item: ratify, keep_maturing, subsume, reject ou move_to_wiki. Nao aplique nada ainda.",
-        "Para os itens sugeridos como subsume, liste o canon existente que receberia a evidencia adicional."
+        "Para os itens sugeridos como subsume, liste o canon existente que receberia a evidencia adicional.",
+        "Reformule o item de side-channel fisico como principio geral de risco para agentes que operam ambientes fisicos, sem reduzir a decisao a RF."
       ],
       "next_code_changes": [
-        "Add governed apply flows for owner choices beyond plain ratify: subsume, move_to_wiki, keep_maturing, reject.",
-        "Expose owner decision counts in Farol and provider status without scraping diagnostics."
+        "Add batch-file support for owner decision sets after the single-decision CLI is verified live.",
+        "Expose applied owner decision counts in Farol and provider status without scraping diagnostics."
       ],
       "next_tests": [
         "Confirm Cristal does not call search_files/execute_code for owner_decisions after gateway restart.",
-        "Confirm owner decisions remain read-only until an explicit apply command exists."
+        "Dry-run the provisional owner decision set before applying anything to the live store.",
+        "Confirm planning/backlog items 9 and 11 move to wiki as recoverable planning context, not canon truth."
       ]
     },
     {

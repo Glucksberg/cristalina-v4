@@ -38,3 +38,8 @@ docs, monitor artifacts, or issue notes instead of copying long logs.
   records, 221 recognition entries, and an OK 03:00 nightly memory cycle. Next
   focus is owner-review, projection behavior, contradiction tests, and wiki
   quality.
+- 2026-05-16: Owner-decision routing clarified that planning/backlog proposals
+  belong in wiki as recoverable context, not canon truth. The physical
+  side-channel security proposal should keep maturing toward a broader claim
+  about agents operating physical environments, instead of a narrow RF-only
+  principle.
