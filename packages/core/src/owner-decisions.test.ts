@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { writeCoreRecord } from "./store/io.js";
+import { loadProjectionManifests, writeCoreRecord } from "./store/io.js";
 import { applyOwnerDecision, listOwnerDecisionRequests } from "./owner-decisions.js";
 import type { CanonicalMemoryObject, CurationPacket, Diagnostic, Proposal } from "./types.js";
 
@@ -277,6 +277,52 @@ test("owner decision ratify rejects revise proposals without a matching canon ta
 
   assert.equal(result.status, "rejected_by_validation");
   assert.match(result.warnings[0] ?? "", /requires a target_ref/);
+});
+
+test("owner decision apply refreshes the Hermes recognition projection", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-owner-decision-projection-"));
+  const proposal: Proposal = {
+    id: "prop_owner_decision_projection_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_projection/claim_001"),
+    operation: "create",
+    candidate_kind: "belief",
+    target_layer: "canon",
+    target_ref: null,
+    candidate_payload: {
+      kind: "belief",
+      statement: "Owner decisions must refresh provider-facing projections.",
+      semantic_slot: "cristalina.governance.owner_decision_projection_refresh",
+      epistemic_state: "confirmed",
+      temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+      support_refs: ["obs_owner_decision_projection_001"],
+    },
+    reason: "Projection visibility must follow owner decisions.",
+    evidence_refs: ["src_owner_decision_projection_001", "obs_owner_decision_projection_001"],
+    subject_authority_role: "owner",
+    promotion_requirement: "owner_ratification_required",
+    governance_state: "proposed",
+  };
+  await writeCoreRecord(rootDir, proposal);
+
+  const result = await applyOwnerDecision({
+    rootDir,
+    proposal_ref: proposal.id,
+    action: "ratify",
+    now,
+    actor: "actor_owner_001",
+    reason: "Owner ratified projection refresh behavior.",
+  });
+
+  const manifests = await loadProjectionManifests(rootDir);
+  assert.equal(result.records.projection_manifest?.adapter, "hermes");
+  assert.equal(result.records.projection_manifest?.audience, "memory_provider");
+  assert.equal(manifests.some((manifest) => manifest.id === result.records.projection_manifest?.id), true);
 });
 
 test("owner decision subsume links a proposal to existing canon and removes it from active decisions", async () => {

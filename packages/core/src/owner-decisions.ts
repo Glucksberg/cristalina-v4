@@ -10,12 +10,14 @@ import {
   writeCoreRecord,
 } from "./store/io.js";
 import { applyApprovedCanonicalProposal } from "./canon/engine.js";
+import { writeHermesRecognitionProjectionToStore } from "./projection-engine/hermes-recognition.js";
 import type {
   AuthenticatedPrincipal,
   CanonicalMemoryObject,
   CurationPacket,
   Diagnostic,
   DispositionRecord,
+  ProjectionManifest,
   Proposal,
   RatificationRecord,
   WikiClaim,
@@ -73,6 +75,7 @@ export interface ApplyOwnerDecisionResult {
     canonical_record?: CanonicalMemoryObject;
     wiki_page?: WikiPage;
     wiki_claim?: WikiClaim;
+    projection_manifest?: ProjectionManifest;
   };
 }
 
@@ -231,6 +234,15 @@ function decisionDisposition(input: {
 
 function ratificationId(input: ApplyOwnerDecisionInput, proposal: Proposal): string {
   return `rat_owner_decision_${proposalIdPart(proposal)}_${input.action}`;
+}
+
+function projectionIdsForDecision(input: ApplyOwnerDecisionInput, proposal: Proposal) {
+  const idPart = `${proposalIdPart(proposal)}_${input.action}`;
+  return {
+    manifest: `pmf_owner_decision_${idPart}`,
+    json_artifact: `part_owner_decision_${idPart}_json`,
+    context_artifact: `part_owner_decision_${idPart}_context`,
+  };
 }
 
 function approvedRatification(input: ApplyOwnerDecisionInput, proposal: Proposal): RatificationRecord {
@@ -640,6 +652,16 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
         writeCoreRecord(input.rootDir, disposition),
       ]);
     }
+  }
+
+  if (!input.dry_run) {
+    const projection = await writeHermesRecognitionProjectionToStore({
+      rootDir: input.rootDir,
+      now: input.now,
+      ids: projectionIdsForDecision(input, proposal),
+    });
+    records.projection_manifest = projection.manifest;
+    updated_refs.push(projection.manifest.id, ...projection.artifacts.map((artifact) => artifact.id));
   }
 
   return {
