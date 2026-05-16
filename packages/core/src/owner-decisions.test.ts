@@ -323,6 +323,17 @@ test("owner decision apply refreshes the Hermes recognition projection", async (
   assert.equal(result.records.projection_manifest?.adapter, "hermes");
   assert.equal(result.records.projection_manifest?.audience, "memory_provider");
   assert.equal(manifests.some((manifest) => manifest.id === result.records.projection_manifest?.id), true);
+
+  const replay = await applyOwnerDecision({
+    rootDir,
+    proposal_ref: proposal.id,
+    action: "ratify",
+    now,
+    actor: "actor_owner_001",
+    reason: "Owner ratified projection refresh behavior.",
+  });
+  assert.equal(replay.status, "already_applied");
+  assert.equal(replay.records.projection_manifest?.adapter, "hermes");
 });
 
 test("owner decision subsume links a proposal to existing canon and removes it from active decisions", async () => {

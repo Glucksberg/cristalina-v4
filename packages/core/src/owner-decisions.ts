@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { join } from "node:path";
+
 import {
   loadRatificationRecords,
   loadCanonicalRecords,
@@ -9,11 +13,13 @@ import {
   loadWikiPages,
   writeCoreRecord,
 } from "./store/io.js";
+import { atomicWriteText, isMissingFileError } from "./store/atomic-write.js";
 import { applyApprovedCanonicalProposal } from "./canon/engine.js";
 import { writeHermesRecognitionProjectionToStore } from "./projection-engine/hermes-recognition.js";
 import type {
   AuthenticatedPrincipal,
   CanonicalMemoryObject,
+  CoreRecord,
   CurationPacket,
   Diagnostic,
   DispositionRecord,
@@ -25,6 +31,18 @@ import type {
 } from "./types.js";
 
 export type OwnerDecisionAction = "ratify" | "subsume" | "keep_maturing" | "reject" | "move_to_wiki";
+
+const OWNER_DECISION_LOCK_POLL_MS = 100;
+const OWNER_DECISION_LOCK_TIMEOUT_MS = 10_000;
+const OWNER_DECISION_LOCK_STALE_MS = 120_000;
+
+interface OwnerDecisionRecoveryJournal {
+  version: 1;
+  created_at: string;
+  proposal_ref: string;
+  action: OwnerDecisionAction;
+  records: CoreRecord[];
+}
 
 export interface OwnerDecisionRequest {
   proposal_ref: string;
@@ -145,6 +163,115 @@ function safeIdPart(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 96) || "owner_decision";
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+}
+
+function ownerDecisionSnapshotDir(rootDir: string): string {
+  return join(rootDir, "audits", "snapshots");
+}
+
+function ownerDecisionStableId(proposal_ref: string, action: OwnerDecisionAction): string {
+  const raw = `${proposal_ref}_${action}`;
+  const hash = createHash("sha256").update(raw).digest("hex").slice(0, 12);
+  return `${safeIdPart(raw).slice(0, 72)}_${hash}`;
+}
+
+function ownerDecisionJournalPath(rootDir: string, proposal_ref: string, action: OwnerDecisionAction): string {
+  return join(ownerDecisionSnapshotDir(rootDir), `recovery-owner-decision-${ownerDecisionStableId(proposal_ref, action)}.json`);
+}
+
+function ownerDecisionLockPath(rootDir: string, proposal_ref: string, action: OwnerDecisionAction): string {
+  return join(ownerDecisionSnapshotDir(rootDir), `lock-owner-decision-${ownerDecisionStableId(proposal_ref, action)}`);
+}
+
+async function ownerDecisionLockIsStale(lockPath: string): Promise<boolean> {
+  const lockStat = await stat(lockPath).catch((error) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
+  if (!lockStat) return false;
+  return Date.now() - lockStat.mtimeMs > OWNER_DECISION_LOCK_STALE_MS;
+}
+
+async function withOwnerDecisionLock<T>(
+  rootDir: string,
+  proposal_ref: string,
+  action: OwnerDecisionAction,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const snapshotDir = ownerDecisionSnapshotDir(rootDir);
+  const lockPath = ownerDecisionLockPath(rootDir, proposal_ref, action);
+  const deadline = Date.now() + OWNER_DECISION_LOCK_TIMEOUT_MS;
+  await mkdir(snapshotDir, { recursive: true });
+
+  while (true) {
+    try {
+      await mkdir(lockPath, { recursive: false });
+      break;
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) throw error;
+      if (await ownerDecisionLockIsStale(lockPath)) {
+        await rm(lockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out acquiring owner decision lock for ${proposal_ref}`);
+      }
+      await sleep(OWNER_DECISION_LOCK_POLL_MS);
+    }
+  }
+
+  try {
+    return await fn();
+  } finally {
+    await rm(lockPath, { recursive: true, force: true });
+  }
+}
+
+async function recoverOwnerDecisionJournal(
+  rootDir: string,
+  proposal_ref: string,
+  action: OwnerDecisionAction,
+): Promise<void> {
+  const journalPath = ownerDecisionJournalPath(rootDir, proposal_ref, action);
+  const source = await readFile(journalPath, "utf8").catch((error) => {
+    if (isMissingFileError(error)) return undefined;
+    throw error;
+  });
+  if (!source) return;
+
+  const journal = JSON.parse(source) as Partial<OwnerDecisionRecoveryJournal>;
+  if (journal.version !== 1 || journal.proposal_ref !== proposal_ref || journal.action !== action || !Array.isArray(journal.records)) {
+    throw new Error(`Owner decision recovery journal is malformed: ${journalPath}`);
+  }
+  for (const record of journal.records) {
+    await writeCoreRecord(rootDir, record);
+  }
+  await rm(journalPath, { force: true });
+}
+
+async function writeOwnerDecisionCoreRecords(input: ApplyOwnerDecisionInput, records: CoreRecord[]): Promise<void> {
+  const journalPath = ownerDecisionJournalPath(input.rootDir, input.proposal_ref, input.action);
+  const journal: OwnerDecisionRecoveryJournal = {
+    version: 1,
+    created_at: input.now,
+    proposal_ref: input.proposal_ref,
+    action: input.action,
+    records,
+  };
+  await mkdir(ownerDecisionSnapshotDir(input.rootDir), { recursive: true });
+  await atomicWriteText(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
+  for (const record of records) {
+    await writeCoreRecord(input.rootDir, record);
+  }
+  await rm(journalPath, { force: true });
+}
+
 function proposalIdPart(proposal: Proposal): string {
   return safeIdPart(proposal.id.replace(/^prop_/, ""));
 }
@@ -243,6 +370,22 @@ function projectionIdsForDecision(input: ApplyOwnerDecisionInput, proposal: Prop
     json_artifact: `part_owner_decision_${idPart}_json`,
     context_artifact: `part_owner_decision_${idPart}_context`,
   };
+}
+
+async function refreshOwnerDecisionProjection(input: {
+  owner_decision: ApplyOwnerDecisionInput;
+  proposal: Proposal;
+  records: ApplyOwnerDecisionResult["records"];
+  updated_refs: string[];
+}): Promise<void> {
+  if (input.owner_decision.dry_run) return;
+  const projection = await writeHermesRecognitionProjectionToStore({
+    rootDir: input.owner_decision.rootDir,
+    now: input.owner_decision.now,
+    ids: projectionIdsForDecision(input.owner_decision, input.proposal),
+  });
+  input.records.projection_manifest = projection.manifest;
+  input.updated_refs.push(projection.manifest.id, ...projection.artifacts.map((artifact) => artifact.id));
 }
 
 function approvedRatification(input: ApplyOwnerDecisionInput, proposal: Proposal): RatificationRecord {
@@ -415,6 +558,13 @@ export async function listOwnerDecisionRequests(input: {
 }
 
 export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promise<ApplyOwnerDecisionResult> {
+  return withOwnerDecisionLock(input.rootDir, input.proposal_ref, input.action, async () => {
+    await recoverOwnerDecisionJournal(input.rootDir, input.proposal_ref, input.action);
+    return applyOwnerDecisionUnlocked(input);
+  });
+}
+
+async function applyOwnerDecisionUnlocked(input: ApplyOwnerDecisionInput): Promise<ApplyOwnerDecisionResult> {
   const [
     proposals,
     packets,
@@ -441,6 +591,12 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
   const records: ApplyOwnerDecisionResult["records"] = { proposal };
 
   if (alreadyApplied({ proposal, action: input.action, ratifications, dispositions })) {
+    await refreshOwnerDecisionProjection({
+      owner_decision: input,
+      proposal,
+      records,
+      updated_refs,
+    });
     return {
       proposal_ref: proposal.id,
       action: input.action,
@@ -509,12 +665,12 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
     created_refs.push(ratification.id, ...(canonical.created_record ? [canonical.created_record.id] : []), disposition.id);
     updated_refs.push(...canonical.updated_records.map((record) => record.id), ...(packetUpdate ? [packetUpdate.id] : []));
     if (!input.dry_run) {
-      await Promise.all([
-        writeCoreRecord(input.rootDir, ratification),
-        ...(canonical.created_record ? [writeCoreRecord(input.rootDir, canonical.created_record)] : []),
-        ...canonical.updated_records.map((record) => writeCoreRecord(input.rootDir, record)),
-        ...(packetUpdate ? [writeCoreRecord(input.rootDir, packetUpdate)] : []),
-        writeCoreRecord(input.rootDir, disposition),
+      await writeOwnerDecisionCoreRecords(input, [
+        ratification,
+        ...(canonical.created_record ? [canonical.created_record] : []),
+        ...canonical.updated_records,
+        ...(packetUpdate ? [packetUpdate] : []),
+        disposition,
       ]);
     }
   } else if (input.action === "subsume") {
@@ -558,9 +714,9 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
     updated_refs.push(...(packetUpdate ? [packetUpdate.id] : []));
     linked_refs.push(input.target_canon_ref);
     if (!input.dry_run) {
-      await Promise.all([
-        ...(packetUpdate ? [writeCoreRecord(input.rootDir, packetUpdate)] : []),
-        writeCoreRecord(input.rootDir, disposition),
+      await writeOwnerDecisionCoreRecords(input, [
+        ...(packetUpdate ? [packetUpdate] : []),
+        disposition,
       ]);
     }
   } else if (input.action === "keep_maturing") {
@@ -581,10 +737,10 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
     created_refs.push(ratification.id, disposition.id);
     updated_refs.push(...(packetUpdate ? [packetUpdate.id] : []));
     if (!input.dry_run) {
-      await Promise.all([
-        writeCoreRecord(input.rootDir, ratification),
-        ...(packetUpdate ? [writeCoreRecord(input.rootDir, packetUpdate)] : []),
-        writeCoreRecord(input.rootDir, disposition),
+      await writeOwnerDecisionCoreRecords(input, [
+        ratification,
+        ...(packetUpdate ? [packetUpdate] : []),
+        disposition,
       ]);
     }
   } else if (input.action === "move_to_wiki") {
@@ -617,11 +773,11 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
     else updated_refs.push(wiki.page.id);
     updated_refs.push(...(packetUpdate ? [packetUpdate.id] : []));
     if (!input.dry_run) {
-      await Promise.all([
-        writeCoreRecord(input.rootDir, wiki.page),
-        writeCoreRecord(input.rootDir, wiki.claim),
-        ...(packetUpdate ? [writeCoreRecord(input.rootDir, packetUpdate)] : []),
-        writeCoreRecord(input.rootDir, disposition),
+      await writeOwnerDecisionCoreRecords(input, [
+        wiki.page,
+        wiki.claim,
+        ...(packetUpdate ? [packetUpdate] : []),
+        disposition,
       ]);
     }
   } else if (input.action === "reject") {
@@ -645,24 +801,21 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
     created_refs.push(ratification.id, disposition.id);
     updated_refs.push(rejectedProposal.id, ...(packetUpdate ? [packetUpdate.id] : []));
     if (!input.dry_run) {
-      await Promise.all([
-        writeCoreRecord(input.rootDir, rejectedProposal),
-        writeCoreRecord(input.rootDir, ratification),
-        ...(packetUpdate ? [writeCoreRecord(input.rootDir, packetUpdate)] : []),
-        writeCoreRecord(input.rootDir, disposition),
+      await writeOwnerDecisionCoreRecords(input, [
+        rejectedProposal,
+        ratification,
+        ...(packetUpdate ? [packetUpdate] : []),
+        disposition,
       ]);
     }
   }
 
-  if (!input.dry_run) {
-    const projection = await writeHermesRecognitionProjectionToStore({
-      rootDir: input.rootDir,
-      now: input.now,
-      ids: projectionIdsForDecision(input, proposal),
-    });
-    records.projection_manifest = projection.manifest;
-    updated_refs.push(projection.manifest.id, ...projection.artifacts.map((artifact) => artifact.id));
-  }
+  await refreshOwnerDecisionProjection({
+    owner_decision: input,
+    proposal,
+    records,
+    updated_refs,
+  });
 
   return {
     proposal_ref: proposal.id,
