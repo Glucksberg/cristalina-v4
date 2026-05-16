@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { parseCristalinaCommand, helpText, CommandUsageError, type CristalinaCommand } from "./args.js";
 import {
+  applyOwnerDecision,
   compileSessionPackToStore,
   inspectCristalinaStore,
   listOwnerDecisionRequests,
@@ -581,6 +582,34 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
 
   if (command.name === "reviews") {
     const status = await loadStatus(command);
+    if (command.action === "decide") {
+      if (!command.proposalRef || !command.decisionAction) {
+        return {
+          exitCode: 2,
+          stdout: "",
+          stderr: "reviews decide requires --proposal and --action\n",
+        };
+      }
+      const loaded = await loadRequiredConfig(command.configPath, command.storeRoot);
+      const principal = commandPrincipal(loaded.config);
+      const result = await applyOwnerDecision({
+        rootDir: loaded.storeRoot,
+        proposal_ref: command.proposalRef,
+        action: command.decisionAction,
+        now: new Date().toISOString(),
+        actor: command.actor ?? principal.actor_ref,
+        authenticated_principal: principal,
+        reason: command.reason,
+        target_canon_ref: command.targetCanonRef,
+        wiki_page: command.wikiPage,
+        dry_run: command.dryRun,
+      });
+      return {
+        exitCode: result.status === "rejected_by_validation" ? 1 : 0,
+        stdout: `${JSON.stringify(result, null, 2)}\n`,
+        stderr: "",
+      };
+    }
     if (command.action === "apply") {
       if (!command.runtime || !command.queueId) {
         return {

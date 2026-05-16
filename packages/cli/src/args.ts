@@ -100,7 +100,22 @@ export type CristalinaCommand =
       runtimeSessionRef?: string;
       conversationThreadRef?: string;
     }
-  | { name: "reviews"; action: "list" | "apply"; configPath?: string; storeRoot?: string; runtime?: "openclaw" | "hermes"; queueId?: string; ownerDecisions?: boolean }
+  | {
+      name: "reviews";
+      action: "list" | "apply" | "decide";
+      configPath?: string;
+      storeRoot?: string;
+      runtime?: "openclaw" | "hermes";
+      queueId?: string;
+      ownerDecisions?: boolean;
+      proposalRef?: string;
+      decisionAction?: "ratify" | "subsume" | "keep_maturing" | "reject" | "move_to_wiki";
+      reason?: string;
+      targetCanonRef?: string;
+      wikiPage?: string;
+      dryRun?: boolean;
+      actor?: string;
+    }
   | { name: "diagnostics"; action: "list"; configPath?: string; storeRoot?: string }
   | { name: "store"; action: "inspect" | "recover"; configPath?: string; storeRoot?: string }
   | {
@@ -585,8 +600,8 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
   }
 
   if (command === "reviews") {
-    if (subcommand !== "list" && subcommand !== "apply") {
-      throw new CommandUsageError("reviews requires action list or apply");
+    if (subcommand !== "list" && subcommand !== "apply" && subcommand !== "decide") {
+      throw new CommandUsageError("reviews requires action list, apply, or decide");
     }
     rejectUnknownOptions(rest, new Map([
       ["--config", "value"],
@@ -594,10 +609,28 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       ["--runtime", "value"],
       ["--queue-id", "value"],
       ["--owner-decisions", "flag"],
+      ["--proposal", "value"],
+      ["--action", "value"],
+      ["--reason", "value"],
+      ["--target-canon", "value"],
+      ["--wiki-page", "value"],
+      ["--dry-run", "flag"],
+      ["--actor", "value"],
     ]));
     const runtime = readOption(argv, "--runtime");
     if (runtime !== undefined && runtime !== "openclaw" && runtime !== "hermes") {
       throw new CommandUsageError("--runtime must be openclaw or hermes");
+    }
+    const decisionAction = readOption(argv, "--action");
+    if (
+      decisionAction !== undefined &&
+      decisionAction !== "ratify" &&
+      decisionAction !== "subsume" &&
+      decisionAction !== "keep_maturing" &&
+      decisionAction !== "reject" &&
+      decisionAction !== "move_to_wiki"
+    ) {
+      throw new CommandUsageError("--action must be ratify, subsume, keep_maturing, reject, or move_to_wiki");
     }
     return {
       name: "reviews",
@@ -607,6 +640,13 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       runtime,
       queueId: readOption(argv, "--queue-id"),
       ownerDecisions: hasFlag(argv, "--owner-decisions"),
+      proposalRef: readOption(argv, "--proposal"),
+      decisionAction,
+      reason: readOption(argv, "--reason"),
+      targetCanonRef: readOption(argv, "--target-canon"),
+      wikiPage: readOption(argv, "--wiki-page"),
+      dryRun: hasFlag(argv, "--dry-run"),
+      actor: readOption(argv, "--actor"),
     };
   }
 
@@ -696,6 +736,7 @@ export function helpText(): string {
     "  projection verify [--config PATH] [--store-root PATH]",
     "  reviews list [--owner-decisions] [--config PATH] [--store-root PATH]",
     "  reviews apply --runtime openclaw|hermes --queue-id ID [--config PATH] [--store-root PATH]",
+    "  reviews decide --proposal ID --action ratify|subsume|keep_maturing|move_to_wiki|reject [--target-canon ID] [--wiki-page auto|ID] [--reason TEXT] [--dry-run] [--config PATH] [--store-root PATH]",
     "  diagnostics list [--config PATH] [--store-root PATH]",
     "  store inspect [--config PATH] [--store-root PATH]",
     "  store recover [--config PATH] [--store-root PATH]",

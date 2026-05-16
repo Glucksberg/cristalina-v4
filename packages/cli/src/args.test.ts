@@ -198,6 +198,29 @@ test("CLI parser recognizes the planned command surface", () => {
     runtime: undefined,
     queueId: undefined,
     ownerDecisions: true,
+    proposalRef: undefined,
+    decisionAction: undefined,
+    reason: undefined,
+    targetCanonRef: undefined,
+    wikiPage: undefined,
+    dryRun: false,
+    actor: undefined,
+  });
+  assert.deepEqual(parseCristalinaCommand(["reviews", "decide", "--proposal", "prop_001", "--action", "subsume", "--target-canon", "mem_001", "--reason", "covered", "--dry-run"]), {
+    name: "reviews",
+    action: "decide",
+    configPath: undefined,
+    storeRoot: undefined,
+    runtime: undefined,
+    queueId: undefined,
+    ownerDecisions: false,
+    proposalRef: "prop_001",
+    decisionAction: "subsume",
+    reason: "covered",
+    targetCanonRef: "mem_001",
+    wikiPage: undefined,
+    dryRun: true,
+    actor: undefined,
   });
   assert.deepEqual(parseCristalinaCommand(["projection", "verify", "--config", "config.json", "--store-root", "tmp/store"]), {
     name: "projection",
@@ -233,4 +256,5 @@ test("CLI parser rejects unknown commands and options", () => {
   assert.throws(() => parseCristalinaCommand(["smoke", "other"]), CommandUsageError);
   assert.throws(() => parseCristalinaCommand(["install", "hermes", "--integration-mode", "invalid"]), CommandUsageError);
   assert.throws(() => parseCristalinaCommand(["projection", "recognition", "--format", "invalid"]), CommandUsageError);
+  assert.throws(() => parseCristalinaCommand(["reviews", "decide", "--action", "invalid"]), CommandUsageError);
 });

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { writeCoreRecord } from "./store/io.js";
-import { listOwnerDecisionRequests } from "./owner-decisions.js";
+import { applyOwnerDecision, listOwnerDecisionRequests } from "./owner-decisions.js";
 import type { CanonicalMemoryObject, CurationPacket, Diagnostic, Proposal } from "./types.js";
 
 const now = "2026-05-16T12:00:00.000Z";
@@ -110,4 +110,197 @@ test("owner decision listing hydrates deferred canonical proposal metadata witho
   assert.equal(result.owner_decisions[0]!.curation_ref, "cur_owner_decision_001");
   assert.deepEqual(result.owner_decisions[0]!.existing_canon_refs, ["mem_existing_lifecycle_001"]);
   assert.match(result.owner_decisions[0]!.question, /subsumir/);
+});
+
+test("owner decision ratify dry-run previews canon writes without changing the queue", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-owner-decision-ratify-"));
+  const proposal: Proposal = {
+    id: "prop_owner_decision_ratify_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_002/claim_001"),
+    operation: "create",
+    candidate_kind: "belief",
+    target_layer: "canon",
+    target_ref: null,
+    candidate_payload: {
+      kind: "belief",
+      statement: "Memory poisoning is a persistent-agent risk.",
+      semantic_slot: "agent_memory.security.memory_poisoning_and_agent_traps",
+      epistemic_state: "observed",
+      temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+      support_refs: ["obs_owner_decision_ratify_001"],
+    },
+    reason: "Owner authority is required for this security principle.",
+    evidence_refs: ["src_owner_decision_ratify_001", "obs_owner_decision_ratify_001"],
+    subject_authority_role: "owner",
+    promotion_requirement: "owner_ratification_required",
+    governance_state: "proposed",
+  };
+  const packet: CurationPacket = {
+    id: "cur_owner_decision_ratify_001",
+    kind: "curation_packet",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_002/claim_001"),
+    proposal_refs: [proposal.id],
+    question_count: 1,
+    review_kind: "owner_ratification",
+    canonical_target_ref: { id: "mem_owner_decision_ratify_001", kind: "belief", layer: "canon" },
+    status: "pending",
+  };
+  await Promise.all([writeCoreRecord(rootDir, proposal), writeCoreRecord(rootDir, packet)]);
+
+  const preview = await applyOwnerDecision({
+    rootDir,
+    proposal_ref: proposal.id,
+    action: "ratify",
+    now,
+    actor: "actor_owner_001",
+    reason: "Owner ratified this security risk.",
+    dry_run: true,
+  });
+
+  assert.equal(preview.status, "dry_run");
+  assert.equal(preview.records.canonical_record?.semantic_slot, "agent_memory.security.memory_poisoning_and_agent_traps");
+  assert.ok(preview.created_refs.some((ref) => ref.startsWith("mem_")));
+  assert.equal((await listOwnerDecisionRequests({ rootDir })).owner_decisions.length, 0);
+});
+
+test("owner decision subsume links a proposal to existing canon and removes it from active decisions", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-owner-decision-subsume-"));
+  const proposal: Proposal = {
+    id: "prop_owner_decision_subsume_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_003/claim_001"),
+    operation: "create",
+    candidate_kind: "belief",
+    target_layer: "canon",
+    target_ref: null,
+    candidate_payload: {
+      kind: "belief",
+      statement: "Retrieval and ranking matter more than storage volume.",
+      semantic_slot: "agent_memory.recall_quality.retrieval_ranking_not_storage_only",
+      epistemic_state: "inferred",
+      temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+      support_refs: ["obs_owner_decision_subsume_001"],
+    },
+    reason: "Owner authority is required because a related canon exists.",
+    evidence_refs: ["src_owner_decision_subsume_001", "obs_owner_decision_subsume_001"],
+    subject_authority_role: "owner",
+    promotion_requirement: "owner_ratification_required",
+    governance_state: "proposed",
+  };
+  const packet: CurationPacket = {
+    id: "cur_owner_decision_subsume_001",
+    kind: "curation_packet",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_003/claim_001"),
+    proposal_refs: [proposal.id],
+    question_count: 1,
+    review_kind: "owner_ratification",
+    canonical_target_ref: { id: "mem_owner_decision_subsume_001", kind: "belief", layer: "canon" },
+    status: "pending",
+  };
+  const existingCanon: CanonicalMemoryObject = {
+    id: "mem_existing_recall_quality_001",
+    kind: "belief",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("tests/existing-recall-canon"),
+    statement: "Agent memory quality depends on retrieval and ranking.",
+    semantic_slot: "agent_memory.recall_quality.retrieval_ranking_not_storage_only",
+    epistemic_state: "confirmed",
+    temporal_state: { temporal_status: "active" },
+    governance_state: "ratified",
+  };
+  await Promise.all([
+    writeCoreRecord(rootDir, proposal),
+    writeCoreRecord(rootDir, packet),
+    writeCoreRecord(rootDir, existingCanon),
+  ]);
+
+  const result = await applyOwnerDecision({
+    rootDir,
+    proposal_ref: proposal.id,
+    action: "subsume",
+    target_canon_ref: existingCanon.id,
+    now,
+    actor: "actor_owner_001",
+    reason: "Covered by existing recall-quality canon.",
+  });
+
+  assert.equal(result.status, "applied");
+  assert.deepEqual(result.linked_refs, [existingCanon.id]);
+  assert.equal(result.records.curation_packet?.status, "answered");
+  assert.equal(result.records.disposition?.owner_decision_action, "subsume");
+  assert.equal(result.records.disposition?.target_canon_ref, existingCanon.id);
+  assert.equal((await listOwnerDecisionRequests({ rootDir })).owner_decisions.length, 0);
+});
+
+test("owner decision move_to_wiki preserves planning material outside canon", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-owner-decision-wiki-"));
+  const proposal: Proposal = {
+    id: "prop_owner_decision_wiki_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_004/claim_001"),
+    operation: "create",
+    candidate_kind: "goal",
+    target_layer: "canon",
+    target_ref: null,
+    candidate_payload: {
+      kind: "goal",
+      statement: "Build a BEAM-style benchmark plan for governed memory.",
+      semantic_slot: "cristalina_beam_governed_memory_benchmark_plan",
+      epistemic_state: "observed",
+      temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+      support_refs: ["obs_owner_decision_wiki_001"],
+    },
+    reason: "Owner wants this preserved as planning material.",
+    evidence_refs: ["src_owner_decision_wiki_001", "obs_owner_decision_wiki_001"],
+    subject_authority_role: "owner",
+    promotion_requirement: "owner_ratification_required",
+    governance_state: "proposed",
+  };
+  await writeCoreRecord(rootDir, proposal);
+
+  const result = await applyOwnerDecision({
+    rootDir,
+    proposal_ref: proposal.id,
+    action: "move_to_wiki",
+    wiki_page: "wpg_cristalina_beam_governed_memory_benchmark_plan",
+    now,
+    actor: "actor_owner_001",
+    reason: "Useful plan/reference, not canon.",
+  });
+
+  assert.equal(result.status, "applied");
+  assert.equal(result.records.wiki_page?.id, "wpg_cristalina_beam_governed_memory_benchmark_plan");
+  assert.equal(result.records.wiki_claim?.claim_status, "editorial");
+  assert.equal(result.records.disposition?.wiki_page_ref, "wpg_cristalina_beam_governed_memory_benchmark_plan");
+  assert.equal((await listOwnerDecisionRequests({ rootDir })).owner_decisions.length, 0);
 });

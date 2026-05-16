@@ -1170,6 +1170,14 @@ export interface DispositionRecord extends RecordEnvelope {
   proposal_refs?: string[];
   diagnostic_refs?: string[];
   reason_codes: string[];
+  owner_decision_action?: "ratify" | "subsume" | "keep_maturing" | "reject" | "move_to_wiki";
+  owner_decision_reason?: string | null;
+  target_canon_ref?: string | null;
+  wiki_page_ref?: string | null;
+  wiki_claim_ref?: string | null;
+  ratification_ref?: string | null;
+  proposal_status_after?: string | null;
+  curation_status_after?: string | null;
 }
 
 export type CoreRecord =
