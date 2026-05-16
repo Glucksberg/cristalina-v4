@@ -64,6 +64,28 @@ export interface OwnerDecisionRequest {
   evidence_refs: string[];
 }
 
+export interface OwnerDecisionResolution {
+  proposal_ref: string;
+  claim_ref: string;
+  semantic_slot: string | null;
+  statement: string | null;
+  action: OwnerDecisionAction;
+  disposition_ref: string;
+  disposition_updated_at: string;
+  proposal_status: Proposal["governance_state"] | null;
+  proposal_status_after: string | null;
+  curation_ref: string | null;
+  curation_status: CurationPacket["status"] | null;
+  curation_status_after: string | null;
+  ratification_ref: string | null;
+  ratification_decision: string | null;
+  canonical_ref: string | null;
+  target_canon_ref: string | null;
+  wiki_page_ref: string | null;
+  wiki_claim_ref: string | null;
+  reason: string | null;
+}
+
 export interface ApplyOwnerDecisionInput {
   rootDir: string;
   proposal_ref: string;
@@ -510,13 +532,14 @@ function alreadyApplied(input: {
 
 export async function listOwnerDecisionRequests(input: {
   rootDir: string;
-}): Promise<{ owner_decisions: OwnerDecisionRequest[] }> {
-  const [proposals, packets, diagnostics, canonicalRecords, dispositions] = await Promise.all([
+}): Promise<{ owner_decisions: OwnerDecisionRequest[]; resolved_owner_decisions: OwnerDecisionResolution[] }> {
+  const [proposals, packets, diagnostics, canonicalRecords, dispositions, ratifications] = await Promise.all([
     loadProposals(input.rootDir),
     loadCurationPackets(input.rootDir),
     loadDiagnostics(input.rootDir),
     loadCanonicalRecords(input.rootDir),
     loadDispositionRecords(input.rootDir),
+    loadRatificationRecords(input.rootDir),
   ]);
 
   const owner_decisions = proposals
@@ -554,7 +577,43 @@ export async function listOwnerDecisionRequests(input: {
     .filter((request) => request.curation_status === null || request.curation_status === "pending")
     .sort((left, right) => left.semantic_slot?.localeCompare(right.semantic_slot ?? "") ?? 0);
 
-  return { owner_decisions };
+  const resolved_owner_decisions = dispositions
+    .filter((disposition) => typeof disposition.owner_decision_action === "string")
+    .map((disposition) => {
+      const proposalRef = disposition.input_refs.find((ref) => ref.startsWith("prop_")) ?? disposition.proposal_refs?.[0] ?? "";
+      const proposal = proposals.find((candidate) => candidate.id === proposalRef);
+      const packet = proposal ? matchingCurationPacket(proposal, packets) : undefined;
+      const ratification = disposition.ratification_ref
+        ? ratifications.find((candidate) => candidate.id === disposition.ratification_ref)
+        : undefined;
+      const canonicalRef = proposal
+        ? canonicalRecords.find((record) => record.id === `mem_${proposalIdPart(proposal)}` || record.provenance.source_ref === proposal.provenance.source_ref)?.id ?? null
+        : null;
+      return {
+        proposal_ref: proposalRef,
+        claim_ref: proposal ? claimRef(proposal) : "",
+        semantic_slot: proposal ? stringField(proposal.candidate_payload.semantic_slot) : null,
+        statement: proposal ? stringField(proposal.candidate_payload.statement) : null,
+        action: disposition.owner_decision_action!,
+        disposition_ref: disposition.id,
+        disposition_updated_at: disposition.updated_at ?? disposition.created_at,
+        proposal_status: proposal?.governance_state ?? null,
+        proposal_status_after: disposition.proposal_status_after ?? null,
+        curation_ref: packet?.id ?? null,
+        curation_status: packet?.status ?? null,
+        curation_status_after: disposition.curation_status_after ?? null,
+        ratification_ref: disposition.ratification_ref ?? null,
+        ratification_decision: ratification?.decision ?? null,
+        canonical_ref: canonicalRef,
+        target_canon_ref: disposition.target_canon_ref ?? null,
+        wiki_page_ref: disposition.wiki_page_ref ?? null,
+        wiki_claim_ref: disposition.wiki_claim_ref ?? null,
+        reason: disposition.owner_decision_reason ?? null,
+      } satisfies OwnerDecisionResolution;
+    })
+    .sort((left, right) => right.disposition_updated_at.localeCompare(left.disposition_updated_at));
+
+  return { owner_decisions, resolved_owner_decisions };
 }
 
 export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promise<ApplyOwnerDecisionResult> {

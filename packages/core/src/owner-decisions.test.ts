@@ -334,6 +334,13 @@ test("owner decision apply refreshes the Hermes recognition projection", async (
   });
   assert.equal(replay.status, "already_applied");
   assert.equal(replay.records.projection_manifest?.adapter, "hermes");
+
+  const listed = await listOwnerDecisionRequests({ rootDir });
+  assert.equal(listed.owner_decisions.length, 0);
+  assert.equal(listed.resolved_owner_decisions.length, 1);
+  assert.equal(listed.resolved_owner_decisions[0]!.action, "ratify");
+  assert.equal(listed.resolved_owner_decisions[0]!.semantic_slot, "cristalina.governance.owner_decision_projection_refresh");
+  assert.equal(listed.resolved_owner_decisions[0]!.canonical_ref, "mem_owner_decision_projection_001");
 });
 
 test("owner decision subsume links a proposal to existing canon and removes it from active decisions", async () => {
@@ -416,7 +423,10 @@ test("owner decision subsume links a proposal to existing canon and removes it f
   assert.equal(result.records.curation_packet?.status, "answered");
   assert.equal(result.records.disposition?.owner_decision_action, "subsume");
   assert.equal(result.records.disposition?.target_canon_ref, existingCanon.id);
-  assert.equal((await listOwnerDecisionRequests({ rootDir })).owner_decisions.length, 0);
+  const listed = await listOwnerDecisionRequests({ rootDir });
+  assert.equal(listed.owner_decisions.length, 0);
+  assert.equal(listed.resolved_owner_decisions[0]!.action, "subsume");
+  assert.equal(listed.resolved_owner_decisions[0]!.target_canon_ref, existingCanon.id);
 });
 
 test("owner decision move_to_wiki preserves planning material outside canon", async () => {
@@ -464,5 +474,8 @@ test("owner decision move_to_wiki preserves planning material outside canon", as
   assert.equal(result.records.wiki_page?.id, "wpg_cristalina_beam_governed_memory_benchmark_plan");
   assert.equal(result.records.wiki_claim?.claim_status, "editorial");
   assert.equal(result.records.disposition?.wiki_page_ref, "wpg_cristalina_beam_governed_memory_benchmark_plan");
-  assert.equal((await listOwnerDecisionRequests({ rootDir })).owner_decisions.length, 0);
+  const listed = await listOwnerDecisionRequests({ rootDir });
+  assert.equal(listed.owner_decisions.length, 0);
+  assert.equal(listed.resolved_owner_decisions[0]!.action, "move_to_wiki");
+  assert.equal(listed.resolved_owner_decisions[0]!.wiki_page_ref, "wpg_cristalina_beam_governed_memory_benchmark_plan");
 });
