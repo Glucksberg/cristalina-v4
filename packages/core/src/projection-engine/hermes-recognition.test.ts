@@ -149,7 +149,7 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
     actor_identities: [actor],
     entities: [entity],
     runtime_observations: [observation],
-    canonical_records: [canon, suppressedCanon],
+    canonical_records: [canon, suppressedCanon, suppressedCanon],
     world_claims: [world],
     wiki_pages: [wiki],
   });
@@ -162,6 +162,8 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
   assert.ok(result.snapshot.recognition_index.some((entry) => entry.target_ref === "wcl_memory_pattern_001" && entry.semantic_slot === "memory.pattern"));
   assert.ok(result.snapshot.hydration_cards.some((card) => card.target_ref === "wcl_memory_pattern_001" && card.semantic_slot === "memory.pattern"));
   assert.ok(result.snapshot.suppressed_records.some((record) => record.id === "mem_other_owner_001"));
+  assert.equal(result.snapshot.suppressed_records.filter((record) => record.id === "mem_other_owner_001").length, 1);
+  assert.deepEqual(result.manifest.suppressed_refs, ["mem_other_owner_001"]);
   assert.equal(result.manifest.projection_profile, HERMES_RECOGNITION_PROJECTION_PROFILE);
   assert.deepEqual(result.manifest.artifact_refs, [
     "part_hermes_recognition_json_test_001",

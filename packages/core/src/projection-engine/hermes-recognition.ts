@@ -134,6 +134,17 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.length > 0))];
 }
 
+function uniqueSuppressedRecords(records: HermesRecognitionSnapshot["suppressed_records"]): HermesRecognitionSnapshot["suppressed_records"] {
+  const seen = new Set<string>();
+  const result: HermesRecognitionSnapshot["suppressed_records"] = [];
+  for (const record of records) {
+    if (seen.has(record.id)) continue;
+    seen.add(record.id);
+    result.push(record);
+  }
+  return result;
+}
+
 function compactText(value: string, limit = 240): string {
   const compacted = value.replace(/\s+/g, " ").trim();
   return compacted.length > limit ? `${compacted.slice(0, limit - 1).trimEnd()}...` : compacted;
@@ -418,7 +429,7 @@ export function compileHermesRecognitionProjection(
     ...(item.temporal_status ? { temporal_status: item.temporal_status } : {}),
   }));
 
-  const suppressed_records = [
+  const suppressed_records = uniqueSuppressedRecords([
     ...actorFilter.suppressed,
     ...runtimeInstanceFilter.suppressed,
     ...observationFilter.suppressed,
@@ -431,7 +442,7 @@ export function compileHermesRecognitionProjection(
     ...wikiPageFilter.suppressed,
     ...wikiClaimFilter.suppressed,
     ...diagnosticFilter.suppressed,
-  ];
+  ]);
   const upstreamRefs = unique([
     ...recognition_index.flatMap((item) => [item.target_ref, ...item.upstream_refs]),
     ...hydration_cards.flatMap((card) => card.diagnostics),
