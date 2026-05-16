@@ -33,3 +33,8 @@ docs, monitor artifacts, or issue notes instead of copying long logs.
 - 2026-05-05: Nightly memory consolidation replaced the earlier daily review
   naming. The consolidation pass classifies accumulated evidence but still does
   not promote wiki, canon, world truth, or owner authority by itself.
+- 2026-05-16: The live Hermes provider loop has moved past ingestion-only:
+  Farol observed 434 runtime observations, 39 wiki pages, 40 proposals, 29 canon
+  records, 221 recognition entries, and an OK 03:00 nightly memory cycle. Next
+  focus is owner-review, projection behavior, contradiction tests, and wiki
+  quality.

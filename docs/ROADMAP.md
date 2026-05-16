@@ -36,6 +36,11 @@ stay thin: Hermes may prefetch derived context and emit evidence, while
 Cristalina owns memory law, governance, promotion, diagnostics, and
 runtime-managed maturation.
 
+The concrete live-test sequence for this phase is tracked in
+`docs/HERMES-LIVE-TEST-ROADMAP.md`. Keep that file focused on what to test and
+what signals decide the next step; keep this roadmap focused on product and
+architecture direction.
+
 ---
 
 ## 2. Current Executable Baseline
