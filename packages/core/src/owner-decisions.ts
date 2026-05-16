@@ -150,6 +150,16 @@ function proposalStatement(proposal: Proposal): string {
   return stringField(proposal.candidate_payload.statement) ?? proposal.reason;
 }
 
+function canonicalTargetRecord(proposal: Proposal, records: CanonicalMemoryObject[]): CanonicalMemoryObject | undefined {
+  const target = proposal.target_ref;
+  if (!target) return undefined;
+  return records.find((record) =>
+    record.id === target.id &&
+    record.kind === target.kind &&
+    record.layer === target.layer
+  );
+}
+
 function requireProposal(proposal_ref: string, proposals: Proposal[]): Proposal {
   const proposal = proposals.find((record) => record.id === proposal_ref);
   if (!proposal) {
@@ -435,7 +445,8 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
   const existingCanonRefs = sameSlotCanonRefs(semanticSlot, canonicalRecords);
 
   if (input.action === "ratify") {
-    if (existingCanonRefs.length > 0) {
+    const targetRecord = canonicalTargetRecord(proposal, canonicalRecords);
+    if (proposal.operation === "create" && existingCanonRefs.length > 0) {
       return {
         proposal_ref: proposal.id,
         action: input.action,
@@ -447,10 +458,23 @@ export async function applyOwnerDecision(input: ApplyOwnerDecisionInput): Promis
         records,
       };
     }
+    if ((proposal.operation === "revise" || proposal.operation === "supersede") && !targetRecord) {
+      return {
+        proposal_ref: proposal.id,
+        action: input.action,
+        status: "rejected_by_validation",
+        created_refs,
+        updated_refs,
+        linked_refs: existingCanonRefs,
+        warnings: [`${proposal.operation} requires a target_ref matching an existing canonical record.`],
+        records,
+      };
+    }
     const ratification = approvedRatification(input, proposal);
     const canonical = applyApprovedCanonicalProposal({
       proposal,
       ratification_record: ratification,
+      existing_record: targetRecord,
       canonical_id: `mem_${proposalIdPart(proposal)}`,
       now: input.now,
     });

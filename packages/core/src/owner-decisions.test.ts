@@ -174,6 +174,111 @@ test("owner decision ratify dry-run previews canon writes without changing the q
   assert.equal((await listOwnerDecisionRequests({ rootDir })).owner_decisions.length, 0);
 });
 
+test("owner decision ratify handles revise proposals with an explicit canon target", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-owner-decision-revise-"));
+  const existingCanon: CanonicalMemoryObject = {
+    id: "mem_owner_decision_revise_existing_001",
+    kind: "belief",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("tests/existing-revise-canon"),
+    statement: "Memory lifecycle needs governance.",
+    semantic_slot: "agent_memory.governance.lifecycle_as_compliance_surface",
+    epistemic_state: "confirmed",
+    temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+    governance_state: "ratified",
+  };
+  const proposal: Proposal = {
+    id: "prop_owner_decision_revise_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_revise/claim_001"),
+    operation: "revise",
+    candidate_kind: "belief",
+    target_layer: "canon",
+    target_ref: { id: existingCanon.id, kind: existingCanon.kind, layer: existingCanon.layer },
+    candidate_payload: {
+      kind: "belief",
+      statement: "Memory lifecycle is a compliance and trust surface.",
+      semantic_slot: existingCanon.semantic_slot,
+      epistemic_state: "confirmed",
+      temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+      support_refs: ["obs_owner_decision_revise_001"],
+    },
+    reason: "Owner authority is required for this revised governance claim.",
+    evidence_refs: ["src_owner_decision_revise_001", "obs_owner_decision_revise_001"],
+    subject_authority_role: "owner",
+    promotion_requirement: "owner_ratification_required",
+    governance_state: "proposed",
+  };
+  await Promise.all([writeCoreRecord(rootDir, existingCanon), writeCoreRecord(rootDir, proposal)]);
+
+  const result = await applyOwnerDecision({
+    rootDir,
+    proposal_ref: proposal.id,
+    action: "ratify",
+    now,
+    actor: "actor_owner_001",
+    reason: "Owner ratified the revised claim.",
+    dry_run: true,
+  });
+
+  assert.equal(result.status, "dry_run");
+  assert.equal(result.records.canonical_record?.statement, "Memory lifecycle is a compliance and trust surface.");
+  assert.deepEqual(result.updated_refs, [existingCanon.id]);
+});
+
+test("owner decision ratify rejects revise proposals without a matching canon target", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "cristalina-owner-decision-revise-missing-"));
+  const proposal: Proposal = {
+    id: "prop_owner_decision_revise_missing_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "shareable" },
+    provenance: provenance("memory-maturation/hermes/run_revise_missing/claim_001"),
+    operation: "revise",
+    candidate_kind: "belief",
+    target_layer: "canon",
+    target_ref: { id: "mem_missing_target", kind: "belief", layer: "canon" },
+    candidate_payload: {
+      kind: "belief",
+      statement: "Memory lifecycle is a compliance and trust surface.",
+      semantic_slot: "agent_memory.governance.lifecycle_as_compliance_surface",
+      epistemic_state: "confirmed",
+      temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+      support_refs: ["obs_owner_decision_revise_missing_001"],
+    },
+    reason: "Owner authority is required for this revised governance claim.",
+    evidence_refs: ["src_owner_decision_revise_missing_001", "obs_owner_decision_revise_missing_001"],
+    subject_authority_role: "owner",
+    promotion_requirement: "owner_ratification_required",
+    governance_state: "proposed",
+  };
+  await writeCoreRecord(rootDir, proposal);
+
+  const result = await applyOwnerDecision({
+    rootDir,
+    proposal_ref: proposal.id,
+    action: "ratify",
+    now,
+    actor: "actor_owner_001",
+    reason: "Owner ratified the revised claim.",
+  });
+
+  assert.equal(result.status, "rejected_by_validation");
+  assert.match(result.warnings[0] ?? "", /requires a target_ref/);
+});
+
 test("owner decision subsume links a proposal to existing canon and removes it from active decisions", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "cristalina-owner-decision-subsume-"));
   const proposal: Proposal = {
