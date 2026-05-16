@@ -70,6 +70,34 @@ In rollback bridge mode, `plugin_enabled: true` and `background_dispatch: true`
 are expected. In provider mode, `plugin_enabled` should normally be false so the
 bridge is not capturing the same turn in parallel.
 
+## Local UI
+
+```bash
+pnpm farol
+```
+
+or:
+
+```bash
+node scripts/monitor-cristal-hermes.mjs --serve --port 4347
+```
+
+Then open:
+
+```text
+http://127.0.0.1:4347
+```
+
+The UI refreshes every 10 seconds and combines the live Farol snapshot with the
+test board in:
+
+```text
+docs/FAROL-TEST-BOARD.json
+```
+
+Edit that board as the test fronts evolve. It is operator coordination only:
+not Cristalina store truth, not owner authority, and not product memory.
+
 ## Custom Roots
 
 ```bash

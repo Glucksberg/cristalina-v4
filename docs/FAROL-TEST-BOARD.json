@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-05-16T09:30:00-04:00",
+  "title": "Farol Live Test Board",
+  "summary": "External read-only board for the Hermes/Cristalina live test. This is development coordination, not Cristalina memory truth.",
+  "fronts": [
+    {
+      "id": "owner-decision-loop",
+      "name": "Owner Decision Loop",
+      "status": "active",
+      "goal": "Verify that Cristal can inspect pending owner decisions through Cristalina surfaces without falling back to filesystem tools.",
+      "next_questions": [
+        "Nao use session_search, search_files nem execute_code. Use apenas cristalina_memory_status. A partir de owner_decisions, proponha uma acao para cada item: ratify, keep_maturing, subsume, reject ou move_to_wiki. Nao aplique nada ainda.",
+        "Para os itens sugeridos como subsume, liste o canon existente que receberia a evidencia adicional."
+      ],
+      "next_code_changes": [
+        "Add governed apply flows for owner choices beyond plain ratify: subsume, move_to_wiki, keep_maturing, reject.",
+        "Expose owner decision counts in Farol and provider status without scraping diagnostics."
+      ],
+      "next_tests": [
+        "Confirm Cristal does not call search_files/execute_code for owner_decisions after gateway restart.",
+        "Confirm owner decisions remain read-only until an explicit apply command exists."
+      ]
+    },
+    {
+      "id": "projection-behavior",
+      "name": "Projection And Behavior Feedback",
+      "status": "active",
+      "goal": "Prove that canon/wiki/projection entries change Cristal's future answers without restating the whole history.",
+      "next_questions": [
+        "Sem session_search, explique quais principios sobre memoria de agentes voce considera canon hoje e cite semantic_slot/ref.",
+        "Sem session_search, diga onde sua resposta esta baseada em canon, wiki ou runtime evidence."
+      ],
+      "next_code_changes": [
+        "Improve projection summaries when wiki/canon overlap in the same semantic slot.",
+        "Add a concise projection health section for stale, duplicated, or subsumed slots."
+      ],
+      "next_tests": [
+        "Ask the same memory question before and after owner decisions are applied.",
+        "Compare answers that allow archive_search versus answers restricted to projected context."
+      ]
+    },
+    {
+      "id": "nightly-cycle-soak",
+      "name": "Nightly Cycle Soak",
+      "status": "watching",
+      "goal": "Keep the 03:00 nightly memory cycle stable across several days while evidence volume grows.",
+      "next_questions": [
+        "Depois da proxima noite, quais slots mudaram de status e por que?",
+        "Quais observacoes ficaram para tras e devem ser consideradas nas proximas passadas?"
+      ],
+      "next_code_changes": [
+        "Surface skipped_already_matured and backlog coverage in a first-class status view.",
+        "Add warnings when the cycle misses a scheduled run after WSL/Windows restart."
+      ],
+      "next_tests": [
+        "Check last_status, latest maturation run, selected_items, skipped_already_matured, and owner_decisions each morning.",
+        "Verify that backlog is consumed over multiple passes rather than repeatedly selecting the same evidence."
+      ]
+    },
+    {
+      "id": "contradiction-supersession",
+      "name": "Contradiction And Supersession",
+      "status": "queued",
+      "goal": "Activate contradiction and supersession paths with controlled conflicting evidence.",
+      "next_questions": [
+        "Compare append-only memory versus active forgetting as conflicting design claims.",
+        "Ask Cristal to identify whether a new statement contradicts, refines, or supports existing canon."
+      ],
+      "next_code_changes": [
+        "Inspect whether contradiction candidates get surfaced clearly enough for owner/operator decisions.",
+        "Improve projection suppression for unresolved contradictory world claims if needed."
+      ],
+      "next_tests": [
+        "Introduce two conflicting articles or owner statements and inspect world contradiction records.",
+        "Confirm canon is not silently overwritten by later contradictory evidence."
+      ]
+    },
+    {
+      "id": "wiki-quality",
+      "name": "Wiki Quality",
+      "status": "watching",
+      "goal": "Ensure wiki pages become useful synthesis surfaces, not thin copies of heartbeat text.",
+      "next_questions": [
+        "Quais paginas wiki estao mais maduras e quais ainda sao apenas acumulacao fraca?",
+        "Que slots deveriam ficar na wiki em vez de canon?"
+      ],
+      "next_code_changes": [
+        "Add a Farol/wiki quality panel with page count, claim count, stale pages, and candidate_for_promotion counts.",
+        "Improve wiki consolidation around closely related semantic slots."
+      ],
+      "next_tests": [
+        "Inspect top wiki pages by support refs and quality score.",
+        "Ask Cristal to use wiki as orientation while explicitly distinguishing it from canon."
+      ]
+    }
+  ]
+}
