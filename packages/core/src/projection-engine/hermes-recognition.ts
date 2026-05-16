@@ -54,6 +54,10 @@ export interface HermesRecognitionEntry {
   authority_label: string;
   upstream_refs: string[];
   updated_at: string;
+  semantic_slot?: string;
+  epistemic_state?: string;
+  governance_state?: string;
+  temporal_status?: string;
 }
 
 export interface HermesHydrationCard {
@@ -63,6 +67,10 @@ export interface HermesHydrationCard {
   source_layers: string[];
   upstream_refs: string[];
   diagnostics: string[];
+  semantic_slot?: string;
+  epistemic_state?: string;
+  governance_state?: string;
+  temporal_status?: string;
 }
 
 export interface HermesRecognitionSnapshot {
@@ -157,6 +165,10 @@ function entry(input: {
   authority_label: string;
   upstream_refs?: string[];
   updated_at: string;
+  semantic_slot?: string;
+  epistemic_state?: string;
+  governance_state?: string;
+  temporal_status?: string;
 }): HermesRecognitionEntry {
   return {
     target_ref: input.target_ref,
@@ -168,7 +180,25 @@ function entry(input: {
     authority_label: input.authority_label,
     upstream_refs: unique(input.upstream_refs ?? [input.target_ref]),
     updated_at: input.updated_at,
+    ...(input.semantic_slot ? { semantic_slot: input.semantic_slot } : {}),
+    ...(input.epistemic_state ? { epistemic_state: input.epistemic_state } : {}),
+    ...(input.governance_state ? { governance_state: input.governance_state } : {}),
+    ...(input.temporal_status ? { temporal_status: input.temporal_status } : {}),
   };
+}
+
+function auditMetadata(item: {
+  semantic_slot?: string;
+  epistemic_state?: string;
+  governance_state?: string;
+  temporal_status?: string;
+}): string[] {
+  return [
+    item.semantic_slot ? `semantic_slot=${item.semantic_slot}` : "",
+    item.epistemic_state ? `epistemic_state=${item.epistemic_state}` : "",
+    item.governance_state ? `governance_state=${item.governance_state}` : "",
+    item.temporal_status ? `temporal_status=${item.temporal_status}` : "",
+  ].filter((value) => value.length > 0);
 }
 
 function renderContext(snapshot: HermesRecognitionSnapshot, query?: string): string {
@@ -188,6 +218,10 @@ function renderContext(snapshot: HermesRecognitionSnapshot, query?: string): str
     for (const item of selected) {
       lines.push(`- [${item.source_layer}:${item.target_ref}] ${item.label} (${item.authority_label})`);
       lines.push(`  ${item.recognition_hint}`);
+      const metadata = auditMetadata(item);
+      if (metadata.length > 0) {
+        lines.push(`  Audit: ${metadata.join("; ")}`);
+      }
       const card = cards.get(item.target_ref);
       if (card) {
         lines.push(`  Hydration: ${card.summary}`);
@@ -211,6 +245,10 @@ function matchesQuery(entry: HermesRecognitionEntry, normalizedQuery: string): b
     entry.target_ref,
     entry.target_kind,
     entry.source_layer,
+    entry.semantic_slot ?? "",
+    entry.epistemic_state ?? "",
+    entry.governance_state ?? "",
+    entry.temporal_status ?? "",
     ...entry.aliases,
   ].join(" ").toLowerCase();
   return normalizedQuery
@@ -283,6 +321,10 @@ export function compileHermesRecognitionProjection(
       recognition_hint: `${record.kind} is ${record.governance_state}; temporal status ${record.temporal_state?.temporal_status ?? "unresolved"}.`,
       authority_label: `canon/${record.governance_state}`,
       updated_at: updatedAt(record),
+      semantic_slot: record.semantic_slot,
+      epistemic_state: record.epistemic_state,
+      governance_state: record.governance_state,
+      ...(record.temporal_state?.temporal_status ? { temporal_status: record.temporal_state.temporal_status } : {}),
     })),
     ...worldFilter.included.map((record) => entry({
       target_ref: record.id,
@@ -293,6 +335,10 @@ export function compileHermesRecognitionProjection(
       authority_label: `world/${record.epistemic_state}`,
       upstream_refs: record.support_refs,
       updated_at: updatedAt(record),
+      semantic_slot: record.semantic_slot,
+      epistemic_state: record.epistemic_state,
+      ...(record.governance_state ? { governance_state: record.governance_state } : {}),
+      ...(record.temporal_state?.temporal_status ? { temporal_status: record.temporal_state.temporal_status } : {}),
     })),
     ...observationFilter.included.map((record) => entry({
       target_ref: record.id,
@@ -366,6 +412,10 @@ export function compileHermesRecognitionProjection(
     diagnostics: diagnosticFilter.included
       .filter((diagnostic) => diagnostic.related_refs.some((ref) => item.upstream_refs.includes(ref) || ref === item.target_ref))
       .map((diagnostic) => diagnostic.id),
+    ...(item.semantic_slot ? { semantic_slot: item.semantic_slot } : {}),
+    ...(item.epistemic_state ? { epistemic_state: item.epistemic_state } : {}),
+    ...(item.governance_state ? { governance_state: item.governance_state } : {}),
+    ...(item.temporal_status ? { temporal_status: item.temporal_status } : {}),
   }));
 
   const suppressed_records = [
