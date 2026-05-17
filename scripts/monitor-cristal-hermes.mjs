@@ -274,16 +274,25 @@ function scanMaturationRuns() {
       if (!statSync(dir).isDirectory()) return null;
       const evidencePath = join(dir, "evidence.json");
       const llmOutputPath = join(dir, "llm-output.json");
+      const reportPath = join(dir, "report.md");
+      const applyResultPath = join(dir, "apply-result.json");
+      const payloadPath = join(dir, "cycle-payload.json");
       const evidence = tryJson(safeRead(evidencePath, 2000000));
       const evidencePayload = evidence?.evidence ?? evidence;
       const llmOutput = tryJson(safeRead(llmOutputPath, 1000000));
+      const applyResult = tryJson(safeRead(applyResultPath, 1000000));
+      const payload = tryJson(safeRead(payloadPath, 1000000));
       return {
         run_id: name,
         evidence_path: existsSync(evidencePath) ? evidencePath : null,
         llm_output_path: existsSync(llmOutputPath) ? llmOutputPath : null,
+        apply_result_path: existsSync(applyResultPath) ? applyResultPath : null,
+        report_path: existsSync(reportPath) ? reportPath : null,
         selected_items: evidencePayload?.selected_items?.length ?? null,
         skipped_already_matured: evidencePayload?.skipped_already_matured_observation_refs?.length ?? null,
         llm_candidates: llmOutput?.candidates?.length ?? null,
+        apply_returncode: applyResult?.returncode ?? payload?.apply_returncode ?? null,
+        report_preview: safeRead(reportPath, 4000),
         mtime: statSync(dir).mtime.toISOString(),
       };
     })
@@ -716,8 +725,11 @@ function dashboardHtml() {
         '<tr><th>next run</th><td>' + escapeHtml(cycle.cron_job?.next_run_at ?? 'n/a') + '</td></tr>' +
         '<tr><th>latest maturation run</th><td><code>' + escapeHtml(latest.run_id ?? 'n/a') + '</code></td></tr>' +
         '<tr><th>selected / skipped</th><td>' + escapeHtml(latest.selected_items ?? 'n/a') + ' / ' + escapeHtml(latest.skipped_already_matured ?? 'n/a') + '</td></tr>' +
+        '<tr><th>apply returncode</th><td>' + escapeHtml(latest.apply_returncode ?? 'n/a') + '</td></tr>' +
+        '<tr><th>report path</th><td><code>' + escapeHtml(latest.report_path ?? 'n/a') + '</code></td></tr>' +
         '<tr><th>auto ready / owner review</th><td>' + escapeHtml(candidates.auto_canon_ready ?? 'n/a') + ' / ' + escapeHtml(candidates.owner_review ?? 'n/a') + '</td></tr>' +
-        '</tbody></table>';
+        '</tbody></table>' +
+        (latest.report_preview ? '<h3>Latest Report</h3><pre>' + escapeHtml(latest.report_preview) + '</pre>' : '');
     }
 
     function renderEvents(snapshot) {

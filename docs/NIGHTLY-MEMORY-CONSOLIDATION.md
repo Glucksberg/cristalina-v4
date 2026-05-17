@@ -146,6 +146,26 @@ used for ordinary cron turns, and then applies the JSON with `--llm-output`.
 The cycle also runs deterministic candidate promotion so older matured slots do
 not wait forever for the same topic to reappear in a later LLM batch.
 
+At the end of the cycle, the installed Hermes script now writes operational
+artifacts into the run directory:
+
+```text
+cycle-payload.json
+consolidation-result.json
+candidate-promotion-result.json
+apply-result.json
+owner-decisions-result.json
+status-result.json
+report.md
+```
+
+`report.md` is an operator-facing report for the cron agent and Farol. It says
+whether the cycle ran, how many observations were consolidated, how many items
+were selected or skipped for maturation, whether application produced
+diagnostics, how many records were written, and whether owner decisions/reviews
+are pending. The report is operational evidence about the run; it is not canon,
+owner authority, or a memory decision by itself.
+
 When that runtime is configured for remote inference, semantic maturation sends
 the full selected evidence text to the same remote LLM provider. This is
 intentional: reliable memory maturation needs complete context, not only short
@@ -209,6 +229,8 @@ Farol observes the memory consolidation as part of maturation:
 - how many `memory_consolidation` observations exist
 - how many maturation runs, selected items, skipped backlog items, and LLM
   candidates exist
+- the latest cycle report path, apply return code, and report preview when
+  `report.md` exists
 - how many semantic slots are already canon or ready for automatic canon
 - store counts for runtime, proposals, wiki, canon, world, and derived layers
 - research heartbeat and AI Pulse artifact counts

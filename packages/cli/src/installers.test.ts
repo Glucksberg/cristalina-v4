@@ -332,6 +332,8 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.match(memoryCycleCronScript, /consolidation_cmd/);
   assert.match(memoryCycleCronScript, /prepare_cmd/);
   assert.match(memoryCycleCronScript, /apply_command/);
+  assert.match(memoryCycleCronScript, /--apply/);
+  assert.match(memoryCycleCronScript, /report\.md/);
   assert.match(memoryCycleCronScript, /candidate_promotion_cmd/);
   const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
     jobs: Array<{ id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; script: string; deliver: string }>;
