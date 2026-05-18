@@ -1090,6 +1090,22 @@ test("memory mature materializes non-operational evaluation episodes for safe re
   assert.equal(episode.claims[1]?.status, "current_within_test");
   assert.equal(episode.supersession.relation, "correction");
   assert.ok(episode.usage_policy.forbidden.some((entry) => entry.includes("real Markus project")));
+
+  const recognition = await executeCristalinaCommand({
+    name: "projection",
+    action: "recognition",
+    configPath,
+    runtimeInstanceRef: "runtime_hermes_cli_memory_episode_001",
+    runtimeSessionRef: "session_memory_episode_test",
+    conversationThreadRef: "thread_memory_episode_test",
+    query: "Safira SQLite correction",
+    format: "context",
+  });
+  assert.equal(recognition.exitCode, 0);
+  assert.match(recognition.stdout, /Safira was a fictional memory-test project/);
+  assert.match(recognition.stdout, /Postgres was corrected to SQLite local/);
+  assert.match(recognition.stdout, /world\/episode\/fictional_example_episode/);
+  assert.match(recognition.stdout, /semantic_slot=agent_memory\.governance\.fictional_examples_runtime_only/);
 });
 
 test("memory mature promotes corroborated low-risk external claims without owner review", async () => {
