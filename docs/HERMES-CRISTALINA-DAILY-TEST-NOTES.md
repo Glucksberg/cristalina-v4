@@ -241,12 +241,11 @@ Findings:
 - Gap 1, projection of concrete episodes: passed after the recognition ranking
   fix. Governed episodes now outrank recent runtime noise for specific queries
   such as Safira/Postgres/SQLite.
-- Gap 2, owner-review surface clarity: partially passed. Operational queue state
-  was clean (`pending_owner_reviews` was zero), but editorial/wiki planning
-  language such as "pending review" can still be confused with a real active
-  owner-review queue. This needs clearer data/API modeling if we want agents and
-  operators to reason about candidates, queue entries, resolved owner decisions,
-  and planning notes without inference.
+- Gap 2, owner-review surface clarity: passed after code follow-up. Operational
+  queue state was clean (`pending_owner_reviews` was zero), while editorial/wiki
+  planning language such as "pending review" could still be confused with a real
+  active owner-review queue. The status/API now separates active owner-review
+  queues from memory candidates that would require review before promotion.
 - Gap 3, native health/status: passed after fix. The initial Day 3 run showed
   that `cristalina_memory_status` could timeout during an
   owner-decision/review subcheck. The status path now exposes health subchecks
@@ -269,7 +268,13 @@ Verification:
   `origin/main`.
 - Focused CLI tests passed in both checkouts:
   `pnpm --filter @cristalina-v4/cli test -- bridge.test.ts commands.test.ts`.
-- Latest relevant commit: `0c80a0f` - `Fix status health degradation`.
+- Latest focused verification: `54/54` CLI tests passing for
+  `bridge.test.ts commands.test.ts`.
+- Latest relevant commits:
+  - `0c80a0f` - `Fix status health degradation`
+  - `c5fd527` - `Model review surface states`
+  - `044bcad` - `Fix unavailable review surface states`
+  - `edfacfd` - `Skip candidate review scan unless requested`
 
 Post-Day-3 decision:
 
@@ -280,3 +285,7 @@ Post-Day-3 decision:
   `requires_owner_review`, `owner_review_status`, `operational_queue_state`,
   `decision_status`, `queue_ref`, and `counts_toward_pending_owner_reviews`
   fields.
+- `doctor` and `status` request memory-candidate review scanning explicitly.
+  Other status-backed commands skip that heavy scan and report the candidate
+  surface as unavailable/not requested rather than silently doing expensive
+  review work.

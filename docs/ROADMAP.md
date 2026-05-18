@@ -107,6 +107,9 @@ configuration, and long-run validation gaps, not kernel gaps:
 - the nightly memory cycle, progressive maturation selection, and corroborated
   auto-canon policy need live soak validation over several days of Hermes
   heartbeats, crons, gateway turns, and recovery scenarios
+- the guided Hermes/Cristalina Day 1-3 memory test is closed; its remaining
+  output is product hardening and soak validation, especially native health,
+  projection, review surfaces, and fixture retirement
 - missed-run behavior needs an operator story: if the host machine is offline or
   Windows/WSL misses the scheduled 03:00 window, the job may fast-forward to the
   next day and should be easy to detect and manually trigger when appropriate
@@ -261,7 +264,8 @@ Primary outcome:
   review-gated
 - `memory candidates`, `memory promote-candidates`, and Farol show why a slot is
   already canon, ready for auto-canon, needs more support, or requires owner
-  review
+  review; status/API separates active owner-review queues from memory candidates
+  that require review before promotion
 
 ### Step 9. OpenClaw Installer Parity
 
@@ -1177,7 +1181,8 @@ Implemented boundaries:
   the legal proposal/ratification/canon path and keeps operational
   self-observations in wiki context by default
 - `memory candidates` exposes the maturation/canon funnel for operators and
-  Farol
+  Farol, while `doctor`/`status` expose an explicit review surface that
+  distinguishes active queues from candidate review requirements
 - Farol reports memory consolidation installation, maturation counts, and
   candidate-promotion actions
 - [NIGHTLY-MEMORY-CONSOLIDATION.md](NIGHTLY-MEMORY-CONSOLIDATION.md) documents the

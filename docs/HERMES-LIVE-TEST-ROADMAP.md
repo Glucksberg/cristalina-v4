@@ -183,14 +183,16 @@ Day 3 result:
   ranking and governed-episode representation work. The answer came from
   recognition/projection hydration; archive descent was not required for the
   minimum Safira behavior.
-- Partially passed for owner-review/status clarity. Operational
-  `pending_owner_reviews` was clean, but wiki/editorial material that says
-  "pending review" can still be confused with a real owner-review queue item.
-  This is now tracked as the owner-review surface modeling gap.
-- Partially passed for native health diagnostics. Cristalina could report a
-  conservative health diagnosis, but the status path exposed a timeout risk in
-  owner-review/projection subchecks. This was fixed by adding explicit status
-  health subchecks and graceful timeout degradation.
+- Passed after code follow-up for owner-review/status clarity. The live
+  observation found that operational `pending_owner_reviews` was clean while
+  wiki/editorial material could still say "pending review". Status/API now
+  separates active owner-review queues from memory candidates that would require
+  review before promotion, and exposes whether each surface counts toward the
+  pending-review counter.
+- Passed after code follow-up for native health diagnostics. Cristalina could
+  report a conservative health diagnosis, and the status path now has explicit
+  health subchecks plus graceful timeout degradation for slow
+  owner-review/projection checks.
 
 Day 3 code follow-up:
 
@@ -198,14 +200,22 @@ Day 3 code follow-up:
 - `f4cf106` clarifies memory candidate review-state labels.
 - `dc4b64a` adds native status health subchecks.
 - `0c80a0f` fixes status health degradation and timeout behavior.
+- `c5fd527` models review-surface states for active queues and memory
+  candidates.
+- `044bcad` fixes unavailable review-surface states so unavailable data is not
+  reported as a clean empty queue.
+- `edfacfd` makes memory-candidate review scanning opt-in for `doctor` and
+  `status`, so other status-backed commands do not pay the heavy scan cost.
 
-Open post-Day-3 product question:
+Current post-Day-3 state:
 
 - Resolved in code after Day 3: status/API now separates active owner-review
   queues from memory candidates that would require owner review before
   promotion. Owner decision requests and resolutions also expose explicit
   status/modeling fields so agents do not need to infer queue state from
   editorial text.
+- The remaining work is live validation and long-run soak, not a known Day 3
+  blocker.
 
 ### Temporary Fixture Inventory And Cleanup
 
@@ -276,10 +286,11 @@ Items that should not be cleaned up as fixtures:
 - general canon or world claims about memory poisoning, provenance, lifecycle,
   recall quality, operational trace separation, or governed review
 
-Cleanup should happen only after Day 3 produces a final fixture disposition. Do
-not manually delete store internals to make the test pass. The preferred final
-path is a governed archive/retire action, or a documented cleanup script if the
-product surface for fixture retirement does not exist yet.
+Day 3 is closed, but cleanup is still intentionally deferred until Cristalina has
+a governed archive/retire path for evaluation fixtures or an explicit documented
+cleanup script. Do not manually delete store internals to make the test pass.
+The preferred final path is a governed archive/retire action; the fallback is a
+small documented cleanup script that preserves auditability.
 
 ---
 
