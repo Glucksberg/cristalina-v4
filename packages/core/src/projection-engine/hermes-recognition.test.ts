@@ -111,6 +111,19 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
     runtime_session_ref: "session_hermes_test_001",
     conversation_thread_ref: "thread_hermes_test_001",
   };
+  const newerSafiraRuntimeNoise: Observation[] = Array.from({ length: 10 }, (_, index) => ({
+    ...observation,
+    id: `obs_safira_runtime_noise_${index + 1}`,
+    created_at: `2026-05-03T12:${String(index + 1).padStart(2, "0")}:00.000Z`,
+    updated_at: `2026-05-03T12:${String(index + 1).padStart(2, "0")}:00.000Z`,
+    provenance: {
+      ...provenance(`tests/hermes-recognition/runtime-noise-${index + 1}`),
+      actor_ref: "actor_owner_001",
+    },
+    summary: JSON.stringify({
+      message: `Runtime mention ${index + 1}: Safira, Postgres, and SQLite were discussed during the memory test.`,
+    }),
+  }));
   const episode: Episode = {
     id: "epi_safira_fixture_001",
     kind: "episode",
@@ -186,7 +199,7 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
     },
     actor_identities: [actor],
     entities: [entity],
-    runtime_observations: [observation],
+    runtime_observations: [observation, ...newerSafiraRuntimeNoise],
     canonical_records: [canon, suppressedCanon, suppressedCanon],
     world_claims: [world],
     episodes: [episode],
@@ -214,17 +227,23 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
   const context = formatHermesRecognitionContext(result.snapshot, "Fluck memory");
   assert.match(context, /## Cristalina Memory/);
   assert.match(context, /Fluck/);
-  assert.match(context, /native memory provider is active/);
-  assert.match(context, /semantic_slot=cristal\.memory\.goal/);
-  assert.match(context, /semantic_slot=memory\.pattern/);
   assert.match(context, /Archive Descent/);
   assert.doesNotMatch(context, /Another owner/);
 
+  const nativeProviderContext = formatHermesRecognitionContext(result.snapshot, "native provider active");
+  assert.match(nativeProviderContext, /native memory provider is active/);
+
+  const memoryGoalContext = formatHermesRecognitionContext(result.snapshot, "cristal.memory.goal");
+  assert.match(memoryGoalContext, /semantic_slot=cristal\.memory\.goal/);
+
   const semanticSlotContext = formatHermesRecognitionContext(result.snapshot, "memory.pattern");
   assert.match(semanticSlotContext, /Recognition should happen before archive descent/);
+  assert.match(semanticSlotContext, /semantic_slot=memory\.pattern/);
 
   const episodeContext = formatHermesRecognitionContext(result.snapshot, "Safira SQLite correction");
   assert.match(episodeContext, /Safira was a fictional memory-test project/);
   assert.match(episodeContext, /Postgres was corrected to SQLite local/);
   assert.match(episodeContext, /world\/episode\/fictional_example_episode/);
+  assert.match(episodeContext, /semantic_slot=agent_memory\.governance\.fictional_examples_runtime_only/);
+  assert.ok(episodeContext.indexOf("epi_safira_fixture_001") < episodeContext.indexOf("obs_safira_runtime_noise_10"));
 });

@@ -150,6 +150,37 @@ function compactText(value: string, limit = 240): string {
   return compacted.length > limit ? `${compacted.slice(0, limit - 1).trimEnd()}...` : compacted;
 }
 
+const GENERIC_QUERY_TERMS = new Set([
+  "about",
+  "case",
+  "caso",
+  "context",
+  "estado",
+  "memory",
+  "memoria",
+  "memória",
+  "project",
+  "projeto",
+  "qual",
+  "quais",
+  "sobre",
+  "test",
+  "teste",
+  "what",
+]);
+
+function queryTerms(normalizedQuery: string): string[] {
+  const distinctiveTerms = normalizedQuery
+    .split(/\s+/)
+    .map((part) => part.replace(/^[^\p{L}\p{N}_.-]+|[^\p{L}\p{N}_.-]+$/gu, ""))
+    .filter((part) => part.length >= 3 && !GENERIC_QUERY_TERMS.has(part));
+  if (distinctiveTerms.length > 0) return distinctiveTerms;
+  return normalizedQuery
+    .split(/\s+/)
+    .map((part) => part.replace(/^[^\p{L}\p{N}_.-]+|[^\p{L}\p{N}_.-]+$/gu, ""))
+    .filter((part) => part.length >= 3);
+}
+
 function updatedAt(record: { created_at: string; updated_at?: string | null }): string {
   return record.updated_at ?? record.created_at;
 }
@@ -283,10 +314,47 @@ function matchesQuery(entry: HermesRecognitionEntry, normalizedQuery: string): b
     entry.temporal_status ?? "",
     ...entry.aliases,
   ].join(" ").toLowerCase();
-  return normalizedQuery
-    .split(/\s+/)
-    .filter((part) => part.length >= 3)
-    .some((part) => haystack.includes(part));
+  return queryTerms(normalizedQuery).some((part) => haystack.includes(part));
+}
+
+function recognitionAuthorityScore(entry: HermesRecognitionEntry): number {
+  if (entry.source_layer === "canon") return 70;
+  if (entry.target_kind === "episode") return 65;
+  if (entry.target_kind === "entity") return 60;
+  if (entry.source_layer === "world") return 55;
+  if (entry.source_layer === "wiki") return 45;
+  if (entry.source_layer === "runtime") return 20;
+  return 30;
+}
+
+function queryMatchScore(entry: HermesRecognitionEntry, normalizedQuery: string): number {
+  const terms = queryTerms(normalizedQuery);
+  if (terms.length === 0) return 0;
+
+  const label = entry.label.toLowerCase();
+  const hint = entry.recognition_hint.toLowerCase();
+  const aliases = entry.aliases.map((alias) => alias.toLowerCase());
+  const metadata = [
+    entry.target_ref,
+    entry.target_kind,
+    entry.source_layer,
+    entry.semantic_slot ?? "",
+    entry.epistemic_state ?? "",
+    entry.governance_state ?? "",
+    entry.temporal_status ?? "",
+  ].join(" ").toLowerCase();
+
+  let score = recognitionAuthorityScore(entry);
+  for (const term of terms) {
+    if (aliases.some((alias) => alias.includes(term))) score += 14;
+    if (label.includes(term)) score += 10;
+    if (hint.includes(term)) score += 7;
+    if (metadata.includes(term)) score += 4;
+  }
+  if (entry.target_kind === "episode" && terms.some((term) => hint.includes(term) || aliases.some((alias) => alias.includes(term)))) {
+    score += 20;
+  }
+  return score;
 }
 
 export function selectRecognitionEntries(
@@ -296,6 +364,13 @@ export function selectRecognitionEntries(
 ): HermesRecognitionEntry[] {
   const normalizedQuery = query?.toLowerCase().trim() ?? "";
   const matched = snapshot.recognition_index.filter((item) => matchesQuery(item, normalizedQuery));
+  if (normalizedQuery) {
+    return matched
+      .map((entry) => ({ entry, score: queryMatchScore(entry, normalizedQuery) }))
+      .sort((left, right) => right.score - left.score || right.entry.updated_at.localeCompare(left.entry.updated_at))
+      .map((item) => item.entry)
+      .slice(0, limit);
+  }
   return matched
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
     .slice(0, limit);
