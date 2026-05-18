@@ -411,37 +411,52 @@ Current product state:
 After Day 3, the test should continue across the rest of the Cristalina/Hermes
 structure:
 
-1. Nightly cycle soak
+1. Normal-use conversation route
+   - keep talking with Cristal about ordinary planning, preferences,
+     troubleshooting, reading, ideas, and project choices
+   - verify what becomes runtime evidence, what matures, and what is projected
+     back later without artificial "use only Cristalina" prompts
+   - this is the next preferred test route because it exercises the memory
+     provider as a lived system rather than a scripted benchmark
+
+2. Projection and behavior feedback
+   - ask questions that should be answered from projection without restating
+     history
+   - compare projection-only answers against archive-descent answers only when
+     the user asks for refs, timeline, or provenance
+
+3. Wiki quality and knowledge shape
+   - inspect whether wiki pages are becoming useful synthesis surfaces
+   - verify wiki does not collapse into canon
+
+4. Owner-review loop
+   - generate ambiguous and explicit owner-scoped claims through natural
+     conversation
+   - verify review questions, ratification, subsumption, and keep-maturing
+     states
+
+5. Contradiction and supersession
+   - introduce controlled conflicting evidence after normal-use projection is
+     stable
+   - verify contradictions do not silently overwrite canon
+   - verify superseded states are projected correctly
+
+6. Nightly cycle soak
    - verify repeated daily runs
    - inspect selected and skipped evidence refs
    - ensure backlog is consumed rather than repeatedly reprocessed
 
-2. Owner-review loop
-   - generate ambiguous and explicit owner-scoped claims
-   - verify review questions, ratification, subsumption, and keep-maturing
-     states
-
-3. Projection and behavior feedback
-   - ask questions that should be answered from projection without restating
-     history
-   - compare projection-only answers against archive-descent answers
-
-4. Contradiction and supersession
-   - introduce controlled conflicting evidence
-   - verify contradictions do not silently overwrite canon
-   - verify superseded states are projected correctly
-
-5. Wiki quality
-   - inspect whether wiki pages are becoming useful synthesis surfaces
-   - verify wiki does not collapse into canon
-
-6. Retrieval and vector work
+7. Retrieval and vector work
    - keep deferred until wiki/canon/projection quality is stable
    - evaluate retrieval with authority, provenance, and layer legality
 
-7. Group/shared memory
+8. Group/shared memory
    - keep deferred until owner-review and single-user governance are reliable
    - test multi-agent/shared-memory authority only after the base loop is stable
+
+Fine-grained checks such as multi-day soak thresholds, fixture retirement,
+formal deletion/revocation, broader RAG/vector comparison, and benchmark packs
+are documented follow-up work. They should not block the next exploratory phase.
 
 ---
 
@@ -467,6 +482,7 @@ design correction: non-operational evaluation fixtures need first-class,
 recoverable representation. That correction is now implemented and covered by an
 end-to-end CLI test.
 
-The next critical test is whether Day 3 can verify the same behavior through
-native Cristalina status, projection, and archive descent surfaces in the live
-Hermes environment.
+The next critical test is normal-use behavior: whether ordinary conversations
+with Cristal naturally activate evidence intake, maturation, wiki/canon/review
+routing, projection, archive descent, and contradiction handling without the
+user having to keep giving artificial tool restrictions.

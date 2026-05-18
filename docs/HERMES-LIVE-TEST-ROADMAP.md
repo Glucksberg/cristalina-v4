@@ -296,6 +296,9 @@ small documented cleanup script that preserves auditability.
 
 ## 4. Phase A: Soak The Nightly Cycle
 
+Status: deferred as a fine-grained validation track. Keep observing it during
+normal use, but do not make multi-day soak the next blocking test phase.
+
 **Question:** Does the nightly cycle reliably turn accumulated evidence into
 governed memory without manual intervention?
 
@@ -331,6 +334,10 @@ Pass signal:
 
 ## 5. Phase B: Owner-Review Loop
 
+Status: active-watch. Exercise this through natural conversation first; create
+scripted owner-review fixtures only when the live conversation route exposes a
+real ambiguity.
+
 **Question:** Can Cristalina identify owner-scoped memory and ask for explicit
 direction without blocking unrelated non-owner learning?
 
@@ -362,6 +369,8 @@ Current known review candidates:
 
 ## 6. Phase C: Projection And Behavior Feedback
 
+Status: next primary route after Day 3.
+
 **Question:** Does memory that reached wiki/canon/projection change what Cristal
 recognizes and uses in later turns?
 
@@ -389,6 +398,8 @@ Pass signal:
 ---
 
 ## 7. Phase D: Contradiction And Supersession
+
+Status: queued after a short period of normal-use projection testing.
 
 **Question:** Can Cristalina distinguish new conflicting evidence from ordinary
 additional support?
@@ -418,6 +429,9 @@ Pass signal:
 
 ## 8. Phase E: Wiki Quality And Knowledge Shape
 
+Status: active-watch through normal reading, heartbeat synthesis, and free
+conversation. Formal wiki audits can wait until there is more lived evidence.
+
 **Question:** Is the wiki becoming a useful synthesis layer, or only a pile of
 thin slot pages?
 
@@ -446,6 +460,8 @@ Pass signal:
 
 ## 9. Phase F: Broader Life Tests
 
+Status: next exploratory frame.
+
 **Question:** What additional regions of the memory kernel activate when Cristal
 has a more varied life?
 
@@ -467,6 +483,26 @@ Expected activation:
 
 Do not start with group chat or vector retrieval as the proof of memory. Those
 are useful stress tests only after the current loop is reliable.
+
+The immediate next route is ordinary conversation with minimal artificial
+constraints. The goal is to watch which core routes activate naturally:
+
+- runtime evidence intake from normal turns
+- recognition/projection before the agent reaches for historical search
+- archive descent only when the projected context is insufficient
+- wiki routing for plans, summaries, and non-canon synthesis
+- owner-review routing for owner-scoped preferences, goals, and authority
+  claims
+- contradiction/supersession when Markus corrects or replaces earlier
+  statements
+- diagnostics/status when a memory or delivery path is unhealthy
+- session continuity when `/new`, gateway restarts, or compaction-like resets
+  occur
+
+Fine-grained validation remains documented but deferred: multi-day soak
+thresholds, formal deletion/revocation, fixture retirement, broad RAG/vector
+comparison, and benchmark packs should happen after this normal-use route has
+produced more evidence.
 
 ---
 
@@ -517,10 +553,7 @@ operator baseline here:
 - owner-review questions: 3
 
 The next test risk is not whether the pipeline exists. It is whether the memory
-that reaches wiki/canon/projection reliably changes future behavior and whether
-owner-review and contradiction flows become usable without manual store edits.
-
-The next live-test risk after Day 2 is narrower: whether native status,
-projection, and archive descent expose concrete governed test episodes and their
-authority/lifecycle state without needing session history as the primary recall
-surface.
+that reaches wiki/canon/projection reliably changes future behavior during
+ordinary use, and whether owner-review, wiki, archive descent, contradiction,
+diagnostic, and session-continuity routes become usable without manual store
+edits or artificial prompt restrictions.
