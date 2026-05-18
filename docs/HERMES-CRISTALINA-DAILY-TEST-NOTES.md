@@ -190,6 +190,9 @@ Relevant commits:
 
 Main focus: Day 3, native governance and audit.
 
+Final status: closed for the guided Day 1-3 test cycle. The remaining work is
+now product hardening, not a blocker for the Day 3 evaluation itself.
+
 The test asked Cristal to use native Cristalina surfaces first:
 
 - memory status
@@ -238,12 +241,17 @@ Findings:
 - Gap 1, projection of concrete episodes: passed after the recognition ranking
   fix. Governed episodes now outrank recent runtime noise for specific queries
   such as Safira/Postgres/SQLite.
-- Gap 2, owner-review surface clarity: operational queue state was clean, but
-  editorial/wiki planning language such as "pending review" can be confused
-  with a real active owner-review queue.
-- Gap 3, native health/status: Cristalina could diagnose health conservatively,
-  but `cristalina_memory_status` timed out during an owner-decision/review
-  subcheck. Status needs explicit health subchecks and graceful degradation.
+- Gap 2, owner-review surface clarity: partially passed. Operational queue state
+  was clean (`pending_owner_reviews` was zero), but editorial/wiki planning
+  language such as "pending review" can still be confused with a real active
+  owner-review queue. This needs clearer data/API modeling if we want agents and
+  operators to reason about candidates, queue entries, resolved owner decisions,
+  and planning notes without inference.
+- Gap 3, native health/status: passed after fix. The initial Day 3 run showed
+  that `cristalina_memory_status` could timeout during an
+  owner-decision/review subcheck. The status path now exposes health subchecks
+  and degrades slow subchecks to `attention` instead of hanging or reporting
+  misleading success.
 
 Follow-up code adjustments:
 
@@ -251,5 +259,22 @@ Follow-up code adjustments:
   active queue entries.
 - Expose status health subchecks for store, projections, owner-review queues,
   diagnostics, and overall status.
+- Bound status subchecks with a timeout and clear the timer when checks complete.
 - Keep Farol outside product behavior; do not mention it in future Cristal test
   prompts unless explicitly testing external observability.
+
+Verification:
+
+- Main repository and runtime checkout were both cleaned and aligned to
+  `origin/main`.
+- Focused CLI tests passed in both checkouts:
+  `pnpm --filter @cristalina-v4/cli test -- bridge.test.ts commands.test.ts`.
+- Latest relevant commit: `0c80a0f` - `Fix status health degradation`.
+
+Post-Day-3 decision:
+
+- Decide whether to implement the Gap 2 modeling change now. The practical
+  question is whether Cristalina's public status/API should expose separate
+  fields for `record_kind`, `requires_owner_review`, `owner_review_status`,
+  `operational_queue_state`, `decision_status`, and whether an item counts
+  toward `pending_owner_reviews`.
