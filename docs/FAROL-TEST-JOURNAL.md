@@ -43,3 +43,9 @@ docs, monitor artifacts, or issue notes instead of copying long logs.
   side-channel security proposal should keep maturing toward a broader claim
   about agents operating physical environments, instead of a narrow RF-only
   principle.
+- 2026-05-18: The guided Day 1/Day 2 memory test found that Cristalina had the
+  general rule for fictional runtime-only examples but needed a governed,
+  recoverable concrete episode for Safira/Postgres -> SQLite. The code now
+  materializes non-operational evaluation episodes and verifies Hermes
+  recognition can project the Safira correction without relying on session
+  history as the primary recall surface.
