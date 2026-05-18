@@ -55,6 +55,8 @@ export interface RuntimeBridgeHealth {
   owner_reviews: RuntimeBridgeHealthCheck;
 }
 
+const DEFAULT_STATUS_SUBCHECK_TIMEOUT_MS = 1000;
+
 async function exists(path: string): Promise<boolean> {
   await access(path).then(() => undefined);
   return true;
@@ -120,9 +122,19 @@ async function collectSubcheck<T>(input: {
   run: () => Promise<T>;
   metrics: (value: T) => Record<string, number | null>;
   note?: string;
+  timeoutMs?: number;
 }): Promise<{ value: T; health: RuntimeBridgeHealthCheck }> {
   try {
-    const value = await input.run();
+    const timeoutMs = Math.max(1, Math.floor(input.timeoutMs ?? DEFAULT_STATUS_SUBCHECK_TIMEOUT_MS));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const value = await Promise.race([
+      input.run(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
     return {
       value,
       health: healthCheck({
@@ -160,15 +172,28 @@ export async function collectRuntimeBridgeStatus(input: {
   config: CristalinaConfig;
   configDiagnostics: string[];
   storeRoot: string | null;
+  subcheckTimeoutMs?: number;
+  collectors?: {
+    openclawProjections?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listOpenClawProjectionRuntimeViews>>>;
+    hermesProjections?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listHermesProjectionRuntimeViews>>>;
+    openclawReviews?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listOpenClawConversationPreferenceOwnerRatificationQueue>>>;
+    hermesReviews?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listHermesConversationPreferenceOwnerRatificationQueue>>>;
+  };
 }): Promise<RuntimeBridgeStatus> {
   const checkedAt = new Date().toISOString();
   const diagnostics = [...input.configDiagnostics];
   const storeRoot = input.storeRoot;
+  if (!input.config.runtimes?.openclaw?.runtime_instance_ref) {
+    diagnostics.push("OpenClaw runtime binding is missing runtimes.openclaw.runtime_instance_ref");
+  }
+  if (!input.config.runtimes?.hermes?.runtime_instance_ref) {
+    diagnostics.push("Hermes runtime binding is missing runtimes.hermes.runtime_instance_ref");
+  }
   const configHealth = healthCheck({
-    status: input.configDiagnostics.length === 0 ? "ok" : "fail",
+    status: diagnostics.length === 0 ? "ok" : "fail",
     checkedAt,
     source: "config",
-    diagnostics: input.configDiagnostics,
+    diagnostics,
   });
 
   if (!storeRoot) {
@@ -224,13 +249,6 @@ export async function collectRuntimeBridgeStatus(input: {
     metrics: { manifest_found: manifest ? 1 : 0 },
   });
 
-  if (!input.config.runtimes?.openclaw?.runtime_instance_ref) {
-    diagnostics.push("OpenClaw runtime binding is missing runtimes.openclaw.runtime_instance_ref");
-  }
-  if (!input.config.runtimes?.hermes?.runtime_instance_ref) {
-    diagnostics.push("Hermes runtime binding is missing runtimes.hermes.runtime_instance_ref");
-  }
-
   const projectionFallback = {
     openclaw: [] as Awaited<ReturnType<typeof listOpenClawProjectionRuntimeViews>>,
     hermes: [] as Awaited<ReturnType<typeof listHermesProjectionRuntimeViews>>,
@@ -246,12 +264,13 @@ export async function collectRuntimeBridgeStatus(input: {
         fallback: projectionFallback,
         run: async () => {
           const [openclaw, hermes] = await Promise.all([
-            listOpenClawProjectionRuntimeViews(storeRoot),
-            listHermesProjectionRuntimeViews(storeRoot),
+            (input.collectors?.openclawProjections ?? listOpenClawProjectionRuntimeViews)(storeRoot),
+            (input.collectors?.hermesProjections ?? listHermesProjectionRuntimeViews)(storeRoot),
           ]);
           return { openclaw, hermes };
         },
         metrics: (value) => ({ openclaw: value.openclaw.length, hermes: value.hermes.length }),
+        timeoutMs: input.subcheckTimeoutMs,
       })
     : {
         value: projectionFallback,
@@ -270,13 +289,14 @@ export async function collectRuntimeBridgeStatus(input: {
         fallback: reviewsFallback,
         run: async () => {
           const [openclaw, hermes] = await Promise.all([
-            listOpenClawConversationPreferenceOwnerRatificationQueue(storeRoot),
-            listHermesConversationPreferenceOwnerRatificationQueue(storeRoot),
+            (input.collectors?.openclawReviews ?? listOpenClawConversationPreferenceOwnerRatificationQueue)(storeRoot),
+            (input.collectors?.hermesReviews ?? listHermesConversationPreferenceOwnerRatificationQueue)(storeRoot),
           ]);
           return { openclaw, hermes };
         },
         metrics: (value) => ({ openclaw: value.openclaw.length, hermes: value.hermes.length }),
         note: "Counts active queue entries only; memory candidates that require review are reported by memory candidates.",
+        timeoutMs: input.subcheckTimeoutMs,
       })
     : {
         value: reviewsFallback,
