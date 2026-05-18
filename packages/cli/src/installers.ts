@@ -149,6 +149,52 @@ function isoNextLocalTime(hour: number, minute: number): string {
   return next.toISOString();
 }
 
+type HermesCronDeliveryOrigin = {
+  platform: string;
+  chat_id: string;
+  chat_name: string | null;
+  thread_id: string | null;
+};
+
+function isHermesCronDeliveryOrigin(value: unknown): value is HermesCronDeliveryOrigin {
+  if (!value || typeof value !== "object") return false;
+  const origin = value as Record<string, unknown>;
+  return typeof origin.platform === "string" &&
+    origin.platform.length > 0 &&
+    typeof origin.chat_id === "string" &&
+    origin.chat_id.length > 0 &&
+    (origin.chat_name === null || typeof origin.chat_name === "string") &&
+    (origin.thread_id === null || typeof origin.thread_id === "string");
+}
+
+async function inferHermesCronDeliveryOrigin(runtimeRoot: string): Promise<HermesCronDeliveryOrigin | null> {
+  try {
+    const parsed = JSON.parse(await readFile(join(runtimeRoot, "channel_directory.json"), "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    const platforms = (parsed as { platforms?: unknown }).platforms;
+    if (!platforms || typeof platforms !== "object") return null;
+
+    const origins: HermesCronDeliveryOrigin[] = [];
+    for (const [platform, entries] of Object.entries(platforms as Record<string, unknown>)) {
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries) {
+        if (!entry || typeof entry !== "object") continue;
+        const channel = entry as Record<string, unknown>;
+        if (typeof channel.id !== "string" || channel.id.length === 0) continue;
+        origins.push({
+          platform,
+          chat_id: channel.id,
+          chat_name: typeof channel.name === "string" ? channel.name : null,
+          thread_id: typeof channel.thread_id === "string" ? channel.thread_id : null,
+        });
+      }
+    }
+    return origins.length === 1 ? origins[0]! : null;
+  } catch {
+    return null;
+  }
+}
+
 function hermesPluginPaths(runtimeRoot: string | undefined): {
   pluginPath: string | null;
   pluginManifestPath: string | null;
@@ -542,6 +588,11 @@ async function upsertHermesMemoryCycleCron(input: {
   const nextRunAt = existingScheduleMatches && typeof existing?.next_run_at === "string" && existing.next_run_at
     ? existing.next_run_at
     : isoNextLocalTime(input.scheduleHour, input.scheduleMinute);
+  const deliveryOrigin = isHermesCronDeliveryOrigin(existing?.origin)
+    ? existing.origin
+    : await inferHermesCronDeliveryOrigin(input.runtimeRoot);
+  const deliver = deliveryOrigin ? "origin" : "local";
+  const enabledToolsets = deliveryOrigin ? ["terminal", "messaging"] : ["terminal"];
   const job = {
     id: jobId,
     name: jobName,
@@ -569,9 +620,9 @@ async function upsertHermesMemoryCycleCron(input: {
     last_status: typeof existing?.last_status === "string" ? existing.last_status : null,
     last_error: typeof existing?.last_error === "string" ? existing.last_error : null,
     last_delivery_error: typeof existing?.last_delivery_error === "string" ? existing.last_delivery_error : null,
-    deliver: "local",
-    origin: null,
-    enabled_toolsets: ["terminal"],
+    deliver,
+    origin: deliveryOrigin,
+    enabled_toolsets: enabledToolsets,
     workdir: null,
   };
 
@@ -592,6 +643,9 @@ async function upsertHermesMemoryCycleCron(input: {
       ...(removedOldJobs > 0
         ? [`Removed ${removedOldJobs} legacy split memory cron job(s); ${jobName} now orchestrates consolidation and maturation.`]
         : []),
+      deliveryOrigin
+        ? `Hermes cron job ${jobName} will deliver nightly reports to ${deliveryOrigin.platform}:${deliveryOrigin.chat_id}.`
+        : `Hermes cron job ${jobName} has no unique channel origin; nightly reports will be stored locally in cron output.`,
     ],
   };
 }

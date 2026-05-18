@@ -354,6 +354,63 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.doesNotMatch(hermesConfig, /cristalina-bridge/);
 });
 
+test("Hermes installer delivers nightly memory cycle reports to a unique channel origin", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-delivery-"));
+  const configPath = join(root, "config.json");
+  const metadataPath = join(root, ".cristalina-v4", "runtime-hermes.json");
+  const runtimeRoot = join(root, "hermes");
+  const hermesConfigPath = join(runtimeRoot, "config.yaml");
+  await mkdir(runtimeRoot, { recursive: true });
+  await writeFile(hermesConfigPath, "model:\n  provider: test\nhooks: {}\n");
+  await writeFile(join(runtimeRoot, "channel_directory.json"), `${JSON.stringify({
+    updated_at: "2026-05-18T00:00:00.000Z",
+    platforms: {
+      telegram: [
+        {
+          id: "942906261",
+          name: "Markus Glucksberg",
+          type: "dm",
+          thread_id: null,
+        },
+      ],
+      discord: [],
+    },
+  }, null, 2)}\n`);
+
+  const result = await installRuntime({
+    runtime: "hermes",
+    configPath,
+    metadataPath,
+    nonInteractive: true,
+    runtimeRoot,
+  });
+
+  const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
+    memory_consolidation_cron_jobs_path: string;
+    memory_cycle_cron_job_id: string;
+  };
+  const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
+    jobs: Array<{
+      id: string;
+      name: string;
+      deliver: string;
+      origin: null | { platform: string; chat_id: string; chat_name: string | null; thread_id: string | null };
+      enabled_toolsets: string[];
+    }>;
+  };
+  const job = cronJobs.jobs.find((entry) => entry.id === metadata.memory_cycle_cron_job_id);
+  assert.equal(job?.name, "cristalina-nightly-memory-cycle");
+  assert.equal(job?.deliver, "origin");
+  assert.deepEqual(job?.origin, {
+    platform: "telegram",
+    chat_id: "942906261",
+    chat_name: "Markus Glucksberg",
+    thread_id: null,
+  });
+  assert.deepEqual(job?.enabled_toolsets, ["terminal", "messaging"]);
+  assert.ok(result.diagnostics.some((entry) => entry.includes("will deliver nightly reports to telegram:942906261")));
+});
+
 test("Hermes bridge mode still enables bridge plugin across common config yaml shapes", async () => {
   const cases = [
     "plugins:\n  enabled: []\n",
