@@ -186,11 +186,11 @@ Relevant commits:
 
 ---
 
-## 2026-05-19: Planned Next Test
+## 2026-05-18: Day 3 Findings
 
 Main focus: Day 3, native governance and audit.
 
-The next test should ask Cristal to use native Cristalina surfaces first:
+The test asked Cristal to use native Cristalina surfaces first:
 
 - memory status
 - recognition/projection
@@ -200,21 +200,16 @@ The next test should ask Cristal to use native Cristalina surfaces first:
 - diagnostics
 - wiki/canon/world/proposal state
 
-Primary questions for Cristal:
+Primary checks run:
 
-1. What does Cristalina's native status say about the Day 1/Day 2 memory test
-   now?
-2. Which items are canon, wiki, world/confirmed, hypothesized, runtime-only, or
-   non-operational evidence?
-3. Can you recover the Safira correction without `session_search`?
-4. If Safira is recoverable, which layer/ref exposes it?
-5. If Safira is not recoverable, which native surface is missing it?
-6. Are there pending owner reviews?
-7. Are resolved owner decisions visible and understandable?
-8. Are the fake sensitive credential and malicious phrase contained?
-9. Does archive descent provide missing details when projection is insufficient?
+- Recover the Safira correction without `session_search`.
+- List the refs/camadas supporting the Safira answer.
+- Check whether the answer came from recognition/projection or archive descent.
+- Compare owner-review queue state, candidate state, and editorial planning
+  language.
+- Ask Cristalina for a native operational health diagnosis.
 
-Day 3 pass criteria:
+Results:
 
 - Safira is recoverable as a non-operational evaluation episode, not as a real
   project.
@@ -225,12 +220,36 @@ Day 3 pass criteria:
 - Runtime observation is not treated as owner authority.
 - Cristal can distinguish canon, wiki, world, runtime evidence, hypothesis,
   owner decision, and non-operational test episode.
-- Farol is not needed for Cristal's answer.
+- The Safira answer came from initial recognition/projection with embedded
+  hydration; archive descent was not needed for the minimum behavior.
 
-If Day 3 exposes gaps:
+Main accepted refs:
 
-- record the gap as a diagnostic or test finding;
-- patch the owning Cristalina layer only if the behavior is genuinely missing;
-- add focused tests;
-- avoid using Farol, manual store edits, or session history as hidden product
-  behavior.
+- `world:epi_hermes_memory_maturation_hermes_de41cebf9679b3e2_claim_1_af7df7c4cb`
+  - layer: `world/episode/fictional_example_episode`
+  - role: direct Safira evaluation episode.
+- `world:wcl_hermes_memory_maturation_hermes_de41cebf9679b3e2_claim_1_af7df7c4cb`
+  - layer: `world/observed`
+  - role: governed rule for representing fictional/test-only examples as
+    evaluation episodes rather than operational facts.
+
+Findings:
+
+- Gap 1, projection of concrete episodes: passed after the recognition ranking
+  fix. Governed episodes now outrank recent runtime noise for specific queries
+  such as Safira/Postgres/SQLite.
+- Gap 2, owner-review surface clarity: operational queue state was clean, but
+  editorial/wiki planning language such as "pending review" can be confused
+  with a real active owner-review queue.
+- Gap 3, native health/status: Cristalina could diagnose health conservatively,
+  but `cristalina_memory_status` timed out during an owner-decision/review
+  subcheck. Status needs explicit health subchecks and graceful degradation.
+
+Follow-up code adjustments:
+
+- Expose candidate-review labels that distinguish candidate requirements from
+  active queue entries.
+- Expose status health subchecks for store, projections, owner-review queues,
+  diagnostics, and overall status.
+- Keep Farol outside product behavior; do not mention it in future Cristal test
+  prompts unless explicitly testing external observability.
