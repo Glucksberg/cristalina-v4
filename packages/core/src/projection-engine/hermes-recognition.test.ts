@@ -6,7 +6,7 @@ import {
   formatHermesRecognitionContext,
   HERMES_RECOGNITION_PROJECTION_PROFILE,
 } from "./hermes-recognition.js";
-import type { ActorIdentity, CanonicalMemoryObject, Entity, Observation, WikiPage, WorldClaim } from "../types.js";
+import type { ActorIdentity, CanonicalMemoryObject, Entity, Episode, Observation, WikiPage, WorldClaim } from "../types.js";
 
 const now = "2026-05-03T12:00:00.000Z";
 
@@ -111,6 +111,44 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
     runtime_session_ref: "session_hermes_test_001",
     conversation_thread_ref: "thread_hermes_test_001",
   };
+  const episode: Episode = {
+    id: "epi_safira_fixture_001",
+    kind: "episode",
+    layer: "world",
+    authoritative_home: "world",
+    created_at: now,
+    updated_at: now,
+    visibility_state: { privacy_scope: "owner_private" },
+    provenance: {
+      ...provenance("tests/hermes-recognition/episode"),
+      actor_ref: "actor_owner_001",
+    },
+    summary: "Safira was a fictional memory-test project: Postgres was corrected to SQLite local; use only as test evidence.",
+    observation_refs: [observation.id],
+    temporal_state: { temporal_status: "active", valid_from: now, valid_to: null },
+    semantic_slot: "agent_memory.governance.fictional_examples_runtime_only",
+    episode_type: "fictional_example_episode",
+    entity_refs: [{ id: "ent_safira_001", kind: "entity", layer: "world" }],
+    scope_tags: ["memory_test", "non_operational", "not_user_project_fact"],
+    purpose: "Test fictional example correction and supersession without operationalizing the fixture.",
+    lifecycle_state: "retained_as_test_evidence",
+    claims: [
+      { statement: "Projeto Safira uses Postgres.", status: "superseded", authority: "runtime_observed", scope: "fictional_test_only" },
+      { statement: "Projeto Safira uses SQLite local.", status: "current_within_test", authority: "user_correction_observed", scope: "fictional_test_only" },
+    ],
+    supersession: {
+      from: "Projeto Safira uses Postgres.",
+      to: "Projeto Safira uses SQLite local.",
+      relation: "correction",
+      reason: "explicit_user_correction",
+    },
+    usage_policy: {
+      allowed: ["explain the memory test", "diagnose correction handling"],
+      forbidden: ["treat Safira as a real Markus project", "use as an operational project stack"],
+    },
+    linked_governance_slots: ["agent_memory.governance.fictional_examples_runtime_only"],
+    projection_hint: "Safira was a fictional memory-test project: Postgres was corrected to SQLite local; use only as test evidence.",
+  };
   const wiki: WikiPage = {
     id: "wpg_agent_memory_research_001",
     kind: "wiki_page",
@@ -151,6 +189,7 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
     runtime_observations: [observation],
     canonical_records: [canon, suppressedCanon, suppressedCanon],
     world_claims: [world],
+    episodes: [episode],
     wiki_pages: [wiki],
   });
 
@@ -160,6 +199,8 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
   assert.ok(result.snapshot.hydration_cards.some((card) => card.target_ref === "mem_memory_goal_001"));
   assert.ok(result.snapshot.recognition_index.some((entry) => entry.target_ref === "mem_memory_goal_001" && entry.semantic_slot === "cristal.memory.goal"));
   assert.ok(result.snapshot.recognition_index.some((entry) => entry.target_ref === "wcl_memory_pattern_001" && entry.semantic_slot === "memory.pattern"));
+  assert.ok(result.snapshot.recognition_index.some((entry) => entry.target_ref === "epi_safira_fixture_001" && entry.authority_label === "world/episode/fictional_example_episode"));
+  assert.ok(result.snapshot.recognition_index.some((entry) => entry.target_ref === "epi_safira_fixture_001" && entry.semantic_slot === "agent_memory.governance.fictional_examples_runtime_only"));
   assert.ok(result.snapshot.hydration_cards.some((card) => card.target_ref === "wcl_memory_pattern_001" && card.semantic_slot === "memory.pattern"));
   assert.ok(result.snapshot.suppressed_records.some((record) => record.id === "mem_other_owner_001"));
   assert.equal(result.snapshot.suppressed_records.filter((record) => record.id === "mem_other_owner_001").length, 1);
@@ -181,4 +222,9 @@ test("Hermes recognition projection compiles recognition, hydration, and archive
 
   const semanticSlotContext = formatHermesRecognitionContext(result.snapshot, "memory.pattern");
   assert.match(semanticSlotContext, /Recognition should happen before archive descent/);
+
+  const episodeContext = formatHermesRecognitionContext(result.snapshot, "Safira SQLite correction");
+  assert.match(episodeContext, /Safira was a fictional memory-test project/);
+  assert.match(episodeContext, /Postgres was corrected to SQLite local/);
+  assert.match(episodeContext, /world\/episode\/fictional_example_episode/);
 });

@@ -953,6 +953,145 @@ test("memory mature turns consolidated evidence into governed structured memory 
   assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);
 });
 
+test("memory mature materializes non-operational evaluation episodes for safe recall", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-memory-mature-episode-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const llmOutputPath = join(root, "maturation-output.json");
+  const config = buildDefaultCristalinaConfig({
+    storeRoot,
+    ownerIdentityRef: "actor_owner_cli_memory_episode_001",
+    agentIdentityRef: "actor_agent_cli_memory_episode_001",
+    hermesRuntimeRef: "runtime_hermes_cli_memory_episode_001",
+  });
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+  await handleRuntimeBridgeEvent(config, {
+    event_id: "evt_cli_memory_episode_observed_001",
+    event_type: "message_observed",
+    runtime: "hermes",
+    occurred_at: "2026-05-06T12:00:00.000Z",
+    actor_ref: "system:hermes-test",
+    authenticated_principal: {
+      kind: "system",
+      actor_ref: "system:hermes-test",
+      system_scope: "memory-mature-episode-test",
+    },
+    runtime_instance_ref: "runtime_hermes_cli_memory_episode_001",
+    runtime_session_ref: "session_memory_episode_test",
+    conversation_thread_ref: "thread_memory_episode_test",
+    source_ref: "runtime/hermes/test/evt_cli_memory_episode_observed_001",
+    message: "Projeto Safira is a fictional memory-test project. Its initial Postgres detail was corrected to SQLite local and must not become an operational project fact.",
+  });
+
+  await executeCristalinaCommand({
+    name: "memory",
+    action: "consolidation",
+    configPath,
+    runtime: "hermes",
+    runtimeSessionRef: "session_memory_episode_test",
+    conversationThreadRef: "thread_memory_episode_test",
+    maxRecentEvents: 10,
+    write: true,
+  });
+
+  await writeFile(
+    llmOutputPath,
+    `${JSON.stringify({
+      candidates: [
+        {
+          statement: "Fictional examples used in memory tests should stay non-operational while remaining recoverable for audit.",
+          memory_kind: "fact",
+          epistemic_state: "confirmed",
+          semantic_slot: "agent_memory.governance.fictional_examples_runtime_only",
+          subject_authority_role: "participant",
+          confidence: "high",
+          risk: "low",
+          support_refs: ["obs_hermes_evt_cli_memory_episode_observed_001"],
+          recommended_dispositions: ["world_update", "wiki_update"],
+          rationale: "The evidence is a bounded memory evaluation fixture, not an operational user project fact.",
+          wiki_title: "Memory Test Fixtures",
+          evaluation_episode: {
+            record_type: "fictional_example_episode",
+            entity: {
+              name: "Projeto Safira",
+              type: "fictional_project",
+              reality: "fictional",
+            },
+            scope: ["memory_test", "non_operational", "not_user_project_fact"],
+            purpose: "Test fictional example correction and supersession without operationalizing the fixture.",
+            initial_claim: {
+              statement: "Projeto Safira uses Postgres.",
+              status: "superseded",
+              authority: "runtime_observed",
+              scope: "fictional_test_only",
+            },
+            correction_claim: {
+              statement: "Projeto Safira uses SQLite local.",
+              status: "current_within_test",
+              authority: "user_correction_observed",
+              scope: "fictional_test_only",
+            },
+            supersession_relation: {
+              from: "Projeto Safira uses Postgres.",
+              to: "Projeto Safira uses SQLite local.",
+              relation: "correction",
+              reason: "explicit_user_correction",
+            },
+            lifecycle_state: "retained_as_test_evidence",
+            usage_policy: {
+              allowed: ["explain the memory test", "diagnose correction handling"],
+              forbidden: ["treat Safira as a real Markus project", "use as an operational project stack"],
+            },
+            linked_governance_slots: ["agent_memory.governance.fictional_examples_runtime_only"],
+            projection_hint: "Safira was a fictional memory-test project: Postgres was corrected to SQLite local; use only as test evidence.",
+          },
+        },
+      ],
+    }, null, 2)}\n`,
+  );
+
+  const result = await executeCristalinaCommand({
+    name: "memory",
+    action: "mature",
+    configPath,
+    runtime: "hermes",
+    write: true,
+    maxItems: 5,
+    llmOutputPath,
+  });
+  const payload = JSON.parse(result.stdout) as {
+    status: string;
+    maturation: { diagnostics: string[] };
+    applied: { record_refs: string[]; canonical_record_refs: string[] };
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.status, "applied");
+  assert.deepEqual(payload.maturation.diagnostics, []);
+  assert.equal(payload.applied.canonical_record_refs.length, 0);
+  assert.ok(payload.applied.record_refs.some((ref) => ref.startsWith("epi_")));
+  assert.ok(payload.applied.record_refs.some((ref) => ref.startsWith("ent_")));
+
+  const episodeFiles = await readdir(join(storeRoot, "world", "episodes"));
+  assert.equal(episodeFiles.length, 1);
+  const episode = JSON.parse(await readFile(join(storeRoot, "world", "episodes", episodeFiles[0]!), "utf8")) as {
+    episode_type: string;
+    projection_hint: string;
+    scope_tags: string[];
+    claims: Array<{ statement: string; status: string }>;
+    supersession: { from: string; to: string; relation: string };
+    usage_policy: { forbidden: string[] };
+  };
+  assert.equal(episode.episode_type, "fictional_example_episode");
+  assert.match(episode.projection_hint, /Postgres was corrected to SQLite local/);
+  assert.deepEqual(episode.scope_tags, ["memory_test", "non_operational", "not_user_project_fact"]);
+  assert.equal(episode.claims[0]?.status, "superseded");
+  assert.equal(episode.claims[1]?.status, "current_within_test");
+  assert.equal(episode.supersession.relation, "correction");
+  assert.ok(episode.usage_policy.forbidden.some((entry) => entry.includes("real Markus project")));
+});
+
 test("memory mature promotes corroborated low-risk external claims without owner review", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-cli-memory-corroboration-"));
   const storeRoot = join(root, "store");

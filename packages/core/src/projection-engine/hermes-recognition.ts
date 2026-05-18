@@ -166,6 +166,27 @@ function observationLabel(summary: string): string {
   return summary;
 }
 
+function episodeRecognitionHint(record: Episode): string {
+  const base = record.projection_hint ?? `Episode with ${record.observation_refs.length} observation refs.`;
+  const parts = [
+    base,
+    record.episode_type ? `type=${record.episode_type}` : "",
+    record.lifecycle_state ? `lifecycle=${record.lifecycle_state}` : "",
+    record.scope_tags && record.scope_tags.length > 0 ? `scope=${record.scope_tags.join(",")}` : "",
+  ].filter((part) => part.length > 0);
+  return parts.join(" ");
+}
+
+function episodeAliases(record: Episode): string[] {
+  return [
+    ...(record.entity_refs ?? []).map((ref) => ref.id),
+    ...(record.scope_tags ?? []),
+    ...(record.linked_governance_slots ?? []),
+    record.supersession?.from ?? "",
+    record.supersession?.to ?? "",
+  ].filter((value) => value.length > 0);
+}
+
 function entry(input: {
   target_ref: string;
   target_kind: string;
@@ -387,10 +408,12 @@ export function compileHermesRecognitionProjection(
       target_kind: record.kind,
       source_layer: record.layer,
       label: record.summary,
-      recognition_hint: `Episode with ${record.observation_refs.length} observation refs.`,
-      authority_label: "world/episode",
+      aliases: episodeAliases(record),
+      recognition_hint: episodeRecognitionHint(record),
+      authority_label: record.episode_type ? `world/episode/${record.episode_type}` : "world/episode",
       upstream_refs: record.observation_refs,
       updated_at: updatedAt(record),
+      ...(record.semantic_slot ? { semantic_slot: record.semantic_slot } : {}),
     })),
     ...runtimeSessionFilter.included.map((record) => entry({
       target_ref: record.id,

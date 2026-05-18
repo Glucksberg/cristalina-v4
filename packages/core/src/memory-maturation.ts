@@ -16,7 +16,9 @@ import {
   type Diagnostic,
   type DispositionOutcome,
   type DispositionRecord,
+  type Entity,
   type EpistemicState,
+  type Episode,
   type Observation,
   type Proposal,
   type RatificationRecord,
@@ -54,6 +56,7 @@ export interface StructuredMemoryClaimCandidate {
   rationale: string;
   wiki_title?: string;
   wiki_path?: string;
+  evaluation_episode?: StructuredMemoryEvaluationEpisode;
   corroboration?: {
     semantic_slot: string;
     support_count: number;
@@ -63,6 +66,42 @@ export interface StructuredMemoryClaimCandidate {
     auto_canon_eligible: boolean;
     rationale: string;
   };
+}
+
+export interface StructuredMemoryEvaluationEpisode {
+  record_type: "evaluation_episode" | "test_fixture" | "fictional_example_episode";
+  entity: {
+    name: string;
+    type: string;
+    reality: "fictional" | "test_only" | "synthetic";
+  };
+  scope: string[];
+  purpose: string;
+  initial_claim?: {
+    statement: string;
+    status: string;
+    authority?: string;
+    scope?: string;
+  };
+  correction_claim?: {
+    statement: string;
+    status: string;
+    authority?: string;
+    scope?: string;
+  };
+  supersession_relation?: {
+    from: string;
+    to: string;
+    relation: string;
+    reason?: string;
+  };
+  lifecycle_state: string;
+  usage_policy: {
+    allowed: string[];
+    forbidden: string[];
+  };
+  linked_governance_slots?: string[];
+  projection_hint: string;
 }
 
 export interface MemoryMaturationEvidencePackage {
@@ -544,6 +583,8 @@ export async function prepareMemoryMaturationEvidence(input: {
       "Do not create source-specific routes for X/Twitter, Telegram, heartbeat, or direct chat.",
       "Do not propose Cristalina code changes as product self-modification.",
       "Prefer stable semantic_slot names because Cristalina uses them to corroborate recurring claims over time.",
+      "For non-operational but auditably useful test fixtures, fictional examples, adversarial strings, or corrected examples, include optional evaluation_episode with record_type, entity, scope, purpose, initial_claim/correction_claim when applicable, supersession_relation when applicable, lifecycle_state, usage_policy, linked_governance_slots, and projection_hint.",
+      "Do not use evaluation_episode to turn a fixture into an operational fact; its purpose is safe recall as evidence/test context.",
       "Low-risk, non-owner claims with repeated support may become canon through governance; owner-scoped claims still require review.",
       "Return strict JSON with a top-level candidates array.",
     ],
@@ -579,7 +620,120 @@ function candidateDiagnostics(candidate: Record<string, unknown>, allowedRefs: S
   if (dispositionValues.length === 0 || !dispositionValues.every((entry) => typeof entry === "string" && DISPOSITION_SET.has(entry))) {
     diagnostics.push(`${path}.recommended_dispositions must use existing disposition outcomes`);
   }
+  const evaluationEpisode = asRecord(candidate.evaluation_episode);
+  if (candidate.evaluation_episode !== undefined && !evaluationEpisode) {
+    diagnostics.push(`${path}.evaluation_episode must be an object when present`);
+  } else if (evaluationEpisode) {
+    if (!dispositionValues.includes("world_update") && !dispositionValues.includes("wiki_update")) {
+      diagnostics.push(`${path}.evaluation_episode requires world_update or wiki_update disposition for governed recall`);
+    }
+    if (
+      evaluationEpisode.record_type !== "evaluation_episode" &&
+      evaluationEpisode.record_type !== "test_fixture" &&
+      evaluationEpisode.record_type !== "fictional_example_episode"
+    ) {
+      diagnostics.push(`${path}.evaluation_episode.record_type is invalid`);
+    }
+    const entity = asRecord(evaluationEpisode.entity);
+    if (!entity) {
+      diagnostics.push(`${path}.evaluation_episode.entity must be an object`);
+    } else {
+      if (typeof entity.name !== "string" || !entity.name) diagnostics.push(`${path}.evaluation_episode.entity.name must be a non-empty string`);
+      if (typeof entity.type !== "string" || !entity.type) diagnostics.push(`${path}.evaluation_episode.entity.type must be a non-empty string`);
+      if (entity.reality !== "fictional" && entity.reality !== "test_only" && entity.reality !== "synthetic") {
+        diagnostics.push(`${path}.evaluation_episode.entity.reality is invalid`);
+      }
+    }
+    if (!Array.isArray(evaluationEpisode.scope) || evaluationEpisode.scope.length === 0 || !evaluationEpisode.scope.every((entry) => typeof entry === "string" && entry)) {
+      diagnostics.push(`${path}.evaluation_episode.scope must be a non-empty string array`);
+    }
+    if (typeof evaluationEpisode.purpose !== "string" || !evaluationEpisode.purpose) {
+      diagnostics.push(`${path}.evaluation_episode.purpose must be a non-empty string`);
+    }
+    if (typeof evaluationEpisode.lifecycle_state !== "string" || !evaluationEpisode.lifecycle_state) {
+      diagnostics.push(`${path}.evaluation_episode.lifecycle_state must be a non-empty string`);
+    }
+    if (typeof evaluationEpisode.projection_hint !== "string" || !evaluationEpisode.projection_hint) {
+      diagnostics.push(`${path}.evaluation_episode.projection_hint must be a non-empty string`);
+    }
+    const usagePolicy = asRecord(evaluationEpisode.usage_policy);
+    if (!usagePolicy) {
+      diagnostics.push(`${path}.evaluation_episode.usage_policy must be an object`);
+    } else {
+      if (!Array.isArray(usagePolicy.allowed) || !usagePolicy.allowed.every((entry) => typeof entry === "string" && entry)) {
+        diagnostics.push(`${path}.evaluation_episode.usage_policy.allowed must be a string array`);
+      }
+      if (!Array.isArray(usagePolicy.forbidden) || !usagePolicy.forbidden.every((entry) => typeof entry === "string" && entry)) {
+        diagnostics.push(`${path}.evaluation_episode.usage_policy.forbidden must be a string array`);
+      }
+    }
+    for (const key of ["initial_claim", "correction_claim"] as const) {
+      const claim = asRecord(evaluationEpisode[key]);
+      if (!claim) continue;
+      if (typeof claim.statement !== "string" || !claim.statement) diagnostics.push(`${path}.evaluation_episode.${key}.statement must be a non-empty string`);
+      if (typeof claim.status !== "string" || !claim.status) diagnostics.push(`${path}.evaluation_episode.${key}.status must be a non-empty string`);
+    }
+    const relation = asRecord(evaluationEpisode.supersession_relation);
+    if (relation) {
+      if (typeof relation.from !== "string" || !relation.from) diagnostics.push(`${path}.evaluation_episode.supersession_relation.from must be a non-empty string`);
+      if (typeof relation.to !== "string" || !relation.to) diagnostics.push(`${path}.evaluation_episode.supersession_relation.to must be a non-empty string`);
+      if (typeof relation.relation !== "string" || !relation.relation) diagnostics.push(`${path}.evaluation_episode.supersession_relation.relation must be a non-empty string`);
+    }
+  }
   return diagnostics;
+}
+
+function normalizeEvaluationEpisode(value: unknown): StructuredMemoryEvaluationEpisode | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const entity = asRecord(record.entity)!;
+  const usagePolicy = asRecord(record.usage_policy)!;
+  const initialClaim = asRecord(record.initial_claim);
+  const correctionClaim = asRecord(record.correction_claim);
+  const supersessionRelation = asRecord(record.supersession_relation);
+  return {
+    record_type: record.record_type as StructuredMemoryEvaluationEpisode["record_type"],
+    entity: {
+      name: String(entity.name),
+      type: String(entity.type),
+      reality: entity.reality as StructuredMemoryEvaluationEpisode["entity"]["reality"],
+    },
+    scope: [...new Set(record.scope as string[])],
+    purpose: String(record.purpose),
+    ...(initialClaim ? {
+      initial_claim: {
+        statement: String(initialClaim.statement),
+        status: String(initialClaim.status),
+        ...(typeof initialClaim.authority === "string" && initialClaim.authority ? { authority: initialClaim.authority } : {}),
+        ...(typeof initialClaim.scope === "string" && initialClaim.scope ? { scope: initialClaim.scope } : {}),
+      },
+    } : {}),
+    ...(correctionClaim ? {
+      correction_claim: {
+        statement: String(correctionClaim.statement),
+        status: String(correctionClaim.status),
+        ...(typeof correctionClaim.authority === "string" && correctionClaim.authority ? { authority: correctionClaim.authority } : {}),
+        ...(typeof correctionClaim.scope === "string" && correctionClaim.scope ? { scope: correctionClaim.scope } : {}),
+      },
+    } : {}),
+    ...(supersessionRelation ? {
+      supersession_relation: {
+        from: String(supersessionRelation.from),
+        to: String(supersessionRelation.to),
+        relation: String(supersessionRelation.relation),
+        ...(typeof supersessionRelation.reason === "string" && supersessionRelation.reason ? { reason: supersessionRelation.reason } : {}),
+      },
+    } : {}),
+    lifecycle_state: String(record.lifecycle_state),
+    usage_policy: {
+      allowed: [...new Set(usagePolicy.allowed as string[])],
+      forbidden: [...new Set(usagePolicy.forbidden as string[])],
+    },
+    ...(Array.isArray(record.linked_governance_slots)
+      ? { linked_governance_slots: [...new Set(record.linked_governance_slots.filter((entry) => typeof entry === "string" && entry) as string[])] }
+      : {}),
+    projection_hint: String(record.projection_hint),
+  };
 }
 
 function normalizeCandidate(
@@ -606,6 +760,7 @@ function normalizeCandidate(
     rationale: String(candidate.rationale),
     ...(typeof candidate.wiki_title === "string" && candidate.wiki_title ? { wiki_title: candidate.wiki_title } : {}),
     ...(typeof candidate.wiki_path === "string" && candidate.wiki_path ? { wiki_path: candidate.wiki_path } : {}),
+    ...(candidate.evaluation_episode ? { evaluation_episode: normalizeEvaluationEpisode(candidate.evaluation_episode) } : {}),
   };
   if (
     normalized.recommended_dispositions.includes("proposal_for_canon") &&
@@ -1227,6 +1382,71 @@ async function applyCandidate(input: {
   };
   records.push(observation);
   recordRefs.push(observation.id);
+
+  let episode: Episode | undefined;
+  let episodeEntity: Entity | undefined;
+  if (candidate.evaluation_episode) {
+    const evaluationEpisode = candidate.evaluation_episode;
+    const entityId = `ent_${idPart}_${safeIdPart(evaluationEpisode.entity.name)}`;
+    episodeEntity = {
+      id: entityId,
+      kind: "entity",
+      layer: "world",
+      authoritative_home: "world",
+      created_at: now,
+      updated_at: now,
+      visibility_state,
+      provenance: { ...provenance, evidence_refs: [...(provenance.evidence_refs ?? []), source.id, observation.id] },
+      entity_kind: evaluationEpisode.entity.type,
+      label: evaluationEpisode.entity.name,
+      status: "active",
+      reality: evaluationEpisode.entity.reality,
+      scope_tags: evaluationEpisode.scope,
+      usage_policy: evaluationEpisode.usage_policy,
+      upstream_refs: [source.id, observation.id, ...candidate.support_refs],
+    };
+    const claims = [evaluationEpisode.initial_claim, evaluationEpisode.correction_claim]
+      .filter((claim): claim is NonNullable<typeof claim> => Boolean(claim));
+    episode = {
+      id: `epi_${idPart}`,
+      kind: "episode",
+      layer: "world",
+      authoritative_home: "world",
+      created_at: now,
+      updated_at: now,
+      visibility_state,
+      provenance: { ...provenance, evidence_refs: [...(provenance.evidence_refs ?? []), source.id, observation.id] },
+      summary: evaluationEpisode.projection_hint,
+      observation_refs: uniqueRefs(observation.id, candidate.support_refs),
+      temporal_state: {
+        temporal_status: "active",
+        valid_from: now,
+        valid_to: null,
+        temporal_confidence: candidate.confidence === "high" ? 0.9 : candidate.confidence === "medium" ? 0.65 : 0.35,
+      },
+      episode_type: evaluationEpisode.record_type,
+      semantic_slot: candidate.semantic_slot,
+      entity_refs: [{ id: episodeEntity.id, kind: episodeEntity.kind, layer: episodeEntity.layer }],
+      scope_tags: evaluationEpisode.scope,
+      purpose: evaluationEpisode.purpose,
+      lifecycle_state: evaluationEpisode.lifecycle_state,
+      ...(claims.length > 0 ? { claims } : {}),
+      ...(evaluationEpisode.supersession_relation ? {
+        supersession: {
+          from: evaluationEpisode.supersession_relation.from,
+          to: evaluationEpisode.supersession_relation.to,
+          relation: evaluationEpisode.supersession_relation.relation,
+          ...(evaluationEpisode.supersession_relation.reason ? { reason: evaluationEpisode.supersession_relation.reason } : {}),
+        },
+      } : {}),
+      usage_policy: evaluationEpisode.usage_policy,
+      linked_governance_slots: evaluationEpisode.linked_governance_slots ?? [candidate.semantic_slot],
+      projection_hint: evaluationEpisode.projection_hint,
+      upstream_refs: [source.id, observation.id, episodeEntity.id, ...candidate.support_refs],
+    };
+    records.push(episodeEntity, episode);
+    recordRefs.push(episodeEntity.id, episode.id);
+  }
 
   let worldClaim: WorldClaim | undefined;
   if (

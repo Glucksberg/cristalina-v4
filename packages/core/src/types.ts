@@ -877,6 +877,30 @@ export interface Episode extends RecordEnvelope {
   summary: string;
   observation_refs: string[];
   temporal_state: TemporalState;
+  semantic_slot?: string;
+  episode_type?: string;
+  entity_refs?: Reference[];
+  scope_tags?: string[];
+  purpose?: string;
+  lifecycle_state?: string;
+  claims?: Array<{
+    statement: string;
+    status: string;
+    authority?: string;
+    scope?: string;
+  }>;
+  supersession?: {
+    from: string;
+    to: string;
+    relation: string;
+    reason?: string;
+  };
+  usage_policy?: {
+    allowed: string[];
+    forbidden: string[];
+  };
+  linked_governance_slots?: string[];
+  projection_hint?: string;
 }
 
 export interface Entity extends RecordEnvelope {
@@ -886,6 +910,12 @@ export interface Entity extends RecordEnvelope {
   entity_kind: string;
   label: string;
   status: "active" | "inactive" | "archived";
+  reality?: string;
+  scope_tags?: string[];
+  usage_policy?: {
+    allowed: string[];
+    forbidden: string[];
+  };
 }
 
 export interface Relation extends RecordEnvelope {
