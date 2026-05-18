@@ -37,6 +37,7 @@ export interface RuntimeInstallResult {
   provider_manifest_path?: string;
   provider_entrypoint_path?: string;
   provider_config_path?: string;
+  session_reset_tips_path?: string;
   memory_consolidation_metadata_path?: string;
   memory_consolidation_script_path?: string;
   memory_consolidation_cron_script_path?: string;
@@ -204,6 +205,7 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
   providerManifestPath: string | null;
   providerEntrypointPath: string | null;
   providerConfigPath: string | null;
+  sessionResetTipsPath: string | null;
   memoryConsolidationMetadataPath: string | null;
   memoryConsolidationScriptPath: string | null;
   memoryConsolidationCronScriptPath: string | null;
@@ -224,6 +226,7 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
       providerManifestPath: null,
       providerEntrypointPath: null,
       providerConfigPath: null,
+      sessionResetTipsPath: null,
       memoryConsolidationMetadataPath: null,
       memoryConsolidationScriptPath: null,
       memoryConsolidationCronScriptPath: null,
@@ -246,6 +249,7 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
     providerManifestPath: join(providerPath, "plugin.yaml"),
     providerEntrypointPath: join(providerPath, "__init__.py"),
     providerConfigPath: resolve(runtimeRoot, ".cristalina-v4", "provider-hermes.json"),
+    sessionResetTipsPath: resolve(runtimeRoot, "session-reset-tips.d", "cristalina.json"),
     memoryConsolidationMetadataPath: resolve(runtimeRoot, ".cristalina-v4", "memory-consolidation-hermes.json"),
     memoryConsolidationScriptPath: resolve(runtimeRoot, "scripts", "cristalina-memory-consolidation.sh"),
     memoryConsolidationCronScriptPath: resolve(runtimeRoot, "scripts", "cristalina-memory-consolidation.py"),
@@ -777,6 +781,17 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         prefetch_timeout_seconds: 2.5,
         sync_timeout_seconds: 5,
         bridge_fallback_hook: hookScriptPath,
+        session_reset_tips: pluginPaths.sessionResetTipsPath
+          ? {
+              enabled: true,
+              path: pluginPaths.sessionResetTipsPath,
+              label: "Cristalina Tip",
+              tips: [
+                "Runtime observations are evidence, not owner authority; use governed Cristalina refs for durable decisions.",
+                "Run cristalina_memory_status when you need owner reviews, diagnostics, projections, or nightly memory-cycle health.",
+              ],
+            }
+          : undefined,
         memory_consolidation: pluginPaths.memoryConsolidationScriptPath
           ? {
               enabled: true,
@@ -859,6 +874,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
           provider_manifest_path: pluginPaths.providerManifestPath,
           provider_entrypoint_path: pluginPaths.providerEntrypointPath,
           provider_config_path: pluginPaths.providerConfigPath,
+          session_reset_tips_path: pluginPaths.sessionResetTipsPath,
           memory_consolidation_metadata_path: pluginPaths.memoryConsolidationMetadataPath,
           memory_consolidation_script_path: pluginPaths.memoryConsolidationScriptPath,
           memory_consolidation_cron_script_path: pluginPaths.memoryConsolidationCronScriptPath,
@@ -1000,6 +1016,19 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         phases: ["memory_consolidation", "memory_maturation", "memory_candidate_promotion"],
         candidate_promotion_command: memoryCandidatePromotionCommand,
         authority_note: "Nightly memory cycle orchestrates deterministic consolidation, Hermes-harness semantic maturation, and deterministic candidate promotion; Cristalina still validates authority and governance before canon writes.",
+      }
+    : null;
+  const sessionResetTips = pluginPaths.sessionResetTipsPath
+    ? {
+        schema_version: 1,
+        source: "cristalina",
+        enabled: true,
+        label: "Cristalina Tip",
+        tips: [
+          "Runtime observations are evidence, not owner authority; use governed Cristalina refs for durable decisions.",
+          "Run cristalina_memory_status when you need owner reviews, diagnostics, projections, or nightly memory-cycle health.",
+        ],
+        authority_note: "These are operator-facing usage tips only; they do not create Cristalina memory or owner authority.",
       }
     : null;
   const memoryConsolidationScript = pluginPaths.memoryConsolidationScriptPath
@@ -1386,6 +1415,10 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
       await writeFile(pluginPaths.providerManifestPath, buildHermesMemoryProviderManifest());
       await writeFile(pluginPaths.providerEntrypointPath, buildHermesMemoryProviderEntrypoint());
       await writeFile(pluginPaths.providerConfigPath, `${JSON.stringify(providerConfig, null, 2)}\n`);
+      if (pluginPaths.sessionResetTipsPath && sessionResetTips) {
+        await mkdir(dirname(pluginPaths.sessionResetTipsPath), { recursive: true });
+        await writeFile(pluginPaths.sessionResetTipsPath, `${JSON.stringify(sessionResetTips, null, 2)}\n`);
+      }
       if (pluginPaths.memoryConsolidationMetadataPath && pluginPaths.memoryConsolidationScriptPath && memoryConsolidationMetadata && memoryConsolidationScript) {
         await mkdir(dirname(pluginPaths.memoryConsolidationMetadataPath), { recursive: true });
         await mkdir(dirname(pluginPaths.memoryConsolidationScriptPath), { recursive: true });
@@ -1472,6 +1505,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
           provider_manifest_path: pluginPaths.providerManifestPath ?? undefined,
           provider_entrypoint_path: pluginPaths.providerEntrypointPath ?? undefined,
           provider_config_path: pluginPaths.providerConfigPath ?? undefined,
+          session_reset_tips_path: pluginPaths.sessionResetTipsPath ?? undefined,
           memory_consolidation_metadata_path: pluginPaths.memoryConsolidationMetadataPath ?? undefined,
           memory_consolidation_script_path: pluginPaths.memoryConsolidationScriptPath ?? undefined,
           memory_consolidation_cron_script_path: pluginPaths.memoryConsolidationCronScriptPath ?? undefined,

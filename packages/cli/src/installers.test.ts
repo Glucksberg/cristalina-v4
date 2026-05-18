@@ -91,6 +91,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     provider_manifest_path: string;
     provider_entrypoint_path: string;
     provider_config_path: string;
+    session_reset_tips_path: string;
     memory_consolidation_metadata_path: string;
     memory_consolidation_script_path: string;
     memory_consolidation_cron_script_path: string;
@@ -121,6 +122,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(metadata.provider_manifest_path, join(metadata.provider_path, "plugin.yaml"));
   assert.equal(metadata.provider_entrypoint_path, join(metadata.provider_path, "__init__.py"));
   assert.equal(metadata.provider_config_path, join(root, "hermes", ".cristalina-v4", "provider-hermes.json"));
+  assert.equal(metadata.session_reset_tips_path, join(root, "hermes", "session-reset-tips.d", "cristalina.json"));
   assert.equal(metadata.memory_consolidation_metadata_path, join(root, "hermes", ".cristalina-v4", "memory-consolidation-hermes.json"));
   assert.equal(metadata.memory_consolidation_script_path, join(root, "hermes", "scripts", "cristalina-memory-consolidation.sh"));
   assert.equal(metadata.memory_consolidation_cron_script_path, join(root, "hermes", "scripts", "cristalina-memory-consolidation.py"));
@@ -145,6 +147,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(result.provider_manifest_path, metadata.provider_manifest_path);
   assert.equal(result.provider_entrypoint_path, metadata.provider_entrypoint_path);
   assert.equal(result.provider_config_path, metadata.provider_config_path);
+  assert.equal(result.session_reset_tips_path, metadata.session_reset_tips_path);
   assert.equal(result.memory_consolidation_metadata_path, metadata.memory_consolidation_metadata_path);
   assert.equal(result.memory_consolidation_script_path, metadata.memory_consolidation_script_path);
   assert.equal(result.memory_consolidation_cron_script_path, metadata.memory_consolidation_cron_script_path);
@@ -190,6 +193,12 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     integration_mode: string;
     cli_path: string;
     config_path: string;
+    session_reset_tips: {
+      enabled: boolean;
+      path: string;
+      label: string;
+      tips: string[];
+    };
     memory_consolidation: {
       enabled: boolean;
       interval_minutes: number;
@@ -231,6 +240,22 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(providerConfig.integration_mode, "provider");
   assert.equal(providerConfig.config_path, configPath);
   assert.ok(providerConfig.cli_path.endsWith("index.js"));
+  assert.equal(providerConfig.session_reset_tips.enabled, true);
+  assert.equal(providerConfig.session_reset_tips.path, metadata.session_reset_tips_path);
+  assert.equal(providerConfig.session_reset_tips.label, "Cristalina Tip");
+  assert.ok(providerConfig.session_reset_tips.tips.some((tip) => tip.includes("Runtime observations are evidence")));
+  const sessionResetTips = JSON.parse(await readFile(metadata.session_reset_tips_path, "utf8")) as {
+    source: string;
+    enabled: boolean;
+    label: string;
+    tips: string[];
+    authority_note: string;
+  };
+  assert.equal(sessionResetTips.source, "cristalina");
+  assert.equal(sessionResetTips.enabled, true);
+  assert.equal(sessionResetTips.label, "Cristalina Tip");
+  assert.ok(sessionResetTips.tips.some((tip) => tip.includes("cristalina_memory_status")));
+  assert.match(sessionResetTips.authority_note, /do not create Cristalina memory/);
   assert.equal(providerConfig.memory_consolidation.enabled, true);
   assert.equal(providerConfig.memory_consolidation.interval_minutes, 1440);
   assert.equal(providerConfig.memory_consolidation.schedule_kind, "cron");
