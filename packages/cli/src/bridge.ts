@@ -68,9 +68,9 @@ interface RuntimeBridgeReviewSurfaces {
     authority_scope: "operational";
     operational_queue_state: "not_queued" | "queued" | "unavailable";
     counts_toward_pending_owner_reviews: true;
-    openclaw_count: number;
-    hermes_count: number;
-    total_count: number;
+    openclaw_count: number | null;
+    hermes_count: number | null;
+    total_count: number | null;
     note: string;
   };
   memory_candidates: {
@@ -156,9 +156,11 @@ function reviewSurfaces(input: {
     hermes: MemoryCanonCandidateReport;
   } | null;
 }): RuntimeBridgeReviewSurfaces {
-  const openclawQueueCount = input.ownerReviews?.openclaw.length ?? 0;
-  const hermesQueueCount = input.ownerReviews?.hermes.length ?? 0;
-  const totalQueueCount = openclawQueueCount + hermesQueueCount;
+  const openclawQueueCount = input.ownerReviews?.openclaw.length ?? null;
+  const hermesQueueCount = input.ownerReviews?.hermes.length ?? null;
+  const totalQueueCount = openclawQueueCount === null || hermesQueueCount === null
+    ? null
+    : openclawQueueCount + hermesQueueCount;
   const openclawCandidateCount = input.memoryCandidates?.openclaw.review_surface.candidate_requires_owner_review_count ?? null;
   const hermesCandidateCount = input.memoryCandidates?.hermes.review_surface.candidate_requires_owner_review_count ?? null;
   const totalCandidateCount = openclawCandidateCount === null || hermesCandidateCount === null
@@ -171,7 +173,7 @@ function reviewSurfaces(input: {
       authority_scope: "operational",
       operational_queue_state: input.ownerReviews === null
         ? "unavailable"
-        : totalQueueCount > 0
+        : totalQueueCount !== null && totalQueueCount > 0
           ? "queued"
           : "not_queued",
       counts_toward_pending_owner_reviews: true,
@@ -263,6 +265,8 @@ export async function collectRuntimeBridgeStatus(input: {
     hermesProjections?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listHermesProjectionRuntimeViews>>>;
     openclawReviews?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listOpenClawConversationPreferenceOwnerRatificationQueue>>>;
     hermesReviews?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listHermesConversationPreferenceOwnerRatificationQueue>>>;
+    openclawMemoryCandidates?: (storeRoot: string) => Promise<MemoryCanonCandidateReport>;
+    hermesMemoryCandidates?: (storeRoot: string) => Promise<MemoryCanonCandidateReport>;
   };
 }): Promise<RuntimeBridgeStatus> {
   const checkedAt = new Date().toISOString();
@@ -415,8 +419,12 @@ export async function collectRuntimeBridgeStatus(input: {
         fallback: candidateFallback,
         run: async () => {
           const [openclaw, hermes] = await Promise.all([
-            summarizeMemoryCanonCandidates({ rootDir: storeRoot, runtime: "openclaw", limit: 1 }),
-            summarizeMemoryCanonCandidates({ rootDir: storeRoot, runtime: "hermes", limit: 1 }),
+            input.collectors?.openclawMemoryCandidates
+              ? input.collectors.openclawMemoryCandidates(storeRoot)
+              : summarizeMemoryCanonCandidates({ rootDir: storeRoot, runtime: "openclaw", limit: 1 }),
+            input.collectors?.hermesMemoryCandidates
+              ? input.collectors.hermesMemoryCandidates(storeRoot)
+              : summarizeMemoryCanonCandidates({ rootDir: storeRoot, runtime: "hermes", limit: 1 }),
           ]);
           return { openclaw, hermes };
         },
@@ -460,8 +468,8 @@ export async function collectRuntimeBridgeStatus(input: {
       memory_candidates: candidateSubcheck.health,
     },
     review_surfaces: reviewSurfaces({
-      ownerReviews: reviewsSubcheck.value,
-      memoryCandidates: candidateSubcheck.value,
+      ownerReviews: reviewsSubcheck.health.status === "ok" ? reviewsSubcheck.value : null,
+      memoryCandidates: candidateSubcheck.health.status === "ok" ? candidateSubcheck.value : null,
     }),
     projections: {
       openclaw: projectionSubcheck.value.openclaw,
