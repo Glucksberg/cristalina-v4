@@ -10,6 +10,84 @@ was tested, what changed, and what should be tested next.
 
 ---
 
+## 2026-05-16: What Was Tested And Set Up
+
+Main focus: preparing the guided memory test and applying the first governed
+owner-decision batch.
+
+The session started from a guided investigation into what Cristalina had learned
+about agent memory and how much of that answer came from governed Cristalina
+memory versus historical/session search.
+
+Covered questions:
+
+- What has Cristal learned about agent memory in recent days?
+- Which parts came from Cristalina canon/wiki/governed memory and which parts
+  came from `session_search`?
+- Without `session_search`, which criteria would Cristal use to evaluate a new
+  agent-memory system?
+- What owner decisions were pending?
+- Which `semantic_slot` or proposal refs required owner ratification?
+- For each proposal ref, what was the corresponding statement/summary?
+- Which decisions really required owner authority and which could keep
+  maturing autonomously?
+- Which concrete semantic slots supported that separation?
+
+Owner-decision work:
+
+- The first batch of owner-ratification proposals was classified into
+  `ratify`, `subsume`, `keep_maturing`, and `move_to_wiki`.
+- Planning/backlog material was routed to wiki instead of canon truth.
+- Duplicate or overlapping memory claims were subsumed into existing canon.
+- Broad or under-formulated claims were kept maturing.
+- Central governance/security claims were ratified.
+
+Important owner decisions:
+
+- Ratified:
+  - `agent_memory.security.memory_poisoning_and_agent_traps`
+  - `agent_memory.governance.reviewable_records_for_shared_memory_trust`
+  - `agent_memory.governance.lifecycle_as_compliance_surface`
+- Subsumed into existing canon:
+  - `agent_memory.recall_quality.retrieval_ranking_not_storage_only`
+  - `agent_memory.product_pattern.portable_user_controlled_memory_across_llms_and_tools`
+  - `agent_memory.architecture.operational_trace_separation`
+- Kept maturing:
+  - `agent_security_physical_side_channels_rf_principle`
+  - `agent_memory.governance.security_sovereignty_access_control_deletion`
+- Moved to wiki:
+  - `cristalina.memory_improvements.next_round_backlog`
+  - `cristalina_lineage_fluck_literal_ancestor`
+  - `cristalina_beam_governed_memory_benchmark_plan`
+
+Code and tooling work:
+
+- Added/organized an owner-decision application path so decisions could be
+  applied through a governed interface instead of manual store edits.
+- Reserved the self-created `cristalina-governed-memory` skill outside the
+  active path so it would not interfere with the test.
+- Created the Farol local UI as a read-only development observation surface for
+  the test fronts.
+- Started tracking test fronts, next questions, planned changes, and upcoming
+  checks through docs and Farol board data.
+
+Important principle established:
+
+- Farol is useful for development observation, but Cristalina and Cristal must
+  not depend on Farol to function. Farol must remain read-only and must not
+  become a hidden memory writer or steering layer.
+
+Result:
+
+- By the end of the day, the test had a clearer split between governed
+  Cristalina memory, historical search, runtime evidence, wiki/planning
+  material, owner decisions, and model inference.
+- This set up the controlled Day 1/Day 2 guided memory test using fixtures such
+  as Safira, fake sensitive data, malicious memory text, hypothesis handling,
+  and roadmap/wiki handling.
+
+---
+
 ## 2026-05-17: What Was Tested
 
 Main focus: Day 2 of the guided memory test.
