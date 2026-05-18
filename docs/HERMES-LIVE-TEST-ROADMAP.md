@@ -294,7 +294,74 @@ small documented cleanup script that preserves auditability.
 
 ---
 
-## 4. Phase A: Soak The Nightly Cycle
+## 4. Current Test Sequence
+
+The guided Day 1-3 test cycle is closed. The next test path should be less
+scripted and should exercise Cristalina through normal Cristal conversations
+before heavier benchmark or cleanup work.
+
+Priority order:
+
+1. Free conversation / daily use
+   - talk with Cristal normally about plans, preferences, problems, readings,
+     ideas, and decisions
+   - observe what becomes runtime evidence, what matures, and what returns by
+     projection without artificial tool restrictions
+
+2. Projection / recognition in normal use
+   - verify that useful canon, wiki, world episodes, diagnostics, and review
+     surfaces appear before Cristal reaches for broad historical search
+   - watch for over-projection, stale context, or missing high-value memory
+
+3. Archive descent
+   - use archive descent only when the projected context is insufficient or when
+     Markus asks for refs, timeline, provenance, or exact evidence
+   - treat frequent archive descent for ordinary answers as a projection-quality
+     signal
+
+4. Wiki as synthesis
+   - ask Cristal to use wiki material as orientation while keeping it separate
+     from canon
+   - inspect whether pages synthesize heartbeat and conversation evidence rather
+     than copying thin slot text
+
+5. Owner-review loop through natural claims
+   - let ordinary conversations produce owner-scoped preferences, goals,
+     authority boundaries, and product decisions
+   - verify whether Cristalina routes them to review, wiki, canon, or maturation
+     without asking for unnecessary owner action
+
+6. Contradiction / supersession
+   - after normal-use projection is stable, introduce real corrections and
+     changed preferences
+   - verify that the older state is superseded or scoped rather than silently
+     competing as active truth
+
+7. Native diagnostics / status
+   - when a memory, cron, report, projection, or delivery path looks unhealthy,
+     use Cristalina status/diagnostics before Farol or ad hoc log reading
+   - verify that health output identifies the owning layer and severity
+
+8. Session continuity
+   - observe `/new`, gateway restarts, morning resumptions, and longer gaps
+   - verify whether continuity comes from Cristalina projection/session context
+     rather than only from recent Hermes transcript history
+
+Deferred test tracks:
+
+- multi-day soak thresholds
+- formal deletion/revocation tests
+- governed fixture retirement
+- broad RAG/vector comparison
+- semantic/vector retrieval benchmarks
+- group/shared-memory tests
+
+These tracks remain important, but they should wait until the normal-use route
+has produced more lived evidence.
+
+---
+
+## 5. Phase A: Soak The Nightly Cycle
 
 Status: deferred as a fine-grained validation track. Keep observing it during
 normal use, but do not make multi-day soak the next blocking test phase.
@@ -332,7 +399,7 @@ Pass signal:
 
 ---
 
-## 5. Phase B: Owner-Review Loop
+## 6. Phase B: Owner-Review Loop
 
 Status: active-watch. Exercise this through natural conversation first; create
 scripted owner-review fixtures only when the live conversation route exposes a
@@ -367,7 +434,7 @@ Current known review candidates:
 
 ---
 
-## 6. Phase C: Projection And Behavior Feedback
+## 7. Phase C: Projection And Behavior Feedback
 
 Status: next primary route after Day 3.
 
@@ -397,7 +464,7 @@ Pass signal:
 
 ---
 
-## 7. Phase D: Contradiction And Supersession
+## 8. Phase D: Contradiction And Supersession
 
 Status: queued after a short period of normal-use projection testing.
 
@@ -427,7 +494,7 @@ Pass signal:
 
 ---
 
-## 8. Phase E: Wiki Quality And Knowledge Shape
+## 9. Phase E: Wiki Quality And Knowledge Shape
 
 Status: active-watch through normal reading, heartbeat synthesis, and free
 conversation. Formal wiki audits can wait until there is more lived evidence.
@@ -458,7 +525,7 @@ Pass signal:
 
 ---
 
-## 9. Phase F: Broader Life Tests
+## 10. Phase F: Broader Life Tests
 
 Status: next exploratory frame.
 
@@ -506,7 +573,7 @@ produced more evidence.
 
 ---
 
-## 10. Watch List
+## 11. Watch List
 
 - Missed 03:00 runs after Windows/WSL restarts.
 - Auth drift in Hermes provider/OAuth causing cron failures.
@@ -524,7 +591,7 @@ produced more evidence.
 
 ---
 
-## 11. Current Baseline As Of 2026-05-18
+## 12. Current Baseline As Of 2026-05-18
 
 The live test has already activated the main spine:
 

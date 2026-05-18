@@ -118,7 +118,82 @@ configuration, and long-run validation gaps, not kernel gaps:
 
 ---
 
-## 4. Target Product Shape
+## 4. Next Development Sequence
+
+The Day 1-3 Hermes/Cristalina guided test is closed. The next development work
+should follow the order below so product behavior improves before heavier
+benchmarking or broad vector infrastructure expands.
+
+1. Projection planner and recognition quality
+   - choose the right memory layer for the question before the runtime reaches
+     for historical search
+   - prefer canon for durable truth, wiki for orientation, world episodes for
+     concrete cases, diagnostics for health, and owner-review surfaces for
+     human decisions
+   - expose why a projected item was included or suppressed
+
+2. Authority-aware hybrid retrieval
+   - turn the existing deterministic retrieval/vector slice into an operator
+     and runtime-facing search path
+   - combine exact refs, lexical matching, semantic slots, symbolic anchors,
+     vector similarity, authority, provenance, temporal state, and suppression
+     reasons
+   - keep the existing rule: vector score may rank candidates, but it must not
+     decide truth, authority, proposal legality, or projection visibility
+
+3. Live semantic/vector search integration
+   - build a live corpus from governed store records instead of only fixture
+     records
+   - support configurable real embedding providers using the existing
+     OpenAI-compatible provider boundary
+   - add a small CLI/operator surface for hybrid search before wiring it into
+     automatic runtime behavior
+   - keep ANN production work gated by corpus-size or latency evidence; exact
+     and deterministic search remain the correctness baseline
+
+4. Lifecycle, retirement, and supersession
+   - add governed archive/retire behavior for temporary evaluation fixtures
+   - make corrected/superseded state a normal lifecycle path, not only a Safira
+     fixture behavior
+   - distinguish deleted, archived, superseded, stale, active, and retained for
+     audit
+
+5. Wiki maintenance engine
+   - maintain topic/entity/comparison/index/log pages as editorial synthesis
+   - detect stale or thin pages, merge related pages, preserve support refs, and
+     emit proposal candidates when wiki synthesis starts functioning as durable
+     truth
+   - keep wiki useful without becoming hidden canon
+
+6. Contradiction and world-model hardening
+   - make conflicting evidence, changed owner preferences, and external
+     disagreement produce explicit contradiction/supersession records
+   - ensure projections show resolved and unresolved conflict state without
+     silently overwriting canon
+
+7. Memory safety layer
+   - quarantine or suppress malicious persisted instructions, sensitive-looking
+     test data, and poisoned evidence
+   - project security fixtures only as evidence/diagnostics, never as commands
+     or owner preferences
+
+8. Session continuity productization
+   - connect checkpoints, session packs, resume receipts, `/new`, gateway
+     restarts, and compaction-like resets into a runtime-facing continuity path
+   - keep session packs derived from upstream refs; never let pack prose become
+     proposal input or canon
+
+9. Evaluation and benchmark packs
+   - after the normal-use route produces enough evidence, build governed test
+     packs for recall, non-recall, provenance, authority, supersession, security
+     containment, deletion/retirement, wiki-vs-canon separation, and semantic
+     retrieval quality
+   - compare against RAG/vector-summary baselines only after Cristalina's own
+     projection and lifecycle behavior is stable
+
+---
+
+## 5. Target Product Shape
 
 The desired first product shape is:
 
@@ -166,7 +241,7 @@ hostile multi-tenant service.
 
 ---
 
-## 5. Master Plan
+## 6. Master Plan
 
 ### Step 1. Operational Foundation
 
@@ -298,7 +373,7 @@ Primary outcome:
 
 ---
 
-## 6. Step 1 Plan: Operational Foundation
+## 7. Step 1 Plan: Operational Foundation
 
 **Execution status:** implemented as the first operational foundation slice.
 
@@ -390,7 +465,7 @@ resolution.
 
 ---
 
-## 7. Step 2 Plan: Cristalina CLI And Runtime Bridge Package
+## 8. Step 2 Plan: Cristalina CLI And Runtime Bridge Package
 
 **Execution status:** implemented as the first CLI and runtime-bridge boundary.
 
@@ -490,7 +565,7 @@ Candidate commands:
 
 ---
 
-## 8. Step 3 Plan: Configuration Menu
+## 9. Step 3 Plan: Configuration Menu
 
 **Execution status:** implemented as a versioned config writer plus
 non-interactive installer-safe menu path.
@@ -596,7 +671,7 @@ Final placement must be decided before implementation and covered by schema.
 
 ---
 
-## 9. Step 4 Plan: Runtime-Neutral Event Bridge
+## 10. Step 4 Plan: Runtime-Neutral Event Bridge
 
 **Execution status:** implemented as a runtime-neutral event handler and CLI
 event command.
@@ -695,7 +770,7 @@ deferred to the session-continuity step for their stateful behavior.
 
 ---
 
-## 10. Step 5 Plan: OpenClaw Installer
+## 11. Step 5 Plan: OpenClaw Installer
 
 **Execution status:** implemented as local `cristalina install openclaw` plus
 development one-line shell wrapper.
@@ -776,7 +851,7 @@ OpenClaw integration must support:
 
 ---
 
-## 11. Step 6 Plan: Hermes Installer
+## 12. Step 6 Plan: Hermes Installer
 
 **Execution status:** implemented on the same installer contract as OpenClaw.
 
@@ -865,7 +940,7 @@ Hermes integration must support:
 
 ---
 
-## 12. Native Hermes Memory Plugin
+## 13. Native Hermes Memory Plugin
 
 **Execution status:** first native provider slice implemented.
 
@@ -916,7 +991,7 @@ and the completed turn is emitted back as governed evidence afterward.
 
 ---
 
-## 13. Step 7 Plan: Session Continuity
+## 14. Step 7 Plan: Session Continuity
 
 **Execution status:** implemented as public core continuity helpers, bridge
 events, and CLI checkpoint/session-pack commands.
@@ -1009,7 +1084,7 @@ future hardening item before rich production resume packs.
 
 ---
 
-## 14. Step 8 Plan: Seamless Operation
+## 15. Step 8 Plan: Seamless Operation
 
 **Execution status:** implemented as the first operator command surface.
 
@@ -1102,7 +1177,7 @@ The operational layer must detect:
 
 ---
 
-## 15. Execution Rule
+## 16. Execution Rule
 
 The master-plan implementation pass is complete enough to start controlled
 runtime wiring tests.
@@ -1190,7 +1265,7 @@ Implemented boundaries:
 
 ---
 
-## 16. Deferred On Purpose
+## 17. Deferred On Purpose
 
 Still intentionally deferred:
 
