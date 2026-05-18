@@ -70,6 +70,22 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
       store: { status: string };
       projections: { status: string; metrics?: Record<string, number | null> };
       owner_reviews: { status: string; metrics?: Record<string, number | null>; note?: string };
+      memory_candidates: { status: string; metrics?: Record<string, number | null>; note?: string };
+    };
+    review_surfaces: {
+      owner_review_queues: {
+        record_kind: string;
+        operational_queue_state: string;
+        counts_toward_pending_owner_reviews: boolean;
+        total_count: number;
+      };
+      memory_candidates: {
+        record_kind: string;
+        owner_review_status: string;
+        operational_queue_state: string;
+        counts_toward_pending_owner_reviews: boolean;
+        total_requires_owner_review_count: number | null;
+      };
     };
     projections: { openclaw: unknown[]; hermes: unknown[] };
   };
@@ -82,6 +98,18 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
   assert.equal(payload.health.owner_reviews.status, "ok");
   assert.equal(payload.health.owner_reviews.metrics?.hermes, 0);
   assert.match(payload.health.owner_reviews.note ?? "", /memory candidates/);
+  assert.equal(payload.health.memory_candidates.status, "ok");
+  assert.equal(payload.health.memory_candidates.metrics?.hermes_requires_owner_review, 0);
+  assert.match(payload.health.memory_candidates.note ?? "", /not active queue entries/);
+  assert.equal(payload.review_surfaces.owner_review_queues.record_kind, "owner_review_queue");
+  assert.equal(payload.review_surfaces.owner_review_queues.operational_queue_state, "not_queued");
+  assert.equal(payload.review_surfaces.owner_review_queues.counts_toward_pending_owner_reviews, true);
+  assert.equal(payload.review_surfaces.owner_review_queues.total_count, 0);
+  assert.equal(payload.review_surfaces.memory_candidates.record_kind, "memory_candidate");
+  assert.equal(payload.review_surfaces.memory_candidates.owner_review_status, "not_required");
+  assert.equal(payload.review_surfaces.memory_candidates.operational_queue_state, "not_queued");
+  assert.equal(payload.review_surfaces.memory_candidates.counts_toward_pending_owner_reviews, false);
+  assert.equal(payload.review_surfaces.memory_candidates.total_requires_owner_review_count, 0);
   assert.deepEqual(payload.projections.openclaw, []);
   assert.deepEqual(payload.projections.hermes, []);
 });
@@ -947,6 +975,37 @@ test("memory mature turns consolidated evidence into governed structured memory 
   assert.equal((await readdir(join(storeRoot, "wiki", "pages"))).length, 2);
   assert.equal((await readdir(join(storeRoot, "wiki", "claims"))).length, 3);
   assert.equal((await readdir(join(storeRoot, "audits", "diagnostics"))).length, 3);
+
+  const statusResult = await executeCristalinaCommand({ name: "status", configPath });
+  const statusPayload = JSON.parse(statusResult.stdout) as {
+    pending_owner_reviews: { openclaw: number; hermes: number };
+    review_surfaces: {
+      owner_review_queues: {
+        operational_queue_state: string;
+        counts_toward_pending_owner_reviews: boolean;
+        total_count: number;
+      };
+      memory_candidates: {
+        owner_review_status: string;
+        operational_queue_state: string;
+        counts_toward_pending_owner_reviews: boolean;
+        queue_ref: string | null;
+        hermes_requires_owner_review_count: number | null;
+        total_requires_owner_review_count: number | null;
+      };
+    };
+  };
+  assert.equal(statusResult.exitCode, 0);
+  assert.deepEqual(statusPayload.pending_owner_reviews, { openclaw: 0, hermes: 0 });
+  assert.equal(statusPayload.review_surfaces.owner_review_queues.operational_queue_state, "not_queued");
+  assert.equal(statusPayload.review_surfaces.owner_review_queues.counts_toward_pending_owner_reviews, true);
+  assert.equal(statusPayload.review_surfaces.owner_review_queues.total_count, 0);
+  assert.equal(statusPayload.review_surfaces.memory_candidates.owner_review_status, "required_not_queued");
+  assert.equal(statusPayload.review_surfaces.memory_candidates.operational_queue_state, "not_queued");
+  assert.equal(statusPayload.review_surfaces.memory_candidates.counts_toward_pending_owner_reviews, false);
+  assert.equal(statusPayload.review_surfaces.memory_candidates.queue_ref, null);
+  assert.equal(statusPayload.review_surfaces.memory_candidates.hermes_requires_owner_review_count, 1);
+  assert.equal(statusPayload.review_surfaces.memory_candidates.total_requires_owner_review_count, 1);
 
   const secondEvidenceOutputPath = join(root, "maturation-evidence-second.json");
   const secondEvidenceResult = await executeCristalinaCommand({

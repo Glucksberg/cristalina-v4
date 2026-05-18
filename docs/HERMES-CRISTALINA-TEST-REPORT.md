@@ -392,10 +392,10 @@ Code follow-up completed:
 
 Remaining product decision:
 
-- The owner-review/status ambiguity can be removed more completely by modeling
-  candidate state, queue state, decision state, and editorial planning state as
-  separate API fields. This is a product/API hardening task, not a Day 3 test
-  blocker.
+- Implemented after Day 3: the owner-review/status ambiguity is now represented
+  with separate API fields for candidate state, queue state, decision state, and
+  whether a record counts toward `pending_owner_reviews`. This remains a
+  product hardening improvement rather than a change to the Day 3 pass criteria.
 
 ---
 

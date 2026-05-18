@@ -101,6 +101,7 @@ test("owner decision listing hydrates deferred canonical proposal metadata witho
 
   const result = await listOwnerDecisionRequests({ rootDir });
   assert.equal(result.owner_decisions.length, 1);
+  assert.equal(result.owner_decisions[0]!.record_kind, "owner_decision_request");
   assert.equal(result.owner_decisions[0]!.proposal_ref, "prop_owner_decision_001");
   assert.equal(result.owner_decisions[0]!.claim_ref, "memory-maturation/hermes/run_001/claim_001");
   assert.equal(result.owner_decisions[0]!.semantic_slot, "agent_memory.governance.lifecycle_as_compliance_surface");
@@ -110,6 +111,17 @@ test("owner decision listing hydrates deferred canonical proposal metadata witho
   assert.equal(result.owner_decisions[0]!.curation_ref, "cur_owner_decision_001");
   assert.deepEqual(result.owner_decisions[0]!.existing_canon_refs, ["mem_existing_lifecycle_001"]);
   assert.match(result.owner_decisions[0]!.question, /subsumir/);
+  assert.equal(result.owner_decisions[0]!.requires_owner_review, true);
+  assert.equal(result.owner_decisions[0]!.owner_review_status, "queued");
+  assert.equal(result.owner_decisions[0]!.operational_queue_state, "queued");
+  assert.equal(result.owner_decisions[0]!.counts_toward_pending_owner_reviews, false);
+  assert.equal(result.owner_decisions[0]!.decision_status, "proposed");
+  assert.equal(result.owner_decisions[0]!.decision_ref, null);
+  assert.equal(result.owner_decisions[0]!.queue_ref, "cur_owner_decision_001");
+  assert.equal(result.owner_decisions[0]!.authority_layer, "governance");
+  assert.equal(result.owner_decisions[0]!.authority_scope, "owner_decision");
+  assert.equal(result.owner_decisions[0]!.lifecycle_state, "pending_review");
+  assert.equal(result.owner_decisions[0]!.projection_policy, "project_as_review_request");
 });
 
 test("owner decision ratify dry-run previews canon writes without changing the queue", async () => {
@@ -338,9 +350,21 @@ test("owner decision apply refreshes the Hermes recognition projection", async (
   const listed = await listOwnerDecisionRequests({ rootDir });
   assert.equal(listed.owner_decisions.length, 0);
   assert.equal(listed.resolved_owner_decisions.length, 1);
+  assert.equal(listed.resolved_owner_decisions[0]!.record_kind, "owner_decision");
   assert.equal(listed.resolved_owner_decisions[0]!.action, "ratify");
   assert.equal(listed.resolved_owner_decisions[0]!.semantic_slot, "cristalina.governance.owner_decision_projection_refresh");
   assert.equal(listed.resolved_owner_decisions[0]!.canonical_ref, "mem_owner_decision_projection_001");
+  assert.equal(listed.resolved_owner_decisions[0]!.requires_owner_review, false);
+  assert.equal(listed.resolved_owner_decisions[0]!.owner_review_status, "approved");
+  assert.equal(listed.resolved_owner_decisions[0]!.operational_queue_state, "resolved");
+  assert.equal(listed.resolved_owner_decisions[0]!.counts_toward_pending_owner_reviews, false);
+  assert.equal(listed.resolved_owner_decisions[0]!.decision_status, "recorded");
+  assert.equal(listed.resolved_owner_decisions[0]!.decision_ref, listed.resolved_owner_decisions[0]!.disposition_ref);
+  assert.equal(listed.resolved_owner_decisions[0]!.queue_ref, null);
+  assert.equal(listed.resolved_owner_decisions[0]!.authority_layer, "governance");
+  assert.equal(listed.resolved_owner_decisions[0]!.authority_scope, "owner_decision");
+  assert.equal(listed.resolved_owner_decisions[0]!.lifecycle_state, "resolved");
+  assert.equal(listed.resolved_owner_decisions[0]!.projection_policy, "project_as_decision");
 });
 
 test("owner decision subsume links a proposal to existing canon and removes it from active decisions", async () => {

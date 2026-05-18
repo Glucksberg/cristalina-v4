@@ -6,6 +6,8 @@ import {
   parseStoreManifestYaml,
   serializeStoreManifestYaml,
   STORAGE_LAYOUT,
+  summarizeMemoryCanonCandidates,
+  type MemoryCanonCandidateReport,
   type ProjectionRuntimeSummary,
 } from "@cristalina-v4/core";
 import {
@@ -25,6 +27,7 @@ export interface RuntimeBridgeStatus {
   config_valid: boolean;
   diagnostics: string[];
   health: RuntimeBridgeHealth;
+  review_surfaces: RuntimeBridgeReviewSurfaces;
   projections: {
     openclaw: ProjectionRuntimeSummary[];
     hermes: ProjectionRuntimeSummary[];
@@ -53,9 +56,37 @@ export interface RuntimeBridgeHealth {
   store: RuntimeBridgeHealthCheck;
   projections: RuntimeBridgeHealthCheck;
   owner_reviews: RuntimeBridgeHealthCheck;
+  memory_candidates: RuntimeBridgeHealthCheck;
 }
 
 const DEFAULT_STATUS_SUBCHECK_TIMEOUT_MS = 1000;
+
+interface RuntimeBridgeReviewSurfaces {
+  owner_review_queues: {
+    record_kind: "owner_review_queue";
+    authority_layer: "runtime_status";
+    authority_scope: "operational";
+    operational_queue_state: "not_queued" | "queued" | "unavailable";
+    counts_toward_pending_owner_reviews: true;
+    openclaw_count: number;
+    hermes_count: number;
+    total_count: number;
+    note: string;
+  };
+  memory_candidates: {
+    record_kind: "memory_candidate";
+    authority_layer: "derived";
+    authority_scope: "candidate_governance";
+    owner_review_status: "not_required" | "required_not_queued" | "unavailable";
+    operational_queue_state: "not_queued" | "unavailable";
+    counts_toward_pending_owner_reviews: false;
+    queue_ref: null;
+    openclaw_requires_owner_review_count: number | null;
+    hermes_requires_owner_review_count: number | null;
+    total_requires_owner_review_count: number | null;
+    note: string;
+  };
+}
 
 async function exists(path: string): Promise<boolean> {
   await access(path).then(() => undefined);
@@ -113,6 +144,60 @@ function overallHealth(checks: RuntimeBridgeHealthCheck[]): RuntimeBridgeHealthS
   if (checks.some((check) => check.status === "fail")) return "fail";
   if (checks.some((check) => check.status === "attention")) return "attention";
   return "ok";
+}
+
+function reviewSurfaces(input: {
+  ownerReviews: {
+    openclaw: Awaited<ReturnType<typeof listOpenClawConversationPreferenceOwnerRatificationQueue>>;
+    hermes: Awaited<ReturnType<typeof listHermesConversationPreferenceOwnerRatificationQueue>>;
+  } | null;
+  memoryCandidates: {
+    openclaw: MemoryCanonCandidateReport;
+    hermes: MemoryCanonCandidateReport;
+  } | null;
+}): RuntimeBridgeReviewSurfaces {
+  const openclawQueueCount = input.ownerReviews?.openclaw.length ?? 0;
+  const hermesQueueCount = input.ownerReviews?.hermes.length ?? 0;
+  const totalQueueCount = openclawQueueCount + hermesQueueCount;
+  const openclawCandidateCount = input.memoryCandidates?.openclaw.review_surface.candidate_requires_owner_review_count ?? null;
+  const hermesCandidateCount = input.memoryCandidates?.hermes.review_surface.candidate_requires_owner_review_count ?? null;
+  const totalCandidateCount = openclawCandidateCount === null || hermesCandidateCount === null
+    ? null
+    : openclawCandidateCount + hermesCandidateCount;
+  return {
+    owner_review_queues: {
+      record_kind: "owner_review_queue",
+      authority_layer: "runtime_status",
+      authority_scope: "operational",
+      operational_queue_state: input.ownerReviews === null
+        ? "unavailable"
+        : totalQueueCount > 0
+          ? "queued"
+          : "not_queued",
+      counts_toward_pending_owner_reviews: true,
+      openclaw_count: openclawQueueCount,
+      hermes_count: hermesQueueCount,
+      total_count: totalQueueCount,
+      note: "This is the active operational owner-review queue counted by pending_owner_reviews.",
+    },
+    memory_candidates: {
+      record_kind: "memory_candidate",
+      authority_layer: "derived",
+      authority_scope: "candidate_governance",
+      owner_review_status: input.memoryCandidates === null
+        ? "unavailable"
+        : totalCandidateCount && totalCandidateCount > 0
+          ? "required_not_queued"
+          : "not_required",
+      operational_queue_state: input.memoryCandidates === null ? "unavailable" : "not_queued",
+      counts_toward_pending_owner_reviews: false,
+      queue_ref: null,
+      openclaw_requires_owner_review_count: openclawCandidateCount,
+      hermes_requires_owner_review_count: hermesCandidateCount,
+      total_requires_owner_review_count: totalCandidateCount,
+      note: "These candidates may require owner review before promotion, but they are not active queue entries and do not count toward pending_owner_reviews unless materialized with a queue_ref.",
+    },
+  };
 }
 
 async function collectSubcheck<T>(input: {
@@ -219,19 +304,29 @@ export async function collectRuntimeBridgeStatus(input: {
       metrics: { openclaw: 0, hermes: 0 },
       note: "Counts active queue entries only; memory candidates that require review are reported by memory candidates.",
     });
+    const memoryCandidatesHealth = healthCheck({
+      status: "attention",
+      checkedAt,
+      source: "memory_candidate_review_surface",
+      diagnostics: ["Memory candidate review surfaces were not checked because no store root is configured."],
+      metrics: { openclaw_requires_owner_review: null, hermes_requires_owner_review: null },
+      note: "Candidate review requirements are separate from active owner-review queues.",
+    });
     return {
       store_root: null,
       store_manifest_found: false,
       config_valid: diagnostics.length === 0,
       diagnostics,
       health: {
-        overall: overallHealth([configHealth, storeHealth, projectionHealth, ownerReviewsHealth]),
+        overall: overallHealth([configHealth, storeHealth, projectionHealth, ownerReviewsHealth, memoryCandidatesHealth]),
         checked_at: checkedAt,
         config: configHealth,
         store: storeHealth,
         projections: projectionHealth,
         owner_reviews: ownerReviewsHealth,
+        memory_candidates: memoryCandidatesHealth,
       },
+      review_surfaces: reviewSurfaces({ ownerReviews: null, memoryCandidates: null }),
       projections: { openclaw: [], hermes: [] },
       pending_owner_reviews: { openclaw: 0, hermes: 0 },
     };
@@ -257,6 +352,10 @@ export async function collectRuntimeBridgeStatus(input: {
     openclaw: [] as Awaited<ReturnType<typeof listOpenClawConversationPreferenceOwnerRatificationQueue>>,
     hermes: [] as Awaited<ReturnType<typeof listHermesConversationPreferenceOwnerRatificationQueue>>,
   };
+  const candidateFallback = null as {
+    openclaw: MemoryCanonCandidateReport;
+    hermes: MemoryCanonCandidateReport;
+  } | null;
   const projectionSubcheck = manifest
     ? await collectSubcheck({
         source: "projection_runtime_views",
@@ -309,8 +408,42 @@ export async function collectRuntimeBridgeStatus(input: {
           note: "Counts active queue entries only; memory candidates that require review are reported by memory candidates.",
         }),
       };
-  diagnostics.push(...projectionSubcheck.health.diagnostics, ...reviewsSubcheck.health.diagnostics);
-  const healthChecks = [configHealth, storeHealth, projectionSubcheck.health, reviewsSubcheck.health];
+  const candidateSubcheck = manifest
+    ? await collectSubcheck({
+        source: "memory_candidate_review_surface",
+        checkedAt,
+        fallback: candidateFallback,
+        run: async () => {
+          const [openclaw, hermes] = await Promise.all([
+            summarizeMemoryCanonCandidates({ rootDir: storeRoot, runtime: "openclaw", limit: 1 }),
+            summarizeMemoryCanonCandidates({ rootDir: storeRoot, runtime: "hermes", limit: 1 }),
+          ]);
+          return { openclaw, hermes };
+        },
+        metrics: (value) => ({
+          openclaw_requires_owner_review: value?.openclaw.review_surface.candidate_requires_owner_review_count ?? null,
+          hermes_requires_owner_review: value?.hermes.review_surface.candidate_requires_owner_review_count ?? null,
+        }),
+        note: "Reports memory candidates that would require owner review before promotion; these are not active queue entries.",
+        timeoutMs: input.subcheckTimeoutMs,
+      })
+    : {
+        value: candidateFallback,
+        health: healthCheck({
+          status: "attention",
+          checkedAt,
+          source: "memory_candidate_review_surface",
+          diagnostics: ["Memory candidate review surfaces were not checked because the store manifest is missing."],
+          metrics: { openclaw_requires_owner_review: null, hermes_requires_owner_review: null },
+          note: "Candidate review requirements are separate from active owner-review queues.",
+        }),
+      };
+  diagnostics.push(
+    ...projectionSubcheck.health.diagnostics,
+    ...reviewsSubcheck.health.diagnostics,
+    ...candidateSubcheck.health.diagnostics,
+  );
+  const healthChecks = [configHealth, storeHealth, projectionSubcheck.health, reviewsSubcheck.health, candidateSubcheck.health];
 
   return {
     store_root: storeRoot,
@@ -324,7 +457,12 @@ export async function collectRuntimeBridgeStatus(input: {
       store: storeHealth,
       projections: projectionSubcheck.health,
       owner_reviews: reviewsSubcheck.health,
+      memory_candidates: candidateSubcheck.health,
     },
+    review_surfaces: reviewSurfaces({
+      ownerReviews: reviewsSubcheck.value,
+      memoryCandidates: candidateSubcheck.value,
+    }),
     projections: {
       openclaw: projectionSubcheck.value.openclaw,
       hermes: projectionSubcheck.value.hermes,

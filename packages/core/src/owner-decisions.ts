@@ -45,6 +45,7 @@ interface OwnerDecisionRecoveryJournal {
 }
 
 export interface OwnerDecisionRequest {
+  record_kind: "owner_decision_request";
   proposal_ref: string;
   claim_ref: string;
   semantic_slot: string | null;
@@ -62,9 +63,21 @@ export interface OwnerDecisionRequest {
   allowed_actions: OwnerDecisionAction[];
   question: string;
   evidence_refs: string[];
+  requires_owner_review: true;
+  owner_review_status: "queued";
+  operational_queue_state: "queued";
+  counts_toward_pending_owner_reviews: false;
+  decision_status: "proposed";
+  decision_ref: null;
+  queue_ref: string | null;
+  authority_layer: "governance";
+  authority_scope: "owner_decision";
+  lifecycle_state: "pending_review";
+  projection_policy: "project_as_review_request";
 }
 
 export interface OwnerDecisionResolution {
+  record_kind: "owner_decision";
   proposal_ref: string;
   claim_ref: string;
   semantic_slot: string | null;
@@ -84,6 +97,17 @@ export interface OwnerDecisionResolution {
   wiki_page_ref: string | null;
   wiki_claim_ref: string | null;
   reason: string | null;
+  requires_owner_review: false;
+  owner_review_status: "approved" | "rejected" | "deferred";
+  operational_queue_state: "resolved";
+  counts_toward_pending_owner_reviews: false;
+  decision_status: "recorded";
+  decision_ref: string;
+  queue_ref: string | null;
+  authority_layer: "governance";
+  authority_scope: "owner_decision";
+  lifecycle_state: "resolved";
+  projection_policy: "project_as_decision";
 }
 
 export interface ApplyOwnerDecisionInput {
@@ -555,6 +579,7 @@ export async function listOwnerDecisionRequests(input: {
       const statement = stringField(proposal.candidate_payload.statement);
       const existingCanonRefs = sameSlotCanonRefs(semanticSlot, canonicalRecords);
       return {
+        record_kind: "owner_decision_request",
         proposal_ref: proposal.id,
         claim_ref: claimRef(proposal),
         semantic_slot: semanticSlot,
@@ -572,6 +597,17 @@ export async function listOwnerDecisionRequests(input: {
         allowed_actions: ["ratify", "keep_maturing", "subsume", "reject", "move_to_wiki"],
         question: ownerQuestion({ statement, existingCanonRefs }),
         evidence_refs: proposal.evidence_refs,
+        requires_owner_review: true,
+        owner_review_status: "queued",
+        operational_queue_state: "queued",
+        counts_toward_pending_owner_reviews: false,
+        decision_status: "proposed",
+        decision_ref: null,
+        queue_ref: packet?.id ?? null,
+        authority_layer: "governance",
+        authority_scope: "owner_decision",
+        lifecycle_state: "pending_review",
+        projection_policy: "project_as_review_request",
       } satisfies OwnerDecisionRequest;
     })
     .filter((request) => request.curation_status === null || request.curation_status === "pending")
@@ -589,7 +625,13 @@ export async function listOwnerDecisionRequests(input: {
       const canonicalRef = proposal
         ? canonicalRecords.find((record) => record.id === `mem_${proposalIdPart(proposal)}` || record.provenance.source_ref === proposal.provenance.source_ref)?.id ?? null
         : null;
+      const ownerReviewStatus: OwnerDecisionResolution["owner_review_status"] = disposition.owner_decision_action === "reject"
+        ? "rejected"
+        : disposition.owner_decision_action === "keep_maturing"
+          ? "deferred"
+          : "approved";
       return {
+        record_kind: "owner_decision",
         proposal_ref: proposalRef,
         claim_ref: proposal ? claimRef(proposal) : "",
         semantic_slot: proposal ? stringField(proposal.candidate_payload.semantic_slot) : null,
@@ -609,6 +651,17 @@ export async function listOwnerDecisionRequests(input: {
         wiki_page_ref: disposition.wiki_page_ref ?? null,
         wiki_claim_ref: disposition.wiki_claim_ref ?? null,
         reason: disposition.owner_decision_reason ?? null,
+        requires_owner_review: false,
+        owner_review_status: ownerReviewStatus,
+        operational_queue_state: "resolved",
+        counts_toward_pending_owner_reviews: false,
+        decision_status: "recorded",
+        decision_ref: disposition.id,
+        queue_ref: packet?.id ?? null,
+        authority_layer: "governance",
+        authority_scope: "owner_decision",
+        lifecycle_state: "resolved",
+        projection_policy: "project_as_decision",
       } satisfies OwnerDecisionResolution;
     })
     .sort((left, right) => right.disposition_updated_at.localeCompare(left.disposition_updated_at));

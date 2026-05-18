@@ -201,9 +201,11 @@ Day 3 code follow-up:
 
 Open post-Day-3 product question:
 
-- Whether to materialize the owner-review surface modeling gap in data/API
-  fields, so candidates, active queue entries, resolved decisions, and
-  editorial planning notes cannot be confused by status consumers or agents.
+- Resolved in code after Day 3: status/API now separates active owner-review
+  queues from memory candidates that would require owner review before
+  promotion. Owner decision requests and resolutions also expose explicit
+  status/modeling fields so agents do not need to infer queue state from
+  editorial text.
 
 ### Temporary Fixture Inventory And Cleanup
 

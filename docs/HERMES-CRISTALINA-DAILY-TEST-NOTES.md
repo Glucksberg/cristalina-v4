@@ -273,8 +273,10 @@ Verification:
 
 Post-Day-3 decision:
 
-- Decide whether to implement the Gap 2 modeling change now. The practical
-  question is whether Cristalina's public status/API should expose separate
-  fields for `record_kind`, `requires_owner_review`, `owner_review_status`,
-  `operational_queue_state`, `decision_status`, and whether an item counts
-  toward `pending_owner_reviews`.
+- Implemented the Gap 2 modeling change in status/API. Cristalina now exposes
+  separate review-surface fields for active owner-review queues and memory
+  candidates that would require owner review before promotion. Owner decision
+  requests and resolved decisions also carry explicit `record_kind`,
+  `requires_owner_review`, `owner_review_status`, `operational_queue_state`,
+  `decision_status`, `queue_ref`, and `counts_toward_pending_owner_reviews`
+  fields.
