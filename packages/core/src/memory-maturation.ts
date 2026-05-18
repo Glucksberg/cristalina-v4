@@ -160,6 +160,7 @@ export interface RunMemoryMaturationResult {
 }
 
 export interface MemoryCanonCandidateSummary {
+  record_kind: "memory_candidate";
   semantic_slot: string;
   candidate_count: number;
   support_count: number;
@@ -177,6 +178,16 @@ export interface MemoryCanonCandidateSummary {
   has_active_canon: boolean;
   auto_canon_eligible: boolean;
   suggested_action: "already_canon" | "auto_canon_ready" | "needs_more_support" | "owner_review" | "keep_evidence";
+  requires_owner_review: boolean;
+  owner_review_status: "not_required" | "required_not_queued";
+  operational_queue_state: "not_queued";
+  counts_toward_pending_owner_reviews: false;
+  decision_status: "none" | "ratified";
+  decision_ref: string | null;
+  queue_ref: null;
+  authority_scope: "candidate" | "existing_canon";
+  lifecycle_state: "candidate" | "already_canon";
+  projection_policy: "candidate_only" | "project_existing_canon";
   support_refs: string[];
 }
 
@@ -190,6 +201,12 @@ export interface MemoryCanonCandidateReport {
     already_canon: number;
     needs_more_support: number;
     owner_review: number;
+  };
+  review_surface: {
+    active_owner_review_queue_count: null;
+    candidate_requires_owner_review_count: number;
+    counts_toward_pending_owner_reviews: false;
+    note: string;
   };
   candidates: MemoryCanonCandidateSummary[];
 }
@@ -325,6 +342,7 @@ function mergeUniqueStrings(...groups: string[][]): string[] {
 
 function emptySlotSummary(semanticSlot: string): MemoryCanonCandidateSummary {
   return {
+    record_kind: "memory_candidate",
     semantic_slot: semanticSlot,
     candidate_count: 0,
     support_count: 0,
@@ -342,6 +360,16 @@ function emptySlotSummary(semanticSlot: string): MemoryCanonCandidateSummary {
     has_active_canon: false,
     auto_canon_eligible: false,
     suggested_action: "needs_more_support",
+    requires_owner_review: false,
+    owner_review_status: "not_required",
+    operational_queue_state: "not_queued",
+    counts_toward_pending_owner_reviews: false,
+    decision_status: "none",
+    decision_ref: null,
+    queue_ref: null,
+    authority_scope: "candidate",
+    lifecycle_state: "candidate",
+    projection_policy: "candidate_only",
     support_refs: [],
   };
 }
@@ -1065,11 +1093,12 @@ async function findCompletedMemoryMaturationSource(
 }
 
 function finalizeCanonCandidateSummary(summary: MemoryCanonCandidateSummary, existingCanon: CanonicalMemoryObject[]): MemoryCanonCandidateSummary {
-  const hasActiveCanon = existingCanon.some((record) =>
+  const activeCanon = existingCanon.find((record) =>
     record.semantic_slot === summary.semantic_slot &&
     record.governance_state === "ratified" &&
     record.temporal_state?.temporal_status === "active"
   );
+  const hasActiveCanon = Boolean(activeCanon);
   const ownerScoped = summary.subject_authority_roles.includes("owner");
   const lowRisk = summary.latest_risk === "low";
   const confidenceUsable = summary.latest_confidence === "medium" || summary.latest_confidence === "high";
@@ -1092,6 +1121,16 @@ function finalizeCanonCandidateSummary(summary: MemoryCanonCandidateSummary, exi
     has_active_canon: hasActiveCanon,
     auto_canon_eligible: autoCanonEligible,
     suggested_action: suggestedAction,
+    requires_owner_review: suggestedAction === "owner_review",
+    owner_review_status: suggestedAction === "owner_review" ? "required_not_queued" : "not_required",
+    operational_queue_state: "not_queued",
+    counts_toward_pending_owner_reviews: false,
+    decision_status: suggestedAction === "already_canon" ? "ratified" : "none",
+    decision_ref: activeCanon?.id ?? null,
+    queue_ref: null,
+    authority_scope: suggestedAction === "already_canon" ? "existing_canon" : "candidate",
+    lifecycle_state: suggestedAction === "already_canon" ? "already_canon" : "candidate",
+    projection_policy: suggestedAction === "already_canon" ? "project_existing_canon" : "candidate_only",
   };
 }
 
@@ -1181,6 +1220,12 @@ export async function summarizeMemoryCanonCandidates(input: {
       already_canon: finalized.filter((candidate) => candidate.suggested_action === "already_canon").length,
       needs_more_support: finalized.filter((candidate) => candidate.suggested_action === "needs_more_support").length,
       owner_review: finalized.filter((candidate) => candidate.suggested_action === "owner_review").length,
+    },
+    review_surface: {
+      active_owner_review_queue_count: null,
+      candidate_requires_owner_review_count: finalized.filter((candidate) => candidate.requires_owner_review).length,
+      counts_toward_pending_owner_reviews: false,
+      note: "memory candidates owner_review means the candidate would require owner review before promotion; it is not an active owner-review queue entry unless queue_ref is present.",
     },
     candidates,
   };

@@ -1212,13 +1212,39 @@ test("memory mature promotes corroborated low-risk external claims without owner
   });
   const candidatesPayload = JSON.parse(candidatesResult.stdout) as {
     totals: { already_canon: number };
-    candidates: Array<{ semantic_slot: string; suggested_action: string; has_active_canon: boolean }>;
+    review_surface: {
+      active_owner_review_queue_count: null;
+      candidate_requires_owner_review_count: number;
+      counts_toward_pending_owner_reviews: boolean;
+    };
+    candidates: Array<{
+      semantic_slot: string;
+      suggested_action: string;
+      has_active_canon: boolean;
+      record_kind: string;
+      owner_review_status: string;
+      operational_queue_state: string;
+      decision_status: string;
+      decision_ref: string | null;
+      queue_ref: string | null;
+      counts_toward_pending_owner_reviews: boolean;
+    }>;
   };
   assert.equal(candidatesResult.exitCode, 0);
   assert.equal(candidatesPayload.totals.already_canon, 1);
+  assert.equal(candidatesPayload.review_surface.active_owner_review_queue_count, null);
+  assert.equal(candidatesPayload.review_surface.candidate_requires_owner_review_count, 0);
+  assert.equal(candidatesPayload.review_surface.counts_toward_pending_owner_reviews, false);
   assert.equal(candidatesPayload.candidates[0]?.semantic_slot, "agent_memory.architecture.operational_trace_separation");
   assert.equal(candidatesPayload.candidates[0]?.suggested_action, "already_canon");
   assert.equal(candidatesPayload.candidates[0]?.has_active_canon, true);
+  assert.equal(candidatesPayload.candidates[0]?.record_kind, "memory_candidate");
+  assert.equal(candidatesPayload.candidates[0]?.owner_review_status, "not_required");
+  assert.equal(candidatesPayload.candidates[0]?.operational_queue_state, "not_queued");
+  assert.equal(candidatesPayload.candidates[0]?.decision_status, "ratified");
+  assert.equal(candidatesPayload.candidates[0]?.decision_ref, payload.applied.canonical_record_refs[0]);
+  assert.equal(candidatesPayload.candidates[0]?.queue_ref, null);
+  assert.equal(candidatesPayload.candidates[0]?.counts_toward_pending_owner_reviews, false);
 });
 
 test("memory promote-candidates promotes historical auto-ready slots and keeps operational self observations in wiki", async () => {
