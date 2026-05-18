@@ -17,8 +17,13 @@ test("doctor reports missing config and store without writing memory", async () 
   const payload = JSON.parse(result.stdout) as {
     store_manifest_found: boolean;
     diagnostics: string[];
+    health: { overall: string; store: { status: string }; owner_reviews: { status: string; note?: string } };
   };
   assert.equal(payload.store_manifest_found, false);
+  assert.equal(payload.health.overall, "fail");
+  assert.equal(payload.health.store.status, "fail");
+  assert.equal(payload.health.owner_reviews.status, "attention");
+  assert.match(payload.health.owner_reviews.note ?? "", /active queue entries only/);
   assert.ok(payload.diagnostics.some((entry) => entry.includes("No Cristalina config found")));
   assert.ok(payload.diagnostics.some((entry) => entry.includes("No store root configured")));
 });
@@ -60,10 +65,23 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
   const payload = JSON.parse(doctor.stdout) as {
     store_root: string;
     store_manifest_found: boolean;
+    health: {
+      overall: string;
+      store: { status: string };
+      projections: { status: string; metrics?: Record<string, number | null> };
+      owner_reviews: { status: string; metrics?: Record<string, number | null>; note?: string };
+    };
     projections: { openclaw: unknown[]; hermes: unknown[] };
   };
   assert.equal(payload.store_root, storeRoot);
   assert.equal(payload.store_manifest_found, true);
+  assert.equal(payload.health.overall, "ok");
+  assert.equal(payload.health.store.status, "ok");
+  assert.equal(payload.health.projections.status, "ok");
+  assert.equal(payload.health.projections.metrics?.openclaw, 0);
+  assert.equal(payload.health.owner_reviews.status, "ok");
+  assert.equal(payload.health.owner_reviews.metrics?.hermes, 0);
+  assert.match(payload.health.owner_reviews.note ?? "", /memory candidates/);
   assert.deepEqual(payload.projections.openclaw, []);
   assert.deepEqual(payload.projections.hermes, []);
 });
