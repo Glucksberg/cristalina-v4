@@ -94,6 +94,7 @@ export async function verifyRuntimeProjections(input: ProjectionVerifyInput = {}
     config: loaded.config,
     configDiagnostics: loaded.diagnostics,
     storeRoot,
+    includeMemoryCandidateReviewSurface: false,
   });
   const manifests = storeRoot && status.store_manifest_found
     ? await listStoreProjectionManifests(storeRoot).catch(() => [] as ProjectionManifest[])

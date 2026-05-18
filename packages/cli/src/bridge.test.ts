@@ -17,6 +17,7 @@ test("runtime bridge status degrades slow subchecks into health attention", asyn
     config: buildDefaultCristalinaConfig({ storeRoot }),
     configDiagnostics: [],
     storeRoot,
+    includeMemoryCandidateReviewSurface: true,
     subcheckTimeoutMs: 5,
     collectors: {
       openclawProjections: async () => [],
@@ -51,6 +52,7 @@ test("runtime bridge status marks slow memory candidate review surface as unavai
     config: buildDefaultCristalinaConfig({ storeRoot }),
     configDiagnostics: [],
     storeRoot,
+    includeMemoryCandidateReviewSurface: true,
     subcheckTimeoutMs: 5,
     collectors: {
       openclawProjections: async () => [],
@@ -72,6 +74,37 @@ test("runtime bridge status marks slow memory candidate review surface as unavai
   assert.equal(status.review_surfaces.memory_candidates.hermes_requires_owner_review_count, null);
   assert.equal(status.review_surfaces.memory_candidates.total_requires_owner_review_count, null);
   assert.equal(status.health.overall, "attention");
+});
+
+test("runtime bridge status skips memory candidate review surface unless requested", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-bridge-health-candidate-skipped-"));
+  const storeRoot = join(root, "store");
+  await initializeCristalinaStore(storeRoot);
+
+  const status = await collectRuntimeBridgeStatus({
+    config: buildDefaultCristalinaConfig({ storeRoot }),
+    configDiagnostics: [],
+    storeRoot,
+    subcheckTimeoutMs: 5,
+    collectors: {
+      openclawProjections: async () => [],
+      hermesProjections: async () => [],
+      openclawReviews: async () => [],
+      hermesReviews: async () => [],
+      openclawMemoryCandidates: async () => {
+        throw new Error("memory candidates should not be loaded");
+      },
+      hermesMemoryCandidates: async () => {
+        throw new Error("memory candidates should not be loaded");
+      },
+    },
+  });
+
+  assert.equal(status.health.memory_candidates.status, "ok");
+  assert.match(status.health.memory_candidates.note ?? "", /not requested/);
+  assert.equal(status.review_surfaces.memory_candidates.owner_review_status, "unavailable");
+  assert.equal(status.review_surfaces.memory_candidates.total_requires_owner_review_count, null);
+  assert.equal(status.health.overall, "ok");
 });
 
 test("runtime bridge status reports missing runtime bindings in config health", async () => {

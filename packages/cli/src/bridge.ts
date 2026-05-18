@@ -259,6 +259,7 @@ export async function collectRuntimeBridgeStatus(input: {
   config: CristalinaConfig;
   configDiagnostics: string[];
   storeRoot: string | null;
+  includeMemoryCandidateReviewSurface?: boolean;
   subcheckTimeoutMs?: number;
   collectors?: {
     openclawProjections?: (storeRoot: string) => Promise<Awaited<ReturnType<typeof listOpenClawProjectionRuntimeViews>>>;
@@ -272,6 +273,7 @@ export async function collectRuntimeBridgeStatus(input: {
   const checkedAt = new Date().toISOString();
   const diagnostics = [...input.configDiagnostics];
   const storeRoot = input.storeRoot;
+  const includeMemoryCandidateReviewSurface = input.includeMemoryCandidateReviewSurface === true;
   if (!input.config.runtimes?.openclaw?.runtime_instance_ref) {
     diagnostics.push("OpenClaw runtime binding is missing runtimes.openclaw.runtime_instance_ref");
   }
@@ -412,7 +414,7 @@ export async function collectRuntimeBridgeStatus(input: {
           note: "Counts active queue entries only; memory candidates that require review are reported by memory candidates.",
         }),
       };
-  const candidateSubcheck = manifest
+  const candidateSubcheck = manifest && includeMemoryCandidateReviewSurface
     ? await collectSubcheck({
         source: "memory_candidate_review_surface",
         checkedAt,
@@ -438,12 +440,14 @@ export async function collectRuntimeBridgeStatus(input: {
     : {
         value: candidateFallback,
         health: healthCheck({
-          status: "attention",
+          status: manifest ? "ok" : "attention",
           checkedAt,
           source: "memory_candidate_review_surface",
-          diagnostics: ["Memory candidate review surfaces were not checked because the store manifest is missing."],
+          diagnostics: manifest ? [] : ["Memory candidate review surfaces were not checked because the store manifest is missing."],
           metrics: { openclaw_requires_owner_review: null, hermes_requires_owner_review: null },
-          note: "Candidate review requirements are separate from active owner-review queues.",
+          note: manifest
+            ? "Memory candidate review surface was not requested by this command."
+            : "Candidate review requirements are separate from active owner-review queues.",
         }),
       };
   diagnostics.push(

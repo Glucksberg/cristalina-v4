@@ -83,6 +83,7 @@ async function loadStatus(command: Extract<CristalinaCommand, { name: "doctor" |
     config: loaded.config,
     configDiagnostics: loaded.diagnostics,
     storeRoot,
+    includeMemoryCandidateReviewSurface: command.name === "doctor" || command.name === "status",
   });
 }
 
