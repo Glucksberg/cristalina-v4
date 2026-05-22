@@ -185,6 +185,9 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.match(providerEntrypoint, /def _resolve_hermes_root/);
   assert.match(providerEntrypoint, /def prefetch/);
   assert.match(providerEntrypoint, /def sync_turn/);
+  assert.match(providerEntrypoint, /def emit_cristalina_session_reset_tip/);
+  assert.match(providerEntrypoint, /ctx\.register_hook\('pre_gateway_dispatch', emit_cristalina_session_reset_tip\)/);
+  assert.match(providerEntrypoint, /Cristalina reset tip fallback hook unavailable/);
   assert.match(providerEntrypoint, /cristalina_archive_search/);
   assert.match(providerEntrypoint, /evt_hermes_provider_/);
 
@@ -197,6 +200,8 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
       enabled: boolean;
       path: string;
       label: string;
+      gateway_followup_fallback: boolean;
+      followup_delay_seconds: number;
       tips: string[];
     };
     memory_consolidation: {
@@ -243,17 +248,23 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(providerConfig.session_reset_tips.enabled, true);
   assert.equal(providerConfig.session_reset_tips.path, metadata.session_reset_tips_path);
   assert.equal(providerConfig.session_reset_tips.label, "Cristalina Tip");
+  assert.equal(providerConfig.session_reset_tips.gateway_followup_fallback, true);
+  assert.equal(providerConfig.session_reset_tips.followup_delay_seconds, 0.75);
   assert.ok(providerConfig.session_reset_tips.tips.some((tip) => tip.includes("Runtime observations are evidence")));
   const sessionResetTips = JSON.parse(await readFile(metadata.session_reset_tips_path, "utf8")) as {
     source: string;
     enabled: boolean;
     label: string;
+    gateway_followup_fallback: boolean;
+    followup_delay_seconds: number;
     tips: string[];
     authority_note: string;
   };
   assert.equal(sessionResetTips.source, "cristalina");
   assert.equal(sessionResetTips.enabled, true);
   assert.equal(sessionResetTips.label, "Cristalina Tip");
+  assert.equal(sessionResetTips.gateway_followup_fallback, true);
+  assert.equal(sessionResetTips.followup_delay_seconds, 0.75);
   assert.ok(sessionResetTips.tips.some((tip) => tip.includes("cristalina_memory_status")));
   assert.match(sessionResetTips.authority_note, /do not create Cristalina memory/);
   assert.equal(providerConfig.memory_consolidation.enabled, true);
