@@ -32,6 +32,9 @@ export interface RuntimeInstallResult {
   plugin_manifest_path?: string;
   plugin_entrypoint_path?: string;
   plugin_config_path?: string;
+  gateway_plugin_path?: string;
+  gateway_plugin_manifest_path?: string;
+  gateway_plugin_entrypoint_path?: string;
   plugin_enable_hint?: string;
   provider_path?: string;
   provider_manifest_path?: string;
@@ -201,6 +204,9 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
   pluginManifestPath: string | null;
   pluginEntrypointPath: string | null;
   pluginConfigPath: string | null;
+  gatewayPluginPath: string | null;
+  gatewayPluginManifestPath: string | null;
+  gatewayPluginEntrypointPath: string | null;
   providerPath: string | null;
   providerManifestPath: string | null;
   providerEntrypointPath: string | null;
@@ -222,6 +228,9 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
       pluginManifestPath: null,
       pluginEntrypointPath: null,
       pluginConfigPath: null,
+      gatewayPluginPath: null,
+      gatewayPluginManifestPath: null,
+      gatewayPluginEntrypointPath: null,
       providerPath: null,
       providerManifestPath: null,
       providerEntrypointPath: null,
@@ -239,12 +248,16 @@ function hermesPluginPaths(runtimeRoot: string | undefined): {
     };
   }
   const pluginPath = resolve(runtimeRoot, "plugins", "cristalina-bridge");
+  const gatewayPluginPath = resolve(runtimeRoot, "plugins", "cristalina-gateway");
   const providerPath = resolve(runtimeRoot, "plugins", "cristalina");
   return {
     pluginPath,
     pluginManifestPath: join(pluginPath, "plugin.yaml"),
     pluginEntrypointPath: join(pluginPath, "__init__.py"),
     pluginConfigPath: resolve(runtimeRoot, "config.yaml"),
+    gatewayPluginPath,
+    gatewayPluginManifestPath: join(gatewayPluginPath, "plugin.yaml"),
+    gatewayPluginEntrypointPath: join(gatewayPluginPath, "__init__.py"),
     providerPath,
     providerManifestPath: join(providerPath, "plugin.yaml"),
     providerEntrypointPath: join(providerPath, "__init__.py"),
@@ -492,6 +505,28 @@ async function enableHermesBridgePlugin(configPath: string | null): Promise<stri
   }
   await writeFile(configPath, updated.text);
   return [`Hermes plugin cristalina-bridge was added to plugins.enabled in ${configPath}.`];
+}
+
+async function enableHermesGatewayPlugin(configPath: string | null): Promise<string[]> {
+  if (!configPath) {
+    return [];
+  }
+  let source: string;
+  try {
+    source = await readFile(configPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [`Hermes config.yaml not found at ${configPath}; run hermes plugins enable cristalina-gateway or add it to plugins.enabled before restarting Hermes.`];
+    }
+    throw error;
+  }
+
+  const updated = addHermesPluginToConfigYaml(source, "cristalina-gateway");
+  if (!updated.changed) {
+    return [`Hermes plugin cristalina-gateway is already listed in ${configPath}.`];
+  }
+  await writeFile(configPath, updated.text);
+  return [`Hermes plugin cristalina-gateway was added to plugins.enabled in ${configPath}.`];
 }
 
 async function configureHermesProvider(configPath: string | null, integrationMode: "provider" | "bridge" | "both"): Promise<string[]> {
@@ -762,7 +797,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   const pluginEnableHint = pluginPaths.pluginPath
     ? integrationMode === "bridge"
       ? "Installer adds cristalina-bridge to Hermes plugins.enabled when config.yaml is present; restart Hermes so post_llm_call hooks are registered."
-      : "Installer sets Hermes memory.provider to cristalina; restart Hermes so the native memory provider is loaded."
+      : "Installer sets Hermes memory.provider to cristalina and enables cristalina-gateway for gateway hooks; restart Hermes so the native memory provider and companion plugin are loaded."
     : undefined;
   const providerConfig = pluginPaths.providerConfigPath
     ? {
@@ -872,6 +907,9 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
       : {}),
     ...((integrationMode === "provider" || integrationMode === "both") && pluginPaths.providerPath
       ? {
+          gateway_plugin_path: pluginPaths.gatewayPluginPath,
+          gateway_plugin_manifest_path: pluginPaths.gatewayPluginManifestPath,
+          gateway_plugin_entrypoint_path: pluginPaths.gatewayPluginEntrypointPath,
           provider_path: pluginPaths.providerPath,
           provider_manifest_path: pluginPaths.providerManifestPath,
           provider_entrypoint_path: pluginPaths.providerEntrypointPath,
@@ -1414,6 +1452,11 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
       pluginPaths.providerConfigPath &&
       providerConfig
     ) {
+      if (pluginPaths.gatewayPluginPath && pluginPaths.gatewayPluginManifestPath && pluginPaths.gatewayPluginEntrypointPath) {
+        await mkdir(pluginPaths.gatewayPluginPath, { recursive: true });
+        await writeFile(pluginPaths.gatewayPluginManifestPath, buildHermesGatewayPluginManifest());
+        await writeFile(pluginPaths.gatewayPluginEntrypointPath, buildHermesGatewayPluginEntrypoint());
+      }
       await mkdir(pluginPaths.providerPath, { recursive: true });
       await mkdir(dirname(pluginPaths.providerConfigPath), { recursive: true });
       await writeFile(pluginPaths.providerManifestPath, buildHermesMemoryProviderManifest());
@@ -1468,6 +1511,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         diagnostics.push(...cron.diagnostics);
       }
       diagnostics.push(...(await configureHermesProvider(pluginPaths.pluginConfigPath, integrationMode)));
+      diagnostics.push(...(await enableHermesGatewayPlugin(pluginPaths.pluginConfigPath)));
     }
   }
 
@@ -1505,6 +1549,9 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
       : {}),
     ...((integrationMode === "provider" || integrationMode === "both") && pluginPaths.providerPath
       ? {
+          gateway_plugin_path: pluginPaths.gatewayPluginPath ?? undefined,
+          gateway_plugin_manifest_path: pluginPaths.gatewayPluginManifestPath ?? undefined,
+          gateway_plugin_entrypoint_path: pluginPaths.gatewayPluginEntrypointPath ?? undefined,
           provider_path: pluginPaths.providerPath,
           provider_manifest_path: pluginPaths.providerManifestPath ?? undefined,
           provider_entrypoint_path: pluginPaths.providerEntrypointPath ?? undefined,
@@ -1544,6 +1591,159 @@ function buildHermesBridgePluginManifest(): string {
     "provides_hooks:",
     "  - post_llm_call",
     "authority_note: Event payloads are evidence only; owner authority remains in Cristalina consolidation flows.",
+    "",
+  ].join("\n");
+}
+
+function buildHermesGatewayPluginManifest(): string {
+  return [
+    "name: cristalina-gateway",
+    "version: 0.1.0",
+    "description: Gateway-facing Cristalina hooks for operator notices and reset tips.",
+    "provides_hooks:",
+    "  - pre_gateway_dispatch",
+    "authority_note: Gateway notices are operator-facing only; they do not create Cristalina memory or owner authority.",
+    "",
+  ].join("\n");
+}
+
+function buildHermesGatewayPluginEntrypoint(): string {
+  return [
+    "\"\"\"Gateway-facing Hermes plugin for Cristalina v4.\"\"\"",
+    "",
+    "from __future__ import annotations",
+    "",
+    "import asyncio",
+    "import json",
+    "import logging",
+    "import time",
+    "from pathlib import Path",
+    "from typing import Any, Dict",
+    "",
+    "logger = logging.getLogger(__name__)",
+    "PLUGIN_DIR = Path(__file__).resolve().parent",
+    "HERMES_ROOT = PLUGIN_DIR.parent.parent",
+    "PROVIDER_CONFIG_PATH = HERMES_ROOT / '.cristalina-v4' / 'provider-hermes.json'",
+    "_RESET_TIP_SENT: Dict[str, float] = {}",
+    "",
+    "",
+    "def _provider_config() -> Dict[str, Any]:",
+    "    try:",
+    "        return json.loads(PROVIDER_CONFIG_PATH.read_text(encoding='utf-8'))",
+    "    except Exception:",
+    "        return {}",
+    "",
+    "",
+    "def _reset_command_from_event(event: Any) -> str:",
+    "    try:",
+    "        command = event.get_command()",
+    "        if command:",
+    "            return str(command).lower()",
+    "    except Exception:",
+    "        pass",
+    "    text = str(getattr(event, 'text', '') or '').strip()",
+    "    if not text.startswith('/'):",
+    "        return ''",
+    "    return text.split(maxsplit=1)[0][1:].split('@', 1)[0].lower()",
+    "",
+    "",
+    "def _session_reset_tip_line() -> str:",
+    "    reset_tips = _provider_config().get('session_reset_tips')",
+    "    if not isinstance(reset_tips, dict) or not reset_tips.get('enabled', True):",
+    "        return ''",
+    "    tips = reset_tips.get('tips')",
+    "    if not isinstance(tips, list) or not tips:",
+    "        return ''",
+    "    tip = str(tips[0]).strip()",
+    "    if not tip:",
+    "        return ''",
+    "    label = str(reset_tips.get('label') or 'Cristalina Tip').strip() or 'Cristalina Tip'",
+    "    return f'\\u2726 {label}: {tip}'",
+    "",
+    "",
+    "def _hermes_inline_session_reset_tips_supported() -> bool:",
+    "    try:",
+    "        from hermes_cli.tips import get_session_reset_tip_lines",
+    "        lines = get_session_reset_tip_lines()",
+    "        return any(isinstance(line, str) and 'Cristalina Tip:' in line for line in lines)",
+    "    except Exception:",
+    "        return False",
+    "",
+    "",
+    "def _reset_tip_dedupe_key(event: Any) -> str:",
+    "    source = getattr(event, 'source', None)",
+    "    platform = getattr(getattr(source, 'platform', ''), 'value', getattr(source, 'platform', ''))",
+    "    chat_id = getattr(source, 'chat_id', '')",
+    "    message_id = getattr(event, 'message_id', '') or getattr(event, 'update_id', '')",
+    "    text = str(getattr(event, 'text', '') or '').strip()",
+    "    return f'{platform}:{chat_id}:{message_id}:{text}'",
+    "",
+    "",
+    "def _claim_reset_tip_delivery(event: Any) -> bool:",
+    "    now = time.monotonic()",
+    "    for key, seen_at in list(_RESET_TIP_SENT.items()):",
+    "        if now - seen_at > 60:",
+    "            _RESET_TIP_SENT.pop(key, None)",
+    "    key = _reset_tip_dedupe_key(event)",
+    "    if _RESET_TIP_SENT.get(key):",
+    "        return False",
+    "    _RESET_TIP_SENT[key] = now",
+    "    return True",
+    "",
+    "",
+    "async def _deliver_reset_tip_after_gateway_reply(gateway: Any, event: Any, message: str) -> None:",
+    "    reset_tips = _provider_config().get('session_reset_tips')",
+    "    reset_tips = reset_tips if isinstance(reset_tips, dict) else {}",
+    "    delay = float(reset_tips.get('followup_delay_seconds') or 0.75)",
+    "    if delay > 0:",
+    "        await asyncio.sleep(delay)",
+    "    source = getattr(event, 'source', None)",
+    "    if source is None:",
+    "        return",
+    "    adapter = getattr(gateway, 'adapters', {}).get(getattr(source, 'platform', None))",
+    "    if adapter is None:",
+    "        return",
+    "    chat_id = getattr(source, 'chat_id', None)",
+    "    if chat_id is None:",
+    "        return",
+    "    metadata = {'thread_id': getattr(source, 'thread_id', None)} if getattr(source, 'thread_id', None) else None",
+    "    try:",
+    "        await adapter.send(chat_id, message, metadata=metadata)",
+    "    except Exception as exc:",
+    "        logger.debug('Cristalina reset tip fallback delivery failed: %s', exc)",
+    "",
+    "",
+    "def emit_cristalina_session_reset_tip(event: Any = None, gateway: Any = None, **kwargs: Any) -> None:",
+    "    if event is None or gateway is None:",
+    "        return None",
+    "    if _reset_command_from_event(event) not in {'new', 'reset'}:",
+    "        return None",
+    "    reset_tips = _provider_config().get('session_reset_tips')",
+    "    reset_tips = reset_tips if isinstance(reset_tips, dict) else {}",
+    "    if not reset_tips.get('gateway_followup_fallback', True):",
+    "        return None",
+    "    if _hermes_inline_session_reset_tips_supported():",
+    "        return None",
+    "    message = _session_reset_tip_line()",
+    "    if not message or not _claim_reset_tip_delivery(event):",
+    "        return None",
+    "    try:",
+    "        loop = asyncio.get_running_loop()",
+    "        loop.create_task(_deliver_reset_tip_after_gateway_reply(gateway, event, message))",
+    "    except RuntimeError:",
+    "        return None",
+    "    return None",
+    "",
+    "",
+    "def register(ctx: Any) -> None:",
+    "    if hasattr(ctx, 'register_hook'):",
+    "        ctx.register_hook('pre_gateway_dispatch', emit_cristalina_session_reset_tip)",
+    "        return",
+    "    hooks = getattr(ctx, 'hooks', None)",
+    "    if isinstance(hooks, dict):",
+    "        hooks.setdefault('pre_gateway_dispatch', []).append(emit_cristalina_session_reset_tip)",
+    "        return",
+    "    raise RuntimeError('Hermes plugin context does not expose register_hook or hooks dict')",
     "",
   ].join("\n");
 }
@@ -1706,14 +1906,12 @@ function buildHermesMemoryProviderEntrypoint(): string {
     "",
     "from __future__ import annotations",
     "",
-    "import asyncio",
     "import hashlib",
     "import json",
     "import logging",
     "import os",
     "import subprocess",
     "import threading",
-    "import time",
     "from datetime import datetime, timezone",
     "from pathlib import Path",
     "from typing import Any, Dict, List",
@@ -1764,116 +1962,6 @@ function buildHermesMemoryProviderEntrypoint(): string {
     "        return json.dumps(value, ensure_ascii=False, sort_keys=True)",
     "    except TypeError:",
     "        return str(value)",
-    "",
-    "",
-    "_RESET_TIP_SENT: Dict[str, float] = {}",
-    "",
-    "",
-    "def _reset_command_from_event(event: Any) -> str:",
-    "    try:",
-    "        command = event.get_command()",
-    "        if command:",
-    "            return str(command).lower()",
-    "    except Exception:",
-    "        pass",
-    "    text = str(getattr(event, 'text', '') or '').strip()",
-    "    if not text.startswith('/'):",
-    "        return ''",
-    "    return text.split(maxsplit=1)[0][1:].split('@', 1)[0].lower()",
-    "",
-    "",
-    "def _session_reset_tip_line() -> str:",
-    "    cfg = _load_config()",
-    "    reset_tips = cfg.get('session_reset_tips')",
-    "    if not isinstance(reset_tips, dict) or not reset_tips.get('enabled', True):",
-    "        return ''",
-    "    tips = reset_tips.get('tips')",
-    "    if not isinstance(tips, list) or not tips:",
-    "        return ''",
-    "    tip = str(tips[0]).strip()",
-    "    if not tip:",
-    "        return ''",
-    "    label = str(reset_tips.get('label') or 'Cristalina Tip').strip() or 'Cristalina Tip'",
-    "    return f'\\u2726 {label}: {tip}'",
-    "",
-    "",
-    "def _hermes_inline_session_reset_tips_supported() -> bool:",
-    "    try:",
-    "        from hermes_cli.tips import get_session_reset_tip_lines",
-    "        lines = get_session_reset_tip_lines()",
-    "        return any(isinstance(line, str) and 'Cristalina Tip:' in line for line in lines)",
-    "    except Exception:",
-    "        return False",
-    "",
-    "",
-    "def _reset_tip_dedupe_key(event: Any) -> str:",
-    "    source = getattr(event, 'source', None)",
-    "    platform = getattr(getattr(source, 'platform', ''), 'value', getattr(source, 'platform', ''))",
-    "    chat_id = getattr(source, 'chat_id', '')",
-    "    message_id = getattr(event, 'message_id', '') or getattr(event, 'update_id', '')",
-    "    text = str(getattr(event, 'text', '') or '').strip()",
-    "    return f'{platform}:{chat_id}:{message_id}:{text}'",
-    "",
-    "",
-    "def _claim_reset_tip_delivery(event: Any) -> bool:",
-    "    now = time.monotonic()",
-    "    for key, seen_at in list(_RESET_TIP_SENT.items()):",
-    "        if now - seen_at > 60:",
-    "            _RESET_TIP_SENT.pop(key, None)",
-    "    key = _reset_tip_dedupe_key(event)",
-    "    if _RESET_TIP_SENT.get(key):",
-    "        return False",
-    "    _RESET_TIP_SENT[key] = now",
-    "    return True",
-    "",
-    "",
-    "async def _deliver_reset_tip_after_gateway_reply(gateway: Any, event: Any, message: str) -> None:",
-    "    cfg = _load_config()",
-    "    reset_tips = cfg.get('session_reset_tips') if isinstance(cfg.get('session_reset_tips'), dict) else {}",
-    "    delay = float(reset_tips.get('followup_delay_seconds') or 0.75)",
-    "    if delay > 0:",
-    "        await asyncio.sleep(delay)",
-    "    source = getattr(event, 'source', None)",
-    "    if source is None:",
-    "        return",
-    "    adapter = getattr(gateway, 'adapters', {}).get(getattr(source, 'platform', None))",
-    "    if adapter is None:",
-    "        return",
-    "    chat_id = getattr(source, 'chat_id', None)",
-    "    if chat_id is None:",
-    "        return",
-    "    metadata = {'thread_id': getattr(source, 'thread_id', None)} if getattr(source, 'thread_id', None) else None",
-    "    try:",
-    "        await adapter.send(chat_id, message, metadata=metadata)",
-    "    except Exception as exc:",
-    "        logger.debug('Cristalina reset tip fallback delivery failed: %s', exc)",
-    "",
-    "",
-    "def emit_cristalina_session_reset_tip(event: Any = None, gateway: Any = None, **kwargs: Any) -> None:",
-    "    if event is None or gateway is None:",
-    "        return None",
-    "    if _reset_command_from_event(event) not in {'new', 'reset'}:",
-    "        return None",
-    "    cfg = _load_config()",
-    "    reset_tips = cfg.get('session_reset_tips') if isinstance(cfg.get('session_reset_tips'), dict) else {}",
-    "    if not reset_tips.get('gateway_followup_fallback', True):",
-    "        return None",
-    "    if _hermes_inline_session_reset_tips_supported():",
-    "        return None",
-    "    message = _session_reset_tip_line()",
-    "    if not message or not _claim_reset_tip_delivery(event):",
-    "        return None",
-    "    try:",
-    "        loop = asyncio.get_running_loop()",
-    "        loop.create_task(_deliver_reset_tip_after_gateway_reply(gateway, event, message))",
-    "    except RuntimeError:",
-    "        def _run() -> None:",
-    "            try:",
-    "                asyncio.run(_deliver_reset_tip_after_gateway_reply(gateway, event, message))",
-    "            except Exception as exc:",
-    "                logger.debug('Cristalina reset tip fallback delivery failed: %s', exc)",
-    "        threading.Thread(target=_run, daemon=True).start()",
-    "    return None",
     "",
     "",
     "class CristalinaMemoryProvider(MemoryProvider):",
@@ -2079,11 +2167,6 @@ function buildHermesMemoryProviderEntrypoint(): string {
     "",
     "",
     "def register(ctx: Any) -> None:",
-    "    if hasattr(ctx, 'register_hook'):",
-    "        try:",
-    "            ctx.register_hook('pre_gateway_dispatch', emit_cristalina_session_reset_tip)",
-    "        except Exception as exc:",
-    "            logger.debug('Cristalina reset tip fallback hook unavailable: %s', exc)",
     "    ctx.register_memory_provider(CristalinaMemoryProvider())",
     "",
   ].join("\n");

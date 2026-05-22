@@ -91,6 +91,9 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
     provider_manifest_path: string;
     provider_entrypoint_path: string;
     provider_config_path: string;
+    gateway_plugin_path: string;
+    gateway_plugin_manifest_path: string;
+    gateway_plugin_entrypoint_path: string;
     session_reset_tips_path: string;
     memory_consolidation_metadata_path: string;
     memory_consolidation_script_path: string;
@@ -142,7 +145,11 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(metadata.memory_cycle_schedule_expr, "0 3 * * *");
   assert.equal(metadata.memory_cycle_schedule_display, "daily at 03:00");
   assert.match(metadata.plugin_enable_hint, /memory\.provider/);
+  assert.match(metadata.plugin_enable_hint, /cristalina-gateway/);
   assert.match(await readFile(result.hook_path, "utf8"), /cristalina.runtime_hook.v1/);
+  assert.equal(result.gateway_plugin_path, metadata.gateway_plugin_path);
+  assert.equal(result.gateway_plugin_manifest_path, metadata.gateway_plugin_manifest_path);
+  assert.equal(result.gateway_plugin_entrypoint_path, metadata.gateway_plugin_entrypoint_path);
   assert.equal(result.provider_path, metadata.provider_path);
   assert.equal(result.provider_manifest_path, metadata.provider_manifest_path);
   assert.equal(result.provider_entrypoint_path, metadata.provider_entrypoint_path);
@@ -175,6 +182,13 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(registry?.installations[0]?.runtime_root, join(root, "hermes"));
   assert.equal(registry?.installations[0]?.integration_mode, "provider");
 
+  const gatewayManifest = await readFile(metadata.gateway_plugin_manifest_path, "utf8");
+  assert.match(gatewayManifest, /name: cristalina-gateway/);
+  assert.match(gatewayManifest, /pre_gateway_dispatch/);
+  const gatewayEntrypoint = await readFile(metadata.gateway_plugin_entrypoint_path, "utf8");
+  assert.match(gatewayEntrypoint, /def emit_cristalina_session_reset_tip/);
+  assert.match(gatewayEntrypoint, /ctx\.register_hook\('pre_gateway_dispatch', emit_cristalina_session_reset_tip\)/);
+
   const providerManifest = await readFile(metadata.provider_manifest_path, "utf8");
   assert.match(providerManifest, /name: cristalina/);
   assert.match(providerManifest, /type: memory_provider/);
@@ -185,9 +199,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.match(providerEntrypoint, /def _resolve_hermes_root/);
   assert.match(providerEntrypoint, /def prefetch/);
   assert.match(providerEntrypoint, /def sync_turn/);
-  assert.match(providerEntrypoint, /def emit_cristalina_session_reset_tip/);
-  assert.match(providerEntrypoint, /ctx\.register_hook\('pre_gateway_dispatch', emit_cristalina_session_reset_tip\)/);
-  assert.match(providerEntrypoint, /Cristalina reset tip fallback hook unavailable/);
+  assert.doesNotMatch(providerEntrypoint, /pre_gateway_dispatch/);
   assert.match(providerEntrypoint, /cristalina_archive_search/);
   assert.match(providerEntrypoint, /evt_hermes_provider_/);
 
@@ -478,7 +490,7 @@ test("Hermes bridge mode still enables bridge plugin across common config yaml s
   }
 });
 
-test("Hermes provider mode disables existing bridge plugin while preserving other plugins", async () => {
+test("Hermes provider mode enables gateway companion and disables bridge ingestion plugin", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-provider-config-"));
   const runtimeRoot = join(root, "hermes");
   const hermesConfigPath = join(runtimeRoot, "config.yaml");
@@ -495,6 +507,7 @@ test("Hermes provider mode disables existing bridge plugin while preserving othe
   const updated = await readFile(hermesConfigPath, "utf8");
   assert.match(updated, /^memory:\n  provider: cristalina$/m);
   assert.match(updated, /^  - foo$/m);
+  assert.match(updated, /^  - cristalina-gateway$/m);
   assert.doesNotMatch(updated, /cristalina-bridge/);
 });
 
@@ -515,7 +528,8 @@ test("Hermes provider mode normalizes inline plugin and memory config without du
   const updated = await readFile(hermesConfigPath, "utf8");
   assert.equal([...updated.matchAll(/^plugins:/gm)].length, 1);
   assert.equal([...updated.matchAll(/^memory:/gm)].length, 1);
-  assert.match(updated, /^plugins:\n  enabled:\n  - foo$/m);
+  assert.match(updated, /^  - foo$/m);
+  assert.match(updated, /^  - cristalina-gateway$/m);
   assert.match(updated, /^memory:\n  provider: cristalina\n  ttl: 30$/m);
   assert.doesNotMatch(updated, /cristalina-bridge/);
 });
