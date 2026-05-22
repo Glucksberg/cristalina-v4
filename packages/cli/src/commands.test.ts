@@ -10,6 +10,7 @@ import { listOpenClawConversationPreferenceOwnerRatificationQueue } from "@crist
 import { executeCristalinaCommand } from "./commands.js";
 import { buildDefaultCristalinaConfig } from "./config.js";
 import { handleRuntimeBridgeEvent } from "./runtime-events.js";
+import { runCristalinaUpdate } from "./update.js";
 
 test("doctor reports missing config and store without writing memory", async () => {
   const result = await executeCristalinaCommand({ name: "doctor", configPath: "/missing/cristalina/config.json" });
@@ -164,6 +165,55 @@ test("update reapplies a registered Hermes installation without source update", 
   assert.equal(secondPayload.installations[0]?.runtime, "hermes");
   assert.equal(secondPayload.installations[0]?.runtime_root, runtimeRoot);
   assert.match(await readFile(join(runtimeRoot, "scripts", "cristalina-memory-maturation.sh"), "utf8"), /CRISTALINA_MEMORY_MATURATION_LLM_OUTPUT/);
+});
+
+test("update discovers the repo-local standard config without arguments", async () => {
+  const previousConfigEnv = process.env.CRISTALINA_CONFIG;
+  delete process.env.CRISTALINA_CONFIG;
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-update-default-"));
+  try {
+    const storeRoot = join(root, "store");
+    const configPath = join(root, ".cristalina-v4", "config.json");
+    const runtimeRoot = join(root, "hermes");
+    await mkdir(join(root, ".cristalina-v4"), { recursive: true });
+    await writeFile(
+      configPath,
+      `${JSON.stringify(buildDefaultCristalinaConfig({
+        storeRoot,
+        ownerIdentityRef: "actor_owner_cli_update_default_001",
+        agentIdentityRef: "actor_agent_cli_update_default_001",
+        hermesRuntimeRef: "runtime_hermes_cli_update_default_001",
+      }), null, 2)}\n`,
+    );
+
+    const first = await runCristalinaUpdate({
+      repoRoot: root,
+      configPath,
+      runtime: "hermes",
+      runtimeRoot,
+      integrationMode: "provider",
+      skipSourceUpdate: true,
+      skipBuild: true,
+    });
+    assert.equal(first.config_path, configPath);
+    assert.equal(first.installations[0]?.runtime_root, runtimeRoot);
+
+    const second = await runCristalinaUpdate({
+      repoRoot: root,
+      skipSourceUpdate: true,
+      skipBuild: true,
+    });
+    assert.equal(second.config_path, configPath);
+    assert.ok(second.diagnostics.some((entry) => entry.includes("discovered config")));
+    assert.equal(second.installations[0]?.runtime, "hermes");
+    assert.equal(second.installations[0]?.runtime_root, runtimeRoot);
+  } finally {
+    if (previousConfigEnv === undefined) {
+      delete process.env.CRISTALINA_CONFIG;
+    } else {
+      process.env.CRISTALINA_CONFIG = previousConfigEnv;
+    }
+  }
 });
 
 test("runtime preflight reports concrete hook install commands for selected roots", async () => {

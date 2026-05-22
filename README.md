@@ -123,7 +123,7 @@ pnpm cristalina projection verify --config path/to/config.json
 pnpm cristalina session-pack verify-handoff --create-checkpoint --config path/to/config.json
 pnpm cristalina install openclaw --non-interactive
 pnpm cristalina install hermes --non-interactive
-pnpm cristalina update --config .cristalina-v4/config.json
+pnpm cristalina update
 pnpm cristalina checkpoint create --runtime openclaw --config path/to/config.json
 pnpm cristalina session-pack compile --runtime hermes --config path/to/config.json
 pnpm cristalina store inspect --config path/to/config.json
@@ -137,8 +137,11 @@ pnpm fixture:mvp-flow-003   # contradiction detection → resolution → project
 ### Current Hermes Sandbox Install Shape
 
 Until Cristalina is published as a package, the Hermes path is installed from a
-checkout. For a fresh Hermes instance, use the runtime home as `HERMES_ROOT` and
-a separate checkout/runtime directory as `CRISTALINA_ROOT`:
+checkout. The standard install shape is one durable Cristalina checkout with its
+own repo-local `.cristalina-v4/config.json`, plus one or more registered runtime
+installations in `.cristalina-v4/installations.json`. For a fresh Hermes
+instance, use the runtime home as `HERMES_ROOT` and a separate checkout/runtime
+directory as `CRISTALINA_ROOT`:
 
 ```bash
 HERMES_ROOT=/path/to/hermes/home \
@@ -164,6 +167,18 @@ memory:
 Restart Hermes after install or update so the provider and scheduled jobs are
 loaded. Normal users should not need to run `bridge event`, `memory mature`, or
 manual event-path commands during ordinary operation.
+
+After the first install, the normal maintenance path is:
+
+```bash
+cd "$CRISTALINA_ROOT"
+pnpm cristalina update
+```
+
+`cristalina update` discovers the standard repo-local config, pulls the latest
+upstream checkout with `git pull --ff-only`, refreshes dependencies/build
+artifacts, and reapplies registered runtime installations. It also honors
+`$CRISTALINA_CONFIG` when an operator keeps the config outside the checkout.
 
 After running a fixture, inspect `examples/mvp-flow-00X/.cristalina-v4/` to see the materialized store layout — every layer, every record, every audit entry.
 

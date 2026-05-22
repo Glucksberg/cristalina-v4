@@ -160,14 +160,22 @@ Bridge mode writes the older general hook plugin under
 `/path/to/hermes/plugins/cristalina-bridge/` and enables it in
 `plugins.enabled`.
 
-The installer also records the runtime binding in
-`.cristalina-v4/installations.json` beside the Cristalina config. Future updates
-can then refresh the checkout and reapply runtime metadata without the operator
+The standard Hermes product install keeps one durable Cristalina checkout with a
+repo-local `.cristalina-v4/config.json`. The installer records runtime bindings
+in `.cristalina-v4/installations.json` beside that config. Future updates can
+then refresh the checkout and reapply runtime metadata without the operator
 remembering every runtime path:
 
 ```bash
-pnpm cristalina update --config .cristalina-v4/config.json
+pnpm cristalina update
 ```
+
+`cristalina update` resolves config in this order when `--config` is omitted:
+
+1. `$CRISTALINA_CONFIG`
+2. `<cristalina checkout>/.cristalina-v4/config.json`
+3. `<current working directory>/.cristalina-v4/config.json`
+4. `$HOME/.cristalina-v4/config.json`
 
 For older installs that do not have the registry yet, run update once with the
 runtime root:

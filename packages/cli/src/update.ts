@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { loadCristalinaConfig } from "./config.js";
@@ -34,6 +35,11 @@ export interface RunCristalinaUpdateResult {
   diagnostics: string[];
 }
 
+interface ResolvedUpdateConfig {
+  path: string | null;
+  diagnostics: string[];
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -62,9 +68,55 @@ async function assertGitClean(repoRoot: string): Promise<void> {
   }
 }
 
-async function resolveConfigPath(configPath: string | undefined): Promise<string | null> {
-  const loaded = await loadCristalinaConfig({ configPath });
-  return loaded.path;
+function uniquePaths(paths: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const path of paths) {
+    if (!path) continue;
+    const resolved = resolve(path);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    result.push(resolved);
+  }
+  return result;
+}
+
+async function resolveConfigPath(input: {
+  configPath?: string;
+  repoRoot: string;
+}): Promise<ResolvedUpdateConfig> {
+  if (input.configPath) {
+    const loaded = await loadCristalinaConfig({ configPath: input.configPath });
+    return { path: loaded.path, diagnostics: loaded.diagnostics };
+  }
+
+  const candidates = uniquePaths([
+    process.env.CRISTALINA_CONFIG,
+    join(input.repoRoot, ".cristalina-v4", "config.json"),
+    join(process.cwd(), ".cristalina-v4", "config.json"),
+    join(homedir(), ".cristalina-v4", "config.json"),
+  ]);
+
+  for (const candidate of candidates) {
+    if (!(await pathExists(candidate))) continue;
+    const loaded = await loadCristalinaConfig({ configPath: candidate });
+    if (loaded.path) {
+      return {
+        path: loaded.path,
+        diagnostics: [
+          `Cristalina update discovered config at ${loaded.path}.`,
+          ...loaded.diagnostics,
+        ],
+      };
+    }
+  }
+
+  return {
+    path: null,
+    diagnostics: [
+      `No Cristalina config found for update. Checked ${candidates.join(" or ")}.`,
+    ],
+  };
 }
 
 function targetInstallations(input: {
@@ -122,7 +174,9 @@ export async function runCristalinaUpdate(input: RunCristalinaUpdateInput): Prom
     sourceUpdate.build = await runCommand("pnpm", ["--filter", "@cristalina-v4/cli", "build"], repoRoot);
   }
 
-  const configPath = await resolveConfigPath(input.configPath);
+  const resolvedConfig = await resolveConfigPath({ configPath: input.configPath, repoRoot });
+  diagnostics.push(...resolvedConfig.diagnostics);
+  const configPath = resolvedConfig.path;
   const installations: RuntimeInstallResult[] = [];
   if (!input.skipInstall) {
     if (!configPath) {
