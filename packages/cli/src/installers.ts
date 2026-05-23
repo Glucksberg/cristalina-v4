@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,7 @@ export interface RuntimeInstallResult {
   config_path: string;
   store_root: string;
   metadata_path: string;
+  cli_bin_path?: string;
   hook_path: string;
   hook_script_path: string;
   runtime_root: string | null;
@@ -124,6 +126,55 @@ function shellQuote(value: string): string {
 
 function cliEntrypointPath(): string {
   return fileURLToPath(new URL("index.js", import.meta.url));
+}
+
+function defaultCristalinaCliBinDir(): string {
+  return resolve(process.env.CRISTALINA_CLI_BIN_DIR ?? join(homedir(), ".local", "bin"));
+}
+
+async function installCristalinaCliShim(input: {
+  binDir: string;
+  nodePath: string;
+  cliPath: string;
+}): Promise<{ path: string; diagnostics: string[] }> {
+  const shimPath = join(input.binDir, "cristalina");
+  const marker = "# Managed by Cristalina v4 installer.";
+  const shim = [
+    "#!/bin/sh",
+    marker,
+    `exec ${shellQuote(input.nodePath)} ${shellQuote(input.cliPath)} "$@"`,
+    "",
+  ].join("\n");
+
+  let existing: string | null = null;
+  try {
+    existing = await readFile(shimPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  if (existing !== null && existing !== shim && !existing.includes(marker)) {
+    return {
+      path: shimPath,
+      diagnostics: [
+        `Cristalina CLI shim was not installed because ${shimPath} already exists and is not managed by Cristalina.`,
+      ],
+    };
+  }
+
+  await mkdir(input.binDir, { recursive: true });
+  await writeFile(shimPath, shim, { mode: 0o755 });
+  await chmod(shimPath, 0o755);
+  return {
+    path: shimPath,
+    diagnostics: [
+      existing === shim
+        ? `Cristalina CLI shim is already installed at ${shimPath}.`
+        : `Cristalina CLI shim was installed at ${shimPath}.`,
+    ],
+  };
 }
 
 export function installationRegistryPath(configPath: string): string {
@@ -796,6 +847,12 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
   const pluginPaths = input.runtime === "hermes" ? hermesPluginPaths(input.runtimeRoot) : hermesPluginPaths(undefined);
   const integrationMode = input.runtime === "hermes" ? input.integrationMode ?? "provider" : "bridge";
   const cliPath = cliEntrypointPath();
+  const cliShim = await installCristalinaCliShim({
+    binDir: defaultCristalinaCliBinDir(),
+    nodePath: process.execPath,
+    cliPath,
+  });
+  diagnostics.push(...cliShim.diagnostics);
   const runtimeRef = runtimeInstanceRef(loaded.config, input.runtime);
   const bridgeCommand = `cristalina bridge event --config ${loaded.configPath} --event <event.json>`;
   const hookBridgeCommand = `${shellQuote(process.execPath)} ${shellQuote(cliPath)} bridge event --config ${shellQuote(loaded.configPath)} --event <event.json>`;
@@ -841,6 +898,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         runtime_instance_ref: runtimeRef,
         node_path: process.execPath,
         cli_path: cliPath,
+        cli_bin_path: cliShim.path,
         event_contract: "cristalina.runtime_bridge_event.v1",
         recognition_projection_profile: "hermes_recognition_v1",
         prefetch_timeout_seconds: 2.5,
@@ -917,6 +975,9 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     store_root: storeRoot,
     runtime_root: input.runtimeRoot ?? null,
     runtime_instance_ref: runtimeRef,
+    node_path: process.execPath,
+    cli_path: cliPath,
+    cli_bin_path: cliShim.path,
     hook_path: hookPath,
     hook_script_path: hookScriptPath,
     bridge_command: bridgeCommand,
@@ -1560,6 +1621,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
     config_path: loaded.configPath,
     store_root: storeRoot,
     metadata_path: metadataPath,
+    cli_bin_path: cliShim.path,
     hook_path: hookPath,
     hook_script_path: hookScriptPath,
     runtime_root: input.runtimeRoot ?? null,

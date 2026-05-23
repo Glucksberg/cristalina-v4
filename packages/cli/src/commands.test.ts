@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 
 import { inspectCristalinaStore, listStoreProjectionManifests, loadLatestWorkingMemoryCheckpoint } from "@cristalina-v4/core";
 import { listOpenClawConversationPreferenceOwnerRatificationQueue } from "@cristalina-v4/openclaw-adapter";
@@ -11,6 +11,18 @@ import { executeCristalinaCommand } from "./commands.js";
 import { buildDefaultCristalinaConfig } from "./config.js";
 import { handleRuntimeBridgeEvent } from "./runtime-events.js";
 import { runCristalinaUpdate } from "./update.js";
+
+const previousCliBinDir = process.env.CRISTALINA_CLI_BIN_DIR;
+const testCliBinDir = await mkdtemp(join(tmpdir(), "cristalina-cli-bin-"));
+process.env.CRISTALINA_CLI_BIN_DIR = testCliBinDir;
+
+after(() => {
+  if (previousCliBinDir === undefined) {
+    delete process.env.CRISTALINA_CLI_BIN_DIR;
+  } else {
+    process.env.CRISTALINA_CLI_BIN_DIR = previousCliBinDir;
+  }
+});
 
 test("doctor reports missing config and store without writing memory", async () => {
   const result = await executeCristalinaCommand({ name: "doctor", configPath: "/missing/cristalina/config.json" });

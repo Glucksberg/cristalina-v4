@@ -2,9 +2,21 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 
 import { hermesInstallOneLiner, installRuntime, loadInstallationRegistry, openClawInstallOneLiner } from "./installers.js";
+
+const previousCliBinDir = process.env.CRISTALINA_CLI_BIN_DIR;
+const testCliBinDir = await mkdtemp(join(tmpdir(), "cristalina-cli-bin-"));
+process.env.CRISTALINA_CLI_BIN_DIR = testCliBinDir;
+
+after(() => {
+  if (previousCliBinDir === undefined) {
+    delete process.env.CRISTALINA_CLI_BIN_DIR;
+  } else {
+    process.env.CRISTALINA_CLI_BIN_DIR = previousCliBinDir;
+  }
+});
 
 test("OpenClaw installer writes operational metadata outside truth layers", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-openclaw-install-"));
@@ -22,21 +34,26 @@ test("OpenClaw installer writes operational metadata outside truth layers", asyn
   assert.equal(result.runtime, "openclaw");
   assert.equal(result.status, "installed");
   assert.equal(result.metadata_path, metadataPath);
+  assert.equal(result.cli_bin_path, join(testCliBinDir, "cristalina"));
   assert.equal(result.hook_path, join(root, "openclaw", ".cristalina-v4", "hooks", "openclaw-cristalina-hook.json"));
-  assert.equal(result.diagnostics.length, 1);
+  assert.equal(result.diagnostics.length, 2);
+  assert.ok(result.diagnostics.some((entry) => entry.includes("Cristalina CLI shim")));
 
   const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
     runtime: string;
     event_contract: string;
     authority_note: string;
+    cli_bin_path: string;
     bridge_command: string;
     hook_path: string;
   };
   assert.equal(metadata.runtime, "openclaw");
   assert.equal(metadata.event_contract, "cristalina.runtime_bridge_event.v1");
   assert.match(metadata.authority_note, /does not grant owner authority/);
+  assert.equal(metadata.cli_bin_path, result.cli_bin_path);
   assert.match(metadata.bridge_command, /cristalina bridge event/);
   assert.equal(metadata.hook_path, result.hook_path);
+  assert.match(await readFile(result.cli_bin_path!, "utf8"), /Managed by Cristalina v4 installer/);
 
   const hook = JSON.parse(await readFile(result.hook_path, "utf8")) as {
     runtime: string;
@@ -84,6 +101,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
     runtime: string;
     event_contract: string;
+    cli_bin_path: string;
     bridge_command: string;
     projection_command: string;
     integration_mode: string;
@@ -118,6 +136,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   };
   assert.equal(metadata.runtime, "hermes");
   assert.equal(metadata.event_contract, "cristalina.runtime_bridge_event.v1");
+  assert.equal(metadata.cli_bin_path, join(testCliBinDir, "cristalina"));
   assert.match(metadata.bridge_command, /cristalina bridge event/);
   assert.match(metadata.projection_command, /cristalina projection list/);
   assert.equal(metadata.integration_mode, "provider");
