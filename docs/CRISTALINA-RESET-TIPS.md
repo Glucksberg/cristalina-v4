@@ -43,12 +43,12 @@ slash commands unless Hermes explicitly exposes them there.
 Some user intents are better expressed as spoken requests to Cristal rather than
 new terminal commands:
 
-- `registre isso como preferencia minha: ...`
-- `lembre disso apenas para este projeto: ...`
-- `isso e temporario desta sessao`
-- `corrija a memoria anterior: ...`
-- `revogue/esqueca esta memoria: ...`
-- `isso e uma hipotese, nao canon`
+- `store this as my preference: ...`
+- `remember this only for this project: ...`
+- `this is temporary for this session`
+- `correct the previous memory: ...`
+- `revoke/forget this memory: ...`
+- `this is a hypothesis, not canon`
 
 These prompts ask the agent to route memory through Cristalina's governed flow.
 They do not mean "edit the store directly." Durable owner-scoped memory still
@@ -63,4 +63,3 @@ needs authority, provenance, and, when required, review.
 - Tips should prefer actionable verbs: run, ask, inspect, correct, revoke.
 - Tips should rotate, so repeated `/new` calls expose different parts of the
   operational surface over time.
-

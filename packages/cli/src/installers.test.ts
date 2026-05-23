@@ -291,7 +291,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(providerConfig.session_reset_tips.followup_delay_seconds, 0.75);
   assert.ok(providerConfig.session_reset_tips.tips.some((tip) => tip.includes("Runtime observations are evidence")));
   assert.ok(providerConfig.session_reset_tips.tips.some((tip) => tip.includes("cristalina update")));
-  assert.ok(providerConfig.session_reset_tips.tips.some((tip) => tip.includes("registre isso como preferencia minha")));
+  assert.ok(providerConfig.session_reset_tips.tips.some((tip) => tip.includes("store this as my preference")));
   assert.ok(providerConfig.session_reset_tips.tips.length >= 10);
   const sessionResetTips = JSON.parse(await readFile(metadata.session_reset_tips_path, "utf8")) as {
     source: string;
@@ -314,7 +314,7 @@ test("Hermes installer installs Cristalina as the native memory provider by defa
   assert.equal(sessionResetTips.gateway_followup_fallback, true);
   assert.equal(sessionResetTips.followup_delay_seconds, 0.75);
   assert.ok(sessionResetTips.tips.some((tip) => tip.includes("cristalina status")));
-  assert.ok(sessionResetTips.tips.some((tip) => tip.includes("lembre disso apenas para este projeto")));
+  assert.ok(sessionResetTips.tips.some((tip) => tip.includes("remember this only for this project")));
   assert.match(sessionResetTips.authority_note, /do not create Cristalina memory/);
   assert.equal(providerConfig.memory_consolidation.enabled, true);
   assert.equal(providerConfig.memory_consolidation.interval_minutes, 1440);
