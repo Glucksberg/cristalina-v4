@@ -26,6 +26,7 @@ export type CristalinaCommand =
       skipSourceUpdate?: boolean;
       skipBuild?: boolean;
       skipInstall?: boolean;
+      json?: boolean;
     }
   | { name: "smoke"; target: "dual-runtime" | "runtime-wiring" }
   | { name: "runtime"; action: "preflight"; configPath?: string; openclawRoot?: string; hermesRoot?: string }
@@ -235,6 +236,7 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       ["--skip-source-update", "flag"],
       ["--skip-build", "flag"],
       ["--skip-install", "flag"],
+      ["--json", "flag"],
     ]));
     const runtime = readOption(argv, "--runtime");
     if (runtime !== undefined && runtime !== "openclaw" && runtime !== "hermes") {
@@ -258,6 +260,7 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       skipSourceUpdate: hasFlag(argv, "--skip-source-update"),
       skipBuild: hasFlag(argv, "--skip-build"),
       skipInstall: hasFlag(argv, "--skip-install"),
+      json: hasFlag(argv, "--json"),
     };
   }
 
@@ -709,7 +712,7 @@ export function helpText(): string {
     "  config [--config PATH] [--init] [--non-interactive]",
     "  doctor [--config PATH] [--store-root PATH]",
     "  status [--config PATH] [--store-root PATH]",
-    "  update [--config PATH] [--runtime openclaw|hermes] [--runtime-root PATH] [--integration-mode provider|bridge|both]",
+    "  update [--config PATH] [--runtime openclaw|hermes] [--runtime-root PATH] [--integration-mode provider|bridge|both] [--json]",
     "  smoke dual-runtime",
     "  smoke runtime-wiring",
     "  runtime preflight [--config PATH] [--openclaw-root PATH] [--hermes-root PATH]",

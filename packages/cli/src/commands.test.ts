@@ -152,6 +152,7 @@ test("update reapplies a registered Hermes installation without source update", 
     integrationMode: "provider",
     skipSourceUpdate: true,
     skipBuild: true,
+    json: true,
   });
   const firstPayload = JSON.parse(first.stdout) as {
     status: string;
@@ -169,6 +170,7 @@ test("update reapplies a registered Hermes installation without source update", 
     configPath,
     skipSourceUpdate: true,
     skipBuild: true,
+    json: true,
   });
   const secondPayload = JSON.parse(second.stdout) as {
     installations: Array<{ runtime: string; runtime_root: string }>;
@@ -177,6 +179,50 @@ test("update reapplies a registered Hermes installation without source update", 
   assert.equal(secondPayload.installations[0]?.runtime, "hermes");
   assert.equal(secondPayload.installations[0]?.runtime_root, runtimeRoot);
   assert.match(await readFile(join(runtimeRoot, "scripts", "cristalina-memory-maturation.sh"), "utf8"), /CRISTALINA_MEMORY_MATURATION_LLM_OUTPUT/);
+});
+
+test("update defaults to an operator summary and keeps JSON behind --json", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-update-summary-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, ".cristalina-v4", "config.json");
+  const runtimeRoot = join(root, "hermes");
+  await mkdir(join(root, ".cristalina-v4"), { recursive: true });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_update_summary_001",
+      agentIdentityRef: "actor_agent_cli_update_summary_001",
+      hermesRuntimeRef: "runtime_hermes_cli_update_summary_001",
+    }), null, 2)}\n`,
+  );
+
+  const summary = await executeCristalinaCommand({
+    name: "update",
+    configPath,
+    runtime: "hermes",
+    runtimeRoot,
+    integrationMode: "provider",
+    skipSourceUpdate: true,
+    skipBuild: true,
+  });
+  assert.equal(summary.exitCode, 0);
+  assert.match(summary.stdout, /^Cristalina update completed\./);
+  assert.match(summary.stdout, /Runtime installs:/);
+  assert.match(summary.stdout, /Use `cristalina update --json`/);
+  assert.doesNotMatch(summary.stdout, /^\{/);
+
+  const json = await executeCristalinaCommand({
+    name: "update",
+    configPath,
+    runtime: "hermes",
+    runtimeRoot,
+    integrationMode: "provider",
+    skipSourceUpdate: true,
+    skipBuild: true,
+    json: true,
+  });
+  assert.equal(JSON.parse(json.stdout).status, "updated");
 });
 
 test("update discovers the repo-local standard config without arguments", async () => {

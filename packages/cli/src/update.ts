@@ -227,3 +227,85 @@ export async function runCristalinaUpdate(input: RunCristalinaUpdateInput): Prom
     diagnostics,
   };
 }
+
+function commandSucceeded(output: string | undefined): string {
+  if (output === undefined) return "skipped";
+  return "ok";
+}
+
+function summarizeGitPull(output: string | undefined): string {
+  if (output === undefined) return "skipped";
+  if (/Already up to date\./i.test(output)) return "already up to date";
+  return "updated";
+}
+
+function summarizePnpmInstall(output: string | undefined): string {
+  if (output === undefined) return "skipped";
+  if (/Already up to date/i.test(output) || /Lockfile is up to date/i.test(output)) {
+    return "already up to date";
+  }
+  return "completed";
+}
+
+function summarizeDiagnostics(diagnostics: string[]): string[] {
+  return diagnostics
+    .filter((entry) => !entry.startsWith("Cristalina update discovered config at "))
+    .filter((entry) => !entry.startsWith("Cristalina CLI shim is already installed at "))
+    .filter((entry) => !entry.startsWith("Hermes memory.provider is already cristalina"))
+    .filter((entry) => !entry.startsWith("Hermes plugin cristalina-gateway is already listed"))
+    .filter((entry) => !entry.startsWith("Hermes plugin cristalina-bridge is already listed"));
+}
+
+export function formatCristalinaUpdateSummary(result: RunCristalinaUpdateResult): string {
+  const lines: string[] = [];
+  lines.push("Cristalina update completed.");
+  lines.push("");
+  lines.push(`Repository: ${result.repo_root}`);
+  lines.push(`Config: ${result.config_path ?? "not found"}`);
+  lines.push("");
+  lines.push("Source:");
+  lines.push(`  git pull: ${summarizeGitPull(result.source_update.git_pull)}`);
+  lines.push(`  pnpm install: ${summarizePnpmInstall(result.source_update.pnpm_install)}`);
+  lines.push(`  build: ${commandSucceeded(result.source_update.build)}`);
+
+  if (result.installations.length > 0) {
+    lines.push("");
+    lines.push("Runtime installs:");
+    for (const installation of result.installations) {
+      const mode = installation.integration_mode ? ` ${installation.integration_mode}` : "";
+      lines.push(`  ${installation.runtime}${mode}: ${installation.status}`);
+      lines.push(`    runtime root: ${installation.runtime_root ?? "none"}`);
+      if (installation.cli_bin_path) {
+        lines.push(`    cli: ${installation.cli_bin_path}`);
+      }
+      if (installation.memory_cycle_schedule_display) {
+        lines.push(`    memory cycle: ${installation.memory_cycle_schedule_display}`);
+      }
+      const notableDiagnostics = summarizeDiagnostics(installation.diagnostics);
+      for (const diagnostic of notableDiagnostics) {
+        lines.push(`    note: ${diagnostic}`);
+      }
+      if (installation.runtime === "hermes" && installation.plugin_enable_hint) {
+        lines.push("    next: restart Hermes if it is running so updated provider/gateway files are loaded.");
+      } else if (installation.plugin_enable_hint) {
+        lines.push(`    next: ${installation.plugin_enable_hint}`);
+      }
+    }
+  } else {
+    lines.push("");
+    lines.push("Runtime installs: skipped");
+  }
+
+  const notableTopLevelDiagnostics = summarizeDiagnostics(result.diagnostics);
+  if (notableTopLevelDiagnostics.length > 0) {
+    lines.push("");
+    lines.push("Diagnostics:");
+    for (const diagnostic of notableTopLevelDiagnostics) {
+      lines.push(`  ${diagnostic}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("Use `cristalina update --json` for full command logs and paths.");
+  return `${lines.join("\n")}\n`;
+}

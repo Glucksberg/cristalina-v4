@@ -40,7 +40,7 @@ import { verifyRuntimeProjections } from "./projection-verify.js";
 import { verifyOpenClawToHermesHandoff } from "./session-handoff-verify.js";
 import { runMemoryConsolidation } from "./memory-consolidation.js";
 import { prepareCliMemoryMaturationEvidence, runCliMemoryMaturation } from "./memory-maturation.js";
-import { runCristalinaUpdate } from "./update.js";
+import { formatCristalinaUpdateSummary, runCristalinaUpdate } from "./update.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -184,7 +184,7 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
     });
     return {
       exitCode: 0,
-      stdout: `${JSON.stringify(result, null, 2)}\n`,
+      stdout: command.json ? `${JSON.stringify(result, null, 2)}\n` : formatCristalinaUpdateSummary(result),
       stderr: "",
     };
   }
