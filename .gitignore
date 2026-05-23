@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.cristalina-v4/
 .DS_Store
 *.log
 *.tsbuildinfo

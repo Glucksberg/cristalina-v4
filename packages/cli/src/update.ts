@@ -61,9 +61,24 @@ async function repoHasGitRoot(repoRoot: string): Promise<boolean> {
   return pathExists(resolve(repoRoot, ".git"));
 }
 
+function isRepoLocalRuntimeStateStatusLine(line: string): boolean {
+  if (!line.startsWith("?? ")) return false;
+  const path = line.slice(3).trim();
+  return path === ".cristalina-v4/" || path === ".cristalina-v4" || path.startsWith(".cristalina-v4/");
+}
+
+export function blockingGitStatusLines(status: string): string[] {
+  return status
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
+    .filter((line) => !isRepoLocalRuntimeStateStatusLine(line));
+}
+
 async function assertGitClean(repoRoot: string): Promise<void> {
   const status = await runCommand("git", ["status", "--porcelain"], repoRoot);
-  if (status.trim()) {
+  const blockingStatus = blockingGitStatusLines(status);
+  if (blockingStatus.length > 0) {
     throw new Error("cristalina update requires a clean checkout before pulling upstream changes");
   }
 }
