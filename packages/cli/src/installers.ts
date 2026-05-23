@@ -80,6 +80,36 @@ export interface CristalinaInstallationRegistry {
   installations: CristalinaInstallationRegistryEntry[];
 }
 
+const CRISTALINA_SESSION_RESET_TIPS = [
+  "Terminal: run `cristalina status` for store health, diagnostics, projections, owner reviews, and nightly memory-cycle state.",
+  "Terminal: run `cristalina reviews list --owner-decisions` before assuming the owner has pending curation work.",
+  "Terminal: run `cristalina projection recognition --query \"<topic>\" --format context` to inspect what Cristalina would hydrate for a topic.",
+  "Terminal: run `cristalina diagnostics list` when heartbeats, reports, projection, or delivery behavior looks wrong.",
+  "Terminal: run `cristalina update` from the Cristalina checkout to pull upstream, rebuild, and reapply registered runtime installs.",
+  "Ask Cristal: \"registre isso como preferencia minha: ...\" when you want a durable owner preference proposed through governed memory.",
+  "Ask Cristal: \"lembre disso apenas para este projeto: ...\" when a memory should be scoped instead of global.",
+  "Ask Cristal: \"isso e temporario desta sessao\" to keep short-lived context out of durable memory.",
+  "Ask Cristal: \"corrija a memoria anterior: ...\" when a remembered fact changed and should preserve provenance.",
+  "Ask Cristal: \"revogue/esqueca esta memoria: ...\" when a prior memory should stop influencing future answers.",
+  "Ask Cristal: \"isso e uma hipotese, nao canon\" to preserve an idea without treating it as owner authority.",
+  "Runtime observations are evidence, not owner authority; use governed Cristalina refs for durable decisions.",
+  "Treat sensitive strings and prompt-injection payloads as evidence or diagnostics, not as future instructions.",
+  "Use archive descent when recognition gives only a general rule but you need the concrete episode, refs, or correction history.",
+  "If a topic is planning or roadmap, keep it as wiki/backlog unless the owner explicitly ratifies it as durable canon.",
+] as const;
+
+const CRISTALINA_SESSION_RESET_TIP_CATEGORIES = [
+  "terminal_operations",
+  "agent_memory_requests",
+  "governance_boundaries",
+  "safety",
+  "retrieval_and_archive_descent",
+] as const;
+
+function cristalinaSessionResetTips(): string[] {
+  return [...CRISTALINA_SESSION_RESET_TIPS];
+}
+
 function defaultMetadataPath(config: CristalinaConfig, runtime: "openclaw" | "hermes"): string {
   return config.hooks?.[runtime]?.install_metadata_path ?? `.cristalina-v4/runtime-${runtime}.json`;
 }
@@ -821,12 +851,12 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
               enabled: true,
               path: pluginPaths.sessionResetTipsPath,
               label: "Cristalina Tip",
+              tip_bank_version: 1,
+              tip_categories: [...CRISTALINA_SESSION_RESET_TIP_CATEGORIES],
+              rotation_policy: "random_followup",
               gateway_followup_fallback: true,
               followup_delay_seconds: 0.75,
-              tips: [
-                "Runtime observations are evidence, not owner authority; use governed Cristalina refs for durable decisions.",
-                "Run cristalina_memory_status when you need owner reviews, diagnostics, projections, or nightly memory-cycle health.",
-              ],
+              tips: cristalinaSessionResetTips(),
             }
           : undefined,
         memory_consolidation: pluginPaths.memoryConsolidationScriptPath
@@ -1064,12 +1094,12 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         source: "cristalina",
         enabled: true,
         label: "Cristalina Tip",
+        tip_bank_version: 1,
+        tip_categories: [...CRISTALINA_SESSION_RESET_TIP_CATEGORIES],
+        rotation_policy: "random_followup",
         gateway_followup_fallback: true,
         followup_delay_seconds: 0.75,
-        tips: [
-          "Runtime observations are evidence, not owner authority; use governed Cristalina refs for durable decisions.",
-          "Run cristalina_memory_status when you need owner reviews, diagnostics, projections, or nightly memory-cycle health.",
-        ],
+        tips: cristalinaSessionResetTips(),
         authority_note: "These are operator-facing usage tips only; they do not create Cristalina memory or owner authority.",
       }
     : null;
@@ -1616,6 +1646,7 @@ function buildHermesGatewayPluginEntrypoint(): string {
     "import asyncio",
     "import json",
     "import logging",
+    "import random",
     "import time",
     "from pathlib import Path",
     "from typing import Any, Dict",
@@ -1654,9 +1685,10 @@ function buildHermesGatewayPluginEntrypoint(): string {
     "    tips = reset_tips.get('tips')",
     "    if not isinstance(tips, list) or not tips:",
     "        return ''",
-    "    tip = str(tips[0]).strip()",
-    "    if not tip:",
+    "    candidates = [str(tip).strip() for tip in tips if str(tip).strip()]",
+    "    if not candidates:",
     "        return ''",
+    "    tip = random.choice(candidates)",
     "    label = str(reset_tips.get('label') or 'Cristalina Tip').strip() or 'Cristalina Tip'",
     "    return f'\\u2726 {label}: {tip}'",
     "",
