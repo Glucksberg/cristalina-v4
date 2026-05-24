@@ -573,6 +573,27 @@ test("Hermes provider mode normalizes inline plugin and memory config without du
   assert.doesNotMatch(updated, /cristalina-bridge/);
 });
 
+test("Hermes provider mode replaces null plugin list without duplicate enabled keys", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-hermes-provider-null-plugins-"));
+  const runtimeRoot = join(root, "hermes");
+  const hermesConfigPath = join(runtimeRoot, "config.yaml");
+  await mkdir(runtimeRoot, { recursive: true });
+  await writeFile(hermesConfigPath, "plugins:\n  enabled: null\nmemory:\n  provider: honcho\n");
+
+  await installRuntime({
+    runtime: "hermes",
+    configPath: join(root, "config.json"),
+    nonInteractive: true,
+    runtimeRoot,
+  });
+
+  const updated = await readFile(hermesConfigPath, "utf8");
+  assert.equal([...updated.matchAll(/^  enabled:/gm)].length, 1);
+  assert.match(updated, /^plugins:\n  enabled:\n  - cristalina-gateway$/m);
+  assert.doesNotMatch(updated, /enabled: null/);
+  assert.match(updated, /^memory:\n  provider: cristalina$/m);
+});
+
 test("Hermes one-liner documents the public installer shape", () => {
   assert.equal(
     hermesInstallOneLiner("https://example.invalid/install-hermes.sh"),

@@ -478,11 +478,17 @@ function addHermesPluginToConfigYaml(source: string, pluginName: string): { text
   }
 
   const enabledIndex = lines.findIndex((line, index) => index > pluginsIndex && index < pluginsEnd && /^  enabled:\s*(?:#.*)?$/.test(line));
+  const nullEnabledIndex = lines.findIndex((line, index) => index > pluginsIndex && index < pluginsEnd && /^  enabled:\s*(?:null|~)\s*(?:#.*)?$/.test(line));
   const inlineEnabledIndex = lines.findIndex((line, index) => index > pluginsIndex && index < pluginsEnd && /^  enabled:\s*\[.*\]\s*(?:#.*)?$/.test(line));
   if (inlineEnabledIndex !== -1) {
     const match = /^  enabled:\s*\[(.*)\]\s*(?:#.*)?$/.exec(lines[inlineEnabledIndex]);
     const enabled = [...new Set([...parseInlineYamlList(match?.[1] ?? ""), pluginName])];
     lines.splice(inlineEnabledIndex, 1, ...formatYamlList("enabled", enabled));
+    return { text: `${lines.join("\n")}\n`, changed: true };
+  }
+
+  if (nullEnabledIndex !== -1) {
+    lines.splice(nullEnabledIndex, 1, ...formatYamlList("enabled", [pluginName]));
     return { text: `${lines.join("\n")}\n`, changed: true };
   }
 
