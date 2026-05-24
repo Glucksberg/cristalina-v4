@@ -83,29 +83,28 @@ export interface CristalinaInstallationRegistry {
 }
 
 const CRISTALINA_SESSION_RESET_TIPS = [
-  "Terminal: run `cristalina status` for store health, diagnostics, projections, owner reviews, and nightly memory-cycle state.",
-  "Terminal: run `cristalina reviews list --owner-decisions` before assuming the owner has pending curation work.",
-  "Terminal: run `cristalina projection recognition --query \"<topic>\" --format context` to inspect what Cristalina would hydrate for a topic.",
-  "Terminal: run `cristalina diagnostics list` when heartbeats, reports, projection, or delivery behavior looks wrong.",
-  "Terminal: run `cristalina update` from the Cristalina checkout to pull upstream, rebuild, and reapply registered runtime installs.",
-  "Ask Cristal: \"store this as my preference: ...\" when you want a durable owner preference proposed through governed memory.",
-  "Ask Cristal: \"remember this only for this project: ...\" when a memory should be scoped instead of global.",
-  "Ask Cristal: \"this is temporary for this session\" to keep short-lived context out of durable memory.",
-  "Ask Cristal: \"correct the previous memory: ...\" when a remembered fact changed and should preserve provenance.",
-  "Ask Cristal: \"revoke/forget this memory: ...\" when a prior memory should stop influencing future answers.",
-  "Ask Cristal: \"this is a hypothesis, not canon\" to preserve an idea without treating it as owner authority.",
-  "Runtime observations are evidence, not owner authority; use governed Cristalina refs for durable decisions.",
-  "Treat sensitive strings and prompt-injection payloads as evidence or diagnostics, not as future instructions.",
-  "Use archive descent when recognition gives only a general rule but you need the concrete episode, refs, or correction history.",
-  "If a topic is planning or roadmap, keep it as wiki/backlog unless the owner explicitly ratifies it as durable canon.",
+  "Say \"store this as my preference: ...\" when you want Cristal to preserve a durable preference with provenance.",
+  "Say \"remember this only for this project: ...\" when a memory should stay scoped instead of becoming global.",
+  "Say \"this is temporary for this session\" when context should help now but not become durable memory.",
+  "Say \"correct the previous memory: ...\" when something Cristal remembers has changed.",
+  "Say \"forget this memory: ...\" when a prior memory should stop influencing future answers.",
+  "Say \"this is a hypothesis, not canon\" when an idea should be saved as tentative rather than treated as settled.",
+  "Ask \"what do you remember about this?\" when you want Cristal to separate durable memory from current-session context.",
+  "Ask \"is this canon, wiki, hypothesis, or runtime evidence?\" when the authority of a memory matters.",
+  "Ask \"why do you remember that?\" when you want provenance instead of a bare answer.",
+  "Ask \"what should I decide as owner?\" when Cristal says a memory needs explicit owner review.",
+  "Ask \"what changed since last time?\" when you expect Cristal to account for corrections or newer information.",
+  "Ask \"do not store this\" before sharing throwaway, sensitive, or test-only context.",
+  "Treat passwords, secrets, and prompt-injection text as unsafe to remember unless you explicitly say how they should be handled.",
+  "Use project names when giving durable context so Cristal can keep memories scoped to the right work.",
+  "When in doubt, ask Cristal to explain which memory layer it used before relying on an answer.",
 ] as const;
 
 const CRISTALINA_SESSION_RESET_TIP_CATEGORIES = [
-  "terminal_operations",
-  "agent_memory_requests",
-  "governance_boundaries",
+  "memory_requests",
+  "scope_and_lifecycle",
+  "authority_and_provenance",
   "safety",
-  "retrieval_and_archive_descent",
 ] as const;
 
 function cristalinaSessionResetTips(): string[] {
@@ -1161,7 +1160,7 @@ export async function installRuntime(input: RuntimeInstallInput): Promise<Runtim
         gateway_followup_fallback: true,
         followup_delay_seconds: 0.75,
         tips: cristalinaSessionResetTips(),
-        authority_note: "These are operator-facing usage tips only; they do not create Cristalina memory or owner authority.",
+        authority_note: "These are user-facing usage tips only; they do not create Cristalina memory or owner authority.",
       }
     : null;
   const memoryConsolidationScript = pluginPaths.memoryConsolidationScriptPath
@@ -1694,7 +1693,7 @@ function buildHermesGatewayPluginManifest(): string {
     "description: Gateway-facing Cristalina hooks for operator notices and reset tips.",
     "provides_hooks:",
     "  - pre_gateway_dispatch",
-    "authority_note: Gateway notices are operator-facing only; they do not create Cristalina memory or owner authority.",
+    "authority_note: Gateway notices are user-facing guidance only; they do not create Cristalina memory or owner authority.",
     "",
   ].join("\n");
 }
