@@ -2,7 +2,7 @@
 ## Roadmap
 
 **Status:** Active Draft
-**Updated:** 2026-05-13
+**Updated:** 2026-05-26
 **Current posture:** executable memory kernel with a live native Hermes memory
 provider, runtime-managed memory maturation, installation registration, a first
 `cristalina update` flow, progressive maturation selection, and deterministic
@@ -110,6 +110,10 @@ configuration, and long-run validation gaps, not kernel gaps:
 - the guided Hermes/Cristalina Day 1-3 memory test is closed; its remaining
   output is product hardening and soak validation, especially native health,
   projection, review surfaces, and fixture retirement
+- the free-conversation live test exposed a cross-surface audit gap: operators
+  need one read-only report that distinguishes governed Cristalina memory from
+  Hermes session history, Hermes skills, runtime observations, projected
+  context, and external file timestamps
 - missed-run behavior needs an operator story: if the host machine is offline or
   Windows/WSL misses the scheduled 03:00 window, the job may fast-forward to the
   next day and should be easy to detect and manually trigger when appropriate
@@ -132,7 +136,19 @@ benchmarking or broad vector infrastructure expands.
      human decisions
    - expose why a projected item was included or suppressed
 
-2. Authority-aware hybrid retrieval
+2. Cross-surface memory audit
+   - expose a read-only operator report for "what was created, updated,
+     observed, projected, or touched during a time window"
+   - clearly separate Cristalina governed records from Hermes external
+     surfaces such as session files and skills
+   - label missing timestamps and filesystem mtimes as limitations instead of
+     inferring owner authority or semantic creation time
+   - follow-up: add a concise Markdown report format for operator sharing
+   - follow-up: add richer Hermes integration once Hermes exposes a stable
+     contract for session metadata, built-in memory events, skill provenance,
+     and tool-write history
+
+3. Authority-aware hybrid retrieval
    - turn the existing deterministic retrieval/vector slice into an operator
      and runtime-facing search path
    - combine exact refs, lexical matching, semantic slots, symbolic anchors,
@@ -141,7 +157,7 @@ benchmarking or broad vector infrastructure expands.
    - keep the existing rule: vector score may rank candidates, but it must not
      decide truth, authority, proposal legality, or projection visibility
 
-3. Live semantic/vector search integration
+4. Live semantic/vector search integration
    - build a live corpus from governed store records instead of only fixture
      records
    - support configurable real embedding providers using the existing
@@ -151,39 +167,39 @@ benchmarking or broad vector infrastructure expands.
    - keep ANN production work gated by corpus-size or latency evidence; exact
      and deterministic search remain the correctness baseline
 
-4. Lifecycle, retirement, and supersession
+5. Lifecycle, retirement, and supersession
    - add governed archive/retire behavior for temporary evaluation fixtures
    - make corrected/superseded state a normal lifecycle path, not only a Safira
      fixture behavior
    - distinguish deleted, archived, superseded, stale, active, and retained for
      audit
 
-5. Wiki maintenance engine
+6. Wiki maintenance engine
    - maintain topic/entity/comparison/index/log pages as editorial synthesis
    - detect stale or thin pages, merge related pages, preserve support refs, and
      emit proposal candidates when wiki synthesis starts functioning as durable
      truth
    - keep wiki useful without becoming hidden canon
 
-6. Contradiction and world-model hardening
+7. Contradiction and world-model hardening
    - make conflicting evidence, changed owner preferences, and external
      disagreement produce explicit contradiction/supersession records
    - ensure projections show resolved and unresolved conflict state without
      silently overwriting canon
 
-7. Memory safety layer
+8. Memory safety layer
    - quarantine or suppress malicious persisted instructions, sensitive-looking
      test data, and poisoned evidence
    - project security fixtures only as evidence/diagnostics, never as commands
      or owner preferences
 
-8. Session continuity productization
+9. Session continuity productization
    - connect checkpoints, session packs, resume receipts, `/new`, gateway
      restarts, and compaction-like resets into a runtime-facing continuity path
    - keep session packs derived from upstream refs; never let pack prose become
      proposal input or canon
 
-9. Evaluation and benchmark packs
+10. Evaluation and benchmark packs
    - after the normal-use route produces enough evidence, build governed test
      packs for recall, non-recall, provenance, authority, supersession, security
      containment, deletion/retirement, wiki-vs-canon separation, and semantic

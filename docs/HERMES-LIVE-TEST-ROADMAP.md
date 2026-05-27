@@ -342,7 +342,15 @@ Priority order:
      use Cristalina status/diagnostics before Farol or ad hoc log reading
    - verify that health output identifies the owning layer and severity
 
-8. Session continuity
+8. Cross-surface memory audit
+   - after free conversation produces mixed artifacts, run `cristalina audit
+     memory` for a recent date or query
+   - verify that the report separates Cristalina governed records from Hermes
+     sessions, skills, projected context, and other external runtime surfaces
+   - treat Markdown output and deeper Hermes metadata integration as follow-up
+     product work, not a blocker for the current read-only JSON audit
+
+9. Session continuity
    - observe `/new`, gateway restarts, morning resumptions, and longer gaps
    - verify whether continuity comes from Cristalina projection/session context
      rather than only from recent Hermes transcript history
@@ -352,6 +360,7 @@ Deferred test tracks:
 - multi-day soak thresholds
 - formal deletion/revocation tests
 - governed fixture retirement
+- cross-surface audit markdown output and richer Hermes metadata integration
 - broad RAG/vector comparison
 - semantic/vector retrieval benchmarks
 - group/shared-memory tests
