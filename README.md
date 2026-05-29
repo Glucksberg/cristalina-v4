@@ -9,6 +9,12 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D20-34d399.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6.svg)](https://www.typescriptlang.org/)
 
+<p align="center">
+  <a href="https://glucksberg.github.io/cristalina-v4/">
+    <img src="docs/assets/cristalina-v4-governed-memory.png" alt="Cristalina v4: governed memory for AI agents" width="720">
+  </a>
+</p>
+
 ---
 
 ## Architecture at a glance

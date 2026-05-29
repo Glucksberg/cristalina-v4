@@ -4,14 +4,160 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cristalina v4</title>
-  <meta http-equiv="refresh" content="0; url=architecture.html">
-  <link rel="canonical" href="architecture.html">
   <style>
-    body { font-family: ui-monospace, Menlo, Consolas, monospace; background: #020617; color: #e2e8f0; padding: 4rem 2rem; text-align: center; }
-    a { color: #22d3ee; }
+    :root {
+      color-scheme: dark;
+      --bg: #020617;
+      --text: #e5edf8;
+      --muted: #a8b8cc;
+      --line: rgba(148, 210, 255, 0.24);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background:
+        linear-gradient(180deg, rgba(56, 213, 255, 0.08), transparent 28rem),
+        radial-gradient(circle at 50% 0%, rgba(231, 195, 106, 0.13), transparent 21rem),
+        var(--bg);
+      color: var(--text);
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+    }
+
+    main {
+      width: calc(100% - 32px);
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 36px 0 44px;
+    }
+
+    header {
+      display: grid;
+      gap: 14px;
+      place-items: center;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 100%;
+      font-size: clamp(1.45rem, 6.5vw, 5.2rem);
+      font-weight: 700;
+      letter-spacing: 0;
+      line-height: 0.95;
+      text-transform: uppercase;
+      text-shadow: 0 0 26px rgba(56, 213, 255, 0.44);
+      overflow-wrap: break-word;
+    }
+
+    p {
+      margin: 0;
+      max-width: 720px;
+      color: var(--muted);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      line-height: 1.55;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    a {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    nav a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 16px;
+      background: rgba(7, 17, 31, 0.72);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-weight: 700;
+      box-shadow: 0 0 22px rgba(56, 213, 255, 0.16);
+    }
+
+    nav a:first-child {
+      border-color: rgba(231, 195, 106, 0.62);
+      color: #fff7dc;
+    }
+
+    figure {
+      margin: 0 auto;
+      width: 100%;
+      max-width: 760px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(56, 213, 255, 0.1), rgba(7, 17, 31, 0.86));
+      box-shadow: 0 24px 90px rgba(0, 0, 0, 0.54), 0 0 44px rgba(56, 213, 255, 0.18);
+    }
+
+    img {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 520px) {
+      main {
+        width: calc(100% - 24px);
+        padding-top: 28px;
+      }
+
+      header {
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      nav {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+
+      nav a {
+        width: 100%;
+      }
+
+      figure {
+        padding: 8px;
+      }
+    }
   </style>
 </head>
 <body>
-  <p>Redirecting to the <a href="architecture.html">Cristalina v4 architecture diagram</a>…</p>
+  <main>
+    <header>
+      <h1>Cristalina v4</h1>
+      <p>Governed memory for AI agents, from raw evidence to trusted canon.</p>
+      <nav aria-label="Cristalina v4 links">
+        <a href="architecture.html">Architecture Diagram</a>
+        <a href="https://github.com/Glucksberg/cristalina-v4">GitHub Repository</a>
+      </nav>
+    </header>
+    <figure>
+      <img src="assets/cristalina-v4-governed-memory.png" alt="Cristalina v4 governed memory diagram">
+    </figure>
+  </main>
 </body>
 </html>
