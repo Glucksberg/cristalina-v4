@@ -28,6 +28,21 @@ export type CristalinaCommand =
       skipInstall?: boolean;
       json?: boolean;
     }
+  | {
+      name: "audit";
+      action: "memory";
+      configPath?: string;
+      storeRoot?: string;
+      runtime?: "openclaw" | "hermes";
+      date?: string;
+      since?: string;
+      until?: string;
+      timezone?: string;
+      query?: string;
+      includeRuntimeSurfaces?: boolean;
+      hermesRoot?: string;
+      format?: "json";
+    }
   | { name: "smoke"; target: "dual-runtime" | "runtime-wiring" }
   | { name: "runtime"; action: "preflight"; configPath?: string; openclawRoot?: string; hermesRoot?: string }
   | { name: "runtime"; action: "hook-map"; runtime: "openclaw" | "hermes"; runtimeRoot: string; targetConfigPath?: string; mapPath?: string }
@@ -261,6 +276,48 @@ export function parseCristalinaCommand(argv: string[]): CristalinaCommand {
       skipBuild: hasFlag(argv, "--skip-build"),
       skipInstall: hasFlag(argv, "--skip-install"),
       json: hasFlag(argv, "--json"),
+    };
+  }
+
+  if (command === "audit") {
+    if (subcommand !== "memory") {
+      throw new CommandUsageError("audit requires action memory");
+    }
+    rejectUnknownOptions(rest, new Map([
+      ["--config", "value"],
+      ["--store-root", "value"],
+      ["--runtime", "value"],
+      ["--date", "value"],
+      ["--since", "value"],
+      ["--until", "value"],
+      ["--timezone", "value"],
+      ["--query", "value"],
+      ["--include-runtime-surfaces", "flag"],
+      ["--hermes-root", "value"],
+      ["--format", "value"],
+    ]));
+    const runtime = readOption(argv, "--runtime");
+    if (runtime !== undefined && runtime !== "openclaw" && runtime !== "hermes") {
+      throw new CommandUsageError("--runtime must be openclaw or hermes");
+    }
+    const format = readOption(argv, "--format");
+    if (format !== undefined && format !== "json") {
+      throw new CommandUsageError("--format must be json");
+    }
+    return {
+      name: "audit",
+      action: "memory",
+      configPath: readOption(argv, "--config"),
+      storeRoot: readOption(argv, "--store-root"),
+      runtime,
+      date: readOption(argv, "--date"),
+      since: readOption(argv, "--since"),
+      until: readOption(argv, "--until"),
+      timezone: readOption(argv, "--timezone"),
+      query: readOption(argv, "--query"),
+      includeRuntimeSurfaces: hasFlag(argv, "--include-runtime-surfaces"),
+      hermesRoot: readOption(argv, "--hermes-root"),
+      format,
     };
   }
 
@@ -713,6 +770,8 @@ export function helpText(): string {
     "  doctor [--config PATH] [--store-root PATH]",
     "  status [--config PATH] [--store-root PATH]",
     "  update [--config PATH] [--runtime openclaw|hermes] [--runtime-root PATH] [--integration-mode provider|bridge|both] [--json]",
+    "  audit memory [--date YYYY-MM-DD] [--timezone IANA] [--since ISO] [--until ISO] [--query TEXT] [--runtime openclaw|hermes] [--include-runtime-surfaces] [--hermes-root PATH] [--format json] [--config PATH] [--store-root PATH]",
+    "    audit memory currently emits JSON only; --format json is the explicit/default output.",
     "  smoke dual-runtime",
     "  smoke runtime-wiring",
     "  runtime preflight [--config PATH] [--openclaw-root PATH] [--hermes-root PATH]",

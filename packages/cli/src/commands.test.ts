@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
@@ -223,6 +223,284 @@ test("update defaults to an operator summary and keeps JSON behind --json", asyn
     json: true,
   });
   assert.equal(JSON.parse(json.stdout).status, "updated");
+});
+
+test("audit memory reports governed records and external Hermes surfaces without promoting them", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-audit-memory-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const hermesRoot = join(root, "hermes");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_audit_001",
+      agentIdentityRef: "actor_agent_cli_audit_001",
+      hermesRuntimeRef: "runtime_hermes_cli_audit_001",
+    }), null, 2)}\n`,
+  );
+  await writeFile(join(storeRoot, "runtime", "observations", "obs_luxis_memory_day.json"), `${JSON.stringify({
+    id: "obs_luxis_memory_day",
+    kind: "observation",
+    layer: "runtime",
+    authoritative_home: "runtime",
+    created_at: "2026-05-26T14:10:00.000Z",
+    updated_at: "2026-05-26T14:10:00.000Z",
+    visibility_state: { privacy_scope: "owner_private" },
+    provenance: {
+      source_type: "hermes_message",
+      source_ref: "20260526_140705_41aa5f68",
+      runtime_ref: "runtime_hermes_cli_audit_001",
+      session_ref: "session_luxis_memory_day",
+      thread_ref: "thread_luxis_memory_day",
+    },
+    summary: "Lúxis discussed where today's memory, persona skills, and biologicals strategy were stored.",
+    epistemic_state: "observed",
+    observed_at: "2026-05-26T14:10:00.000Z",
+    runtime_instance_ref: "runtime_hermes_cli_audit_001",
+    runtime_session_ref: "session_luxis_memory_day",
+    conversation_thread_ref: "thread_luxis_memory_day",
+  }, null, 2)}\n`);
+  await writeFile(join(storeRoot, "canon", "preferences", "mem_luxis_short_answers.json"), `${JSON.stringify({
+    id: "mem_luxis_short_answers",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: "2026-05-26T14:20:00.000Z",
+    updated_at: "2026-05-26T14:20:00.000Z",
+    visibility_state: { privacy_scope: "owner_private" },
+    provenance: {
+      source_type: "memory_maturation",
+      source_ref: "luxis-short-answer-preference",
+      runtime_ref: "runtime_hermes_cli_audit_001",
+      evidence_refs: ["obs_luxis_memory_day"],
+    },
+    statement: "Markus prefers Lúxis responses to be short and non-redundant.",
+    semantic_slot: "owner_preferences.luxis.short_answers",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: { temporal_status: "active" },
+  }, null, 2)}\n`);
+  await writeFile(join(storeRoot, "canon", "preferences", "mem_luxis_offset_timestamp.json"), `${JSON.stringify({
+    id: "mem_luxis_offset_timestamp",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: "2026-05-26T00:30:00-04:00",
+    updated_at: "2026-05-26T00:30:00-04:00",
+    visibility_state: { privacy_scope: "owner_private" },
+    provenance: {
+      source_type: "memory_maturation",
+      source_ref: "luxis-offset-timestamp",
+      runtime_ref: "runtime_hermes_cli_audit_001",
+      evidence_refs: ["obs_luxis_memory_day"],
+    },
+    statement: "Lúxis offset timestamp should still be inside the Cuiaba audit date.",
+    semantic_slot: "owner_preferences.luxis.offset_timestamp",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: { temporal_status: "active" },
+  }, null, 2)}\n`);
+  await writeFile(join(storeRoot, "canon", "preferences", "mem_old_luxis_note.json"), `${JSON.stringify({
+    id: "mem_old_luxis_note",
+    kind: "preference",
+    layer: "canon",
+    authoritative_home: "canon",
+    created_at: "2026-05-25T14:20:00.000Z",
+    updated_at: "2026-05-25T14:20:00.000Z",
+    visibility_state: { privacy_scope: "owner_private" },
+    provenance: {
+      source_type: "memory_maturation",
+      source_ref: "old-luxis-note",
+      runtime_ref: "runtime_hermes_cli_audit_001",
+    },
+    statement: "Old Lúxis note outside the requested audit date.",
+    semantic_slot: "owner_preferences.luxis.old_note",
+    epistemic_state: "confirmed",
+    governance_state: "ratified",
+    temporal_state: { temporal_status: "historical" },
+  }, null, 2)}\n`);
+  await mkdir(join(hermesRoot, "skills", "productivity", "luxis-persona"), { recursive: true });
+  const skillPath = join(hermesRoot, "skills", "productivity", "luxis-persona", "SKILL.md");
+  await writeFile(
+    skillPath,
+    "# Lúxis Persona\n\nShort, dense strategic voice for Urban Bio Regen and biologicals discussions.\n",
+  );
+  await mkdir(join(hermesRoot, "sessions"), { recursive: true });
+  const sessionPath = join(hermesRoot, "sessions", "20260526_140705_41aa5f68.json");
+  await writeFile(
+    sessionPath,
+    "{\"title\":\"Sistema de Memória e Personalidade\",\"summary\":\"Lúxis biologicals and persona memory\"}\n",
+  );
+  const largeSessionPath = join(hermesRoot, "sessions", "20260526_large_luxis.json");
+  await writeFile(
+    largeSessionPath,
+    `{"title":"Lúxis large session","body":"${"x".repeat(70_000)}"}\n`,
+  );
+  const auditFileTime = new Date("2026-05-26T15:00:00.000Z");
+  await Promise.all([
+    utimes(skillPath, auditFileTime, auditFileTime),
+    utimes(sessionPath, auditFileTime, auditFileTime),
+    utimes(largeSessionPath, auditFileTime, auditFileTime),
+  ]);
+
+  const result = await executeCristalinaCommand({
+    name: "audit",
+    action: "memory",
+    configPath,
+    runtime: "hermes",
+    date: "2026-05-26",
+    timezone: "America/Cuiaba",
+    includeRuntimeSurfaces: true,
+    hermesRoot,
+    query: "Lúxis",
+  });
+  const payload = JSON.parse(result.stdout) as {
+    entries: Array<{
+      ref: string;
+      surface: string;
+      authority: string;
+      change_kind: string;
+      limitations?: string[];
+    }>;
+    counts: { by_authority: Record<string, number>; by_surface: Record<string, number> };
+    limitations: string[];
+    window: { since: string; until: string; timezone: string };
+  };
+  assert.equal(result.exitCode, 0);
+  assert.equal(payload.window.since, "2026-05-26T04:00:00.000Z");
+  assert.equal(payload.window.until, "2026-05-27T04:00:00.000Z");
+  assert.equal(payload.window.timezone, "America/Cuiaba");
+  assert.ok(payload.entries.some((entry) => entry.ref === "obs_luxis_memory_day" && entry.authority === "runtime_evidence"));
+  assert.ok(payload.entries.some((entry) => entry.ref === "mem_luxis_short_answers" && entry.authority === "canon_ratified"));
+  assert.ok(payload.entries.some((entry) => entry.ref === "mem_luxis_offset_timestamp" && entry.authority === "canon_ratified"));
+  assert.ok(!payload.entries.some((entry) => entry.ref === "mem_old_luxis_note"));
+  const skill = payload.entries.find((entry) => entry.surface === "hermes_skill_file");
+  assert.ok(skill);
+  assert.equal(skill.authority, "external_runtime_surface");
+  assert.ok(skill.limitations?.some((entry) => entry.includes("not Cristalina canon")));
+  assert.equal(payload.counts.by_authority.external_runtime_surface, 3);
+  assert.ok(payload.limitations.some((entry) => entry.includes("truncated to")));
+  assert.ok(payload.limitations.some((entry) => entry.includes("loaded then filtered in memory")));
+  assert.ok(payload.limitations.some((entry) => entry.includes("records without runtime provenance are retained")));
+  assert.match(payload.limitations.join("\n"), /read-only/);
+});
+
+test("audit memory reports when requested runtime surfaces have no Hermes root", async () => {
+  const previousHermesHome = process.env.HERMES_HOME;
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-audit-no-hermes-root-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_audit_no_root_001",
+      agentIdentityRef: "actor_agent_cli_audit_no_root_001",
+      hermesRuntimeRef: "runtime_hermes_cli_audit_no_root_001",
+    }), null, 2)}\n`,
+  );
+  delete process.env.HERMES_HOME;
+
+  try {
+    const result = await executeCristalinaCommand({
+      name: "audit",
+      action: "memory",
+      configPath,
+      runtime: "hermes",
+      includeRuntimeSurfaces: true,
+    });
+    const payload = JSON.parse(result.stdout) as {
+      entries: Array<{ surface: string }>;
+      counts: { by_authority: Record<string, number> };
+      limitations: string[];
+    };
+    assert.equal(result.exitCode, 0);
+    assert.ok(!payload.entries.some((entry) => entry.surface === "hermes_skill_file" || entry.surface === "hermes_session_file"));
+    assert.equal(payload.counts.by_authority.external_runtime_surface, undefined);
+    assert.match(payload.limitations.join("\n"), /no Hermes root was found/);
+
+    await assert.rejects(
+      () => executeCristalinaCommand({
+        name: "audit",
+        action: "memory",
+        configPath,
+        runtime: "hermes",
+        since: "not-a-date",
+      }),
+      /--since must be a valid ISO timestamp/,
+    );
+    await assert.rejects(
+      () => executeCristalinaCommand({
+        name: "audit",
+        action: "memory",
+        configPath,
+        runtime: "hermes",
+        since: "2026-05-27T00:00:00Z",
+        until: "2026-05-26T00:00:00Z",
+      }),
+      /--since must be earlier than --until/,
+    );
+  } finally {
+    if (previousHermesHome === undefined) {
+      delete process.env.HERMES_HOME;
+    } else {
+      process.env.HERMES_HOME = previousHermesHome;
+    }
+  }
+});
+
+test("audit memory skips Hermes external surfaces for OpenClaw runtime audits", async () => {
+  const previousHermesHome = process.env.HERMES_HOME;
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-audit-openclaw-runtime-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const hermesRoot = join(root, "hermes");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_audit_openclaw_001",
+      agentIdentityRef: "actor_agent_cli_audit_openclaw_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_audit_001",
+      hermesRuntimeRef: "runtime_hermes_cli_audit_001",
+    }), null, 2)}\n`,
+  );
+  await mkdir(join(hermesRoot, "skills", "productivity", "luxis-persona"), { recursive: true });
+  await writeFile(
+    join(hermesRoot, "skills", "productivity", "luxis-persona", "SKILL.md"),
+    "# Lúxis Persona\n\nThis Hermes skill must not appear in an OpenClaw runtime audit.\n",
+  );
+  process.env.HERMES_HOME = hermesRoot;
+
+  try {
+    const result = await executeCristalinaCommand({
+      name: "audit",
+      action: "memory",
+      configPath,
+      runtime: "openclaw",
+      includeRuntimeSurfaces: true,
+      query: "Lúxis",
+    });
+    const payload = JSON.parse(result.stdout) as {
+      entries: Array<{ surface: string }>;
+      counts: { by_authority: Record<string, number>; by_surface: Record<string, number> };
+      limitations: string[];
+    };
+    assert.equal(result.exitCode, 0);
+    assert.ok(!payload.entries.some((entry) => entry.surface === "hermes_skill_file" || entry.surface === "hermes_session_file"));
+    assert.equal(payload.counts.by_authority.external_runtime_surface, undefined);
+    assert.match(payload.limitations.join("\n"), /skipped because the audit runtime filter is openclaw/);
+  } finally {
+    if (previousHermesHome === undefined) {
+      delete process.env.HERMES_HOME;
+    } else {
+      process.env.HERMES_HOME = previousHermesHome;
+    }
+  }
 });
 
 test("update discovers the repo-local standard config without arguments", async () => {

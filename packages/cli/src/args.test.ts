@@ -196,6 +196,21 @@ test("CLI parser recognizes the planned command surface", () => {
     llmOutputPath: undefined,
     evidenceOutputPath: "evidence.json",
   });
+  assert.deepEqual(parseCristalinaCommand(["audit", "memory", "--date", "2026-05-26", "--timezone", "America/Cuiaba", "--query", "Lúxis", "--runtime", "hermes", "--include-runtime-surfaces", "--hermes-root", "/tmp/hermes"]), {
+    name: "audit",
+    action: "memory",
+    configPath: undefined,
+    storeRoot: undefined,
+    runtime: "hermes",
+    date: "2026-05-26",
+    since: undefined,
+    until: undefined,
+    timezone: "America/Cuiaba",
+    query: "Lúxis",
+    includeRuntimeSurfaces: true,
+    hermesRoot: "/tmp/hermes",
+    format: undefined,
+  });
   assert.deepEqual(parseCristalinaCommand(["diagnostics", "list"]), {
     name: "diagnostics",
     action: "list",
@@ -269,4 +284,6 @@ test("CLI parser rejects unknown commands and options", () => {
   assert.throws(() => parseCristalinaCommand(["install", "hermes", "--integration-mode", "invalid"]), CommandUsageError);
   assert.throws(() => parseCristalinaCommand(["projection", "recognition", "--format", "invalid"]), CommandUsageError);
   assert.throws(() => parseCristalinaCommand(["reviews", "decide", "--action", "invalid"]), CommandUsageError);
+  assert.throws(() => parseCristalinaCommand(["audit", "memory", "--runtime", "invalid"]), CommandUsageError);
+  assert.throws(() => parseCristalinaCommand(["audit", "memory", "--format", "markdown"]), CommandUsageError);
 });

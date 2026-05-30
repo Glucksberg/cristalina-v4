@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parseCristalinaCommand, helpText, CommandUsageError, type CristalinaCommand } from "./args.js";
 import {
   applyOwnerDecision,
+  auditMemorySurfaces,
   compileSessionPackToStore,
   inspectCristalinaStore,
   listOwnerDecisionRequests,
@@ -114,6 +115,97 @@ function commandPrincipal(config: CristalinaConfig): AuthenticatedPrincipal {
   };
 }
 
+function systemTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function timeZoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+  return asUtc - date.getTime();
+}
+
+function zonedStartOfDayUtc(date: string, timeZone: string): Date {
+  const [year, month, day] = date.split("-").map(Number);
+  const localAsUtc = Date.UTC(year!, month! - 1, day!, 0, 0, 0, 0);
+  let candidate = new Date(localAsUtc - timeZoneOffsetMs(new Date(localAsUtc), timeZone));
+  candidate = new Date(localAsUtc - timeZoneOffsetMs(candidate, timeZone));
+  return candidate;
+}
+
+function normalizeAuditBoundary(value: string | undefined, name: "--since" | "--until"): string | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    throw new Error(`audit memory ${name} must be a valid ISO timestamp`);
+  }
+  return new Date(parsed).toISOString();
+}
+
+function auditWindowFromCommand(command: Extract<CristalinaCommand, { name: "audit"; action: "memory" }>): { since?: string; until?: string; timezone?: string } {
+  if (command.date && (command.since || command.until)) {
+    throw new Error("audit memory accepts either --date or --since/--until, not both");
+  }
+  if (command.timezone && !command.date) {
+    throw new Error("audit memory --timezone requires --date");
+  }
+  if (!command.date) {
+    const since = normalizeAuditBoundary(command.since, "--since");
+    const until = normalizeAuditBoundary(command.until, "--until");
+    if (since && until && Date.parse(since) >= Date.parse(until)) {
+      throw new Error("audit memory --since must be earlier than --until");
+    }
+    return {
+      ...(since ? { since } : {}),
+      ...(until ? { until } : {}),
+    };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(command.date)) {
+    throw new Error("--date must use YYYY-MM-DD");
+  }
+  const parsedUtcDate = new Date(`${command.date}T00:00:00.000Z`);
+  if (Number.isNaN(parsedUtcDate.getTime()) || parsedUtcDate.toISOString().slice(0, 10) !== command.date) {
+    throw new Error("--date must be a valid calendar date");
+  }
+  const timezone = command.timezone ?? systemTimeZone();
+  const start = zonedStartOfDayUtc(command.date, timezone);
+  if (Number.isNaN(start.getTime())) {
+    throw new Error("--date or --timezone is invalid");
+  }
+  const nextLocalDate = new Date(Date.UTC(
+    Number(command.date.slice(0, 4)),
+    Number(command.date.slice(5, 7)) - 1,
+    Number(command.date.slice(8, 10)) + 1,
+    0,
+    0,
+    0,
+    0,
+  )).toISOString().slice(0, 10);
+  const end = zonedStartOfDayUtc(nextLocalDate, timezone);
+  return {
+    since: start.toISOString(),
+    until: end.toISOString(),
+    timezone,
+  };
+}
+
 export async function executeCristalinaCommand(command: CristalinaCommand): Promise<CommandResult> {
   if (command.name === "help") {
     return { exitCode: 0, stdout: helpText(), stderr: "" };
@@ -185,6 +277,26 @@ export async function executeCristalinaCommand(command: CristalinaCommand): Prom
     return {
       exitCode: 0,
       stdout: command.json ? `${JSON.stringify(result, null, 2)}\n` : formatCristalinaUpdateSummary(result),
+      stderr: "",
+    };
+  }
+
+  if (command.name === "audit" && command.action === "memory") {
+    const { storeRoot } = await loadRequiredConfig(command.configPath, command.storeRoot);
+    const window = auditWindowFromCommand(command);
+    const result = await auditMemorySurfaces({
+      rootDir: storeRoot,
+      runtime: command.runtime,
+      since: window.since,
+      until: window.until,
+      timezone: window.timezone,
+      query: command.query,
+      includeRuntimeSurfaces: command.includeRuntimeSurfaces,
+      hermesRoot: command.hermesRoot ?? process.env.HERMES_HOME,
+    });
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
       stderr: "",
     };
   }

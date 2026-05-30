@@ -18,6 +18,7 @@ export * from "./operator-inspection-store.js";
 export * from "./owner-decisions.js";
 export * from "./memory-consolidation.js";
 export * from "./memory-maturation.js";
+export * from "./memory-surface-audit.js";
 export * from "./retrieval-engine/audit.js";
 export * from "./retrieval-engine/chunking.js";
 export * from "./retrieval-engine/embedding-provider.js";
