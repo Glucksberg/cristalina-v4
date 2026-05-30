@@ -2,7 +2,7 @@
   "name": "cristalina-v4",
   "private": true,
   "version": "0.0.0",
-  "description": "Governed memory kernel for AI agents with native Hermes provider, semantic maturation, canon, wiki, and OpenClaw/Hermes integration",
+  "description": "A governed memory system for Hermes/OpenClaw that turns runtime evidence into auditable long-term knowledge",
   "license": "MIT",
   "author": "Markus Glucksberg",
   "homepage": "https://github.com/Glucksberg/cristalina-v4",
