@@ -141,6 +141,7 @@ interface ExternalEntryResult {
 
 const EXTERNAL_FILE_SCAN_LIMIT = 1000;
 const EXTERNAL_FILE_PREVIEW_BYTES = 64 * 1024;
+const EXTERNAL_FILE_READ_CONCURRENCY = 32;
 
 function countBy(entries: MemorySurfaceAuditEntry[], key: keyof Pick<MemorySurfaceAuditEntry, "surface" | "authority" | "change_kind">): Record<string, number> {
   return entries.reduce<Record<string, number>>((counts, entry) => {
@@ -360,6 +361,24 @@ async function collectFiles(rootDir: string, filename?: string, files: string[] 
   return { files, limitations };
 }
 
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(values.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 function externalFileChangeKind(mtime: string, since?: string, until?: string): MemorySurfaceChangeKind {
   return inWindow(mtime, since, until) ? "external_file_touched_in_window" : "matched_outside_window";
 }
@@ -455,29 +474,37 @@ async function sessionEntry(filePath: string, hermesRoot: string, input: MemoryS
 
 async function collectHermesSurfaceEntries(input: MemorySurfaceAuditInput): Promise<HermesSurfaceCollection> {
   if (!input.includeRuntimeSurfaces || !input.hermesRoot) return { entries: [], limitations: [] };
+  if (input.runtime === "openclaw") {
+    return {
+      entries: [],
+      limitations: ["Hermes external runtime surfaces were skipped because the audit runtime filter is openclaw."],
+    };
+  }
   const hermesRoot = resolve(input.hermesRoot);
   const [skillCollection, sessionCollection] = await Promise.all([
     collectFiles(join(hermesRoot, "skills"), "SKILL.md"),
     collectFiles(join(hermesRoot, "sessions")),
   ]);
-  const results = await Promise.all([
-    ...skillCollection.files.map(async (filePath) => {
+  const files = [
+    ...skillCollection.files.map((filePath) => ({ filePath, surface: "skill" as const })),
+    ...sessionCollection.files
+      .filter((filePath) => /\.(json|jsonl|md|txt)$/i.test(filePath))
+      .map((filePath) => ({ filePath, surface: "session" as const })),
+  ];
+  const results = await mapWithConcurrency(files, EXTERNAL_FILE_READ_CONCURRENCY, async ({ filePath, surface }) => {
+    if (surface === "skill") {
       try {
         return await skillEntry(filePath, hermesRoot, input);
       } catch (error) {
         return { limitations: [(error as Error).message] };
       }
-    }),
-    ...sessionCollection.files
-      .filter((filePath) => /\.(json|jsonl|md|txt)$/i.test(filePath))
-      .map(async (filePath) => {
-        try {
-          return await sessionEntry(filePath, hermesRoot, input);
-        } catch (error) {
-          return { limitations: [(error as Error).message] };
-        }
-      }),
-  ]);
+    }
+    try {
+      return await sessionEntry(filePath, hermesRoot, input);
+    } catch (error) {
+      return { limitations: [(error as Error).message] };
+    }
+  });
   return {
     entries: results.map((result) => result.entry).filter((entry): entry is MemorySurfaceAuditEntry => entry !== undefined),
     limitations: [

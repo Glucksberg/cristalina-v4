@@ -364,6 +364,57 @@ test("audit memory reports governed records and external Hermes surfaces without
   assert.match(payload.limitations.join("\n"), /read-only/);
 });
 
+test("audit memory skips Hermes external surfaces for OpenClaw runtime audits", async () => {
+  const previousHermesHome = process.env.HERMES_HOME;
+  const root = await mkdtemp(join(tmpdir(), "cristalina-cli-audit-openclaw-runtime-"));
+  const storeRoot = join(root, "store");
+  const configPath = join(root, "config.json");
+  const hermesRoot = join(root, "hermes");
+  await executeCristalinaCommand({ name: "init", storeRoot });
+  await writeFile(
+    configPath,
+    `${JSON.stringify(buildDefaultCristalinaConfig({
+      storeRoot,
+      ownerIdentityRef: "actor_owner_cli_audit_openclaw_001",
+      agentIdentityRef: "actor_agent_cli_audit_openclaw_001",
+      openclawRuntimeRef: "runtime_openclaw_cli_audit_001",
+      hermesRuntimeRef: "runtime_hermes_cli_audit_001",
+    }), null, 2)}\n`,
+  );
+  await mkdir(join(hermesRoot, "skills", "productivity", "luxis-persona"), { recursive: true });
+  await writeFile(
+    join(hermesRoot, "skills", "productivity", "luxis-persona", "SKILL.md"),
+    "# Lúxis Persona\n\nThis Hermes skill must not appear in an OpenClaw runtime audit.\n",
+  );
+  process.env.HERMES_HOME = hermesRoot;
+
+  try {
+    const result = await executeCristalinaCommand({
+      name: "audit",
+      action: "memory",
+      configPath,
+      runtime: "openclaw",
+      includeRuntimeSurfaces: true,
+      query: "Lúxis",
+    });
+    const payload = JSON.parse(result.stdout) as {
+      entries: Array<{ surface: string }>;
+      counts: { by_authority: Record<string, number>; by_surface: Record<string, number> };
+      limitations: string[];
+    };
+    assert.equal(result.exitCode, 0);
+    assert.ok(!payload.entries.some((entry) => entry.surface === "hermes_skill_file" || entry.surface === "hermes_session_file"));
+    assert.equal(payload.counts.by_authority.external_runtime_surface, undefined);
+    assert.match(payload.limitations.join("\n"), /skipped because the audit runtime filter is openclaw/);
+  } finally {
+    if (previousHermesHome === undefined) {
+      delete process.env.HERMES_HOME;
+    } else {
+      process.env.HERMES_HOME = previousHermesHome;
+    }
+  }
+});
+
 test("update discovers the repo-local standard config without arguments", async () => {
   const previousConfigEnv = process.env.CRISTALINA_CONFIG;
   delete process.env.CRISTALINA_CONFIG;
