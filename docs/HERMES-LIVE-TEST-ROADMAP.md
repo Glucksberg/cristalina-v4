@@ -347,6 +347,9 @@ Priority order:
      memory` for a recent date or query
    - verify that the report separates Cristalina governed records from Hermes
      sessions, skills, projected context, and other external runtime surfaces
+   - when filtering by runtime, expect records with a conflicting detected
+     runtime to be excluded while governed records without runtime provenance
+     remain visible as potentially cross-runtime memory
    - treat Markdown output and deeper Hermes metadata integration as follow-up
      product work, not a blocker for the current read-only JSON audit
 

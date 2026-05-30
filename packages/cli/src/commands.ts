@@ -150,6 +150,15 @@ function zonedStartOfDayUtc(date: string, timeZone: string): Date {
   return candidate;
 }
 
+function normalizeAuditBoundary(value: string | undefined, name: "--since" | "--until"): string | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    throw new Error(`audit memory ${name} must be a valid ISO timestamp`);
+  }
+  return new Date(parsed).toISOString();
+}
+
 function auditWindowFromCommand(command: Extract<CristalinaCommand, { name: "audit"; action: "memory" }>): { since?: string; until?: string; timezone?: string } {
   if (command.date && (command.since || command.until)) {
     throw new Error("audit memory accepts either --date or --since/--until, not both");
@@ -158,9 +167,14 @@ function auditWindowFromCommand(command: Extract<CristalinaCommand, { name: "aud
     throw new Error("audit memory --timezone requires --date");
   }
   if (!command.date) {
+    const since = normalizeAuditBoundary(command.since, "--since");
+    const until = normalizeAuditBoundary(command.until, "--until");
+    if (since && until && Date.parse(since) >= Date.parse(until)) {
+      throw new Error("audit memory --since must be earlier than --until");
+    }
     return {
-      ...(command.since ? { since: command.since } : {}),
-      ...(command.until ? { until: command.until } : {}),
+      ...(since ? { since } : {}),
+      ...(until ? { until } : {}),
     };
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(command.date)) {

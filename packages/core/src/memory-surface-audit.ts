@@ -153,9 +153,26 @@ function countBy(entries: MemorySurfaceAuditEntry[], key: keyof Pick<MemorySurfa
 
 function inWindow(value: string | null | undefined, since?: string, until?: string): boolean {
   if (!value) return false;
-  if (since && value < since) return false;
-  if (until && value >= until) return false;
+  const valueTime = Date.parse(value);
+  if (Number.isNaN(valueTime)) return false;
+  if (since) {
+    const sinceTime = Date.parse(since);
+    if (Number.isNaN(sinceTime) || valueTime < sinceTime) return false;
+  }
+  if (until) {
+    const untilTime = Date.parse(until);
+    if (Number.isNaN(untilTime) || valueTime >= untilTime) return false;
+  }
   return true;
+}
+
+function firstTimestampEpoch(values: Array<string | null | undefined>): number {
+  for (const value of values) {
+    if (!value) continue;
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return Number.NEGATIVE_INFINITY;
 }
 
 function textMatches(values: unknown[], query?: string): boolean {
@@ -336,6 +353,14 @@ function pushUnique(values: string[], value: string): void {
   if (!values.includes(value)) values.push(value);
 }
 
+function uniqueLimitations(values: string[]): string[] {
+  const unique: string[] = [];
+  for (const value of values) {
+    pushUnique(unique, value);
+  }
+  return unique;
+}
+
 async function collectFiles(rootDir: string, filename?: string, files: string[] = [], limitations: string[] = []): Promise<ExternalFileCollection> {
   if (files.length >= EXTERNAL_FILE_SCAN_LIMIT) {
     pushUnique(limitations, `External runtime surface scan stopped after ${EXTERNAL_FILE_SCAN_LIMIT} files.`);
@@ -473,7 +498,13 @@ async function sessionEntry(filePath: string, hermesRoot: string, input: MemoryS
 }
 
 async function collectHermesSurfaceEntries(input: MemorySurfaceAuditInput): Promise<HermesSurfaceCollection> {
-  if (!input.includeRuntimeSurfaces || !input.hermesRoot) return { entries: [], limitations: [] };
+  if (!input.includeRuntimeSurfaces) return { entries: [], limitations: [] };
+  if (!input.hermesRoot) {
+    return {
+      entries: [],
+      limitations: ["Runtime surfaces were requested, but no Hermes root was found via --hermes-root or HERMES_HOME; no external runtime surfaces were scanned."],
+    };
+  }
   if (input.runtime === "openclaw") {
     return {
       entries: [],
@@ -507,11 +538,11 @@ async function collectHermesSurfaceEntries(input: MemorySurfaceAuditInput): Prom
   });
   return {
     entries: results.map((result) => result.entry).filter((entry): entry is MemorySurfaceAuditEntry => entry !== undefined),
-    limitations: [
+    limitations: uniqueLimitations([
       ...skillCollection.limitations,
       ...sessionCollection.limitations,
       ...results.flatMap((result) => result.limitations),
-    ],
+    ]),
   };
 }
 
@@ -521,14 +552,16 @@ export async function auditMemorySurfaces(input: MemorySurfaceAuditInput): Promi
     ...(await collectCristalinaEntries(input)),
     ...hermesSurfaces.entries,
   ].sort((left, right) => {
-    const leftTime = left.observed_at ?? left.updated_at ?? left.created_at ?? left.filesystem_mtime ?? "";
-    const rightTime = right.observed_at ?? right.updated_at ?? right.created_at ?? right.filesystem_mtime ?? "";
-    return rightTime.localeCompare(leftTime) || left.ref.localeCompare(right.ref);
+    const leftTime = firstTimestampEpoch([left.observed_at, left.updated_at, left.created_at, left.filesystem_mtime]);
+    const rightTime = firstTimestampEpoch([right.observed_at, right.updated_at, right.created_at, right.filesystem_mtime]);
+    return rightTime - leftTime || left.ref.localeCompare(right.ref);
   });
 
   const limitations = [
     "This report is read-only and does not promote, ratify, delete, or rewrite memory.",
     "Runtime/session/skill surfaces are evidence only unless represented by governed Cristalina records.",
+    "Cristalina governed store surfaces are loaded then filtered in memory; very large stores may need store-native indexes in a future audit surface.",
+    "Runtime filters exclude records with a conflicting detected runtime; governed records without runtime provenance are retained because they may be cross-runtime.",
   ];
   if (input.includeRuntimeSurfaces && input.hermesRoot) {
     limitations.push("Hermes external surfaces are discovered from files; semantic created_at may be unavailable.");
@@ -553,6 +586,6 @@ export async function auditMemorySurfaces(input: MemorySurfaceAuditInput): Promi
       by_authority: countBy(entries, "authority"),
       by_change_kind: countBy(entries, "change_kind"),
     },
-    limitations,
+    limitations: uniqueLimitations(limitations),
   };
 }
