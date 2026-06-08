@@ -450,7 +450,7 @@ Minimum fields:
 
 For claim-like promotion into canon, `candidate_payload` should preserve the same `semantic_slot` used by the upstream world claim so governance can apply conflict gates against the right active memory slot.
 
-For `Proposal`, `governance_state` describes the proposal stage before ratification, not the lifecycle state of a canonical record.
+For `Proposal`, `governance_state` describes the proposal stage before ratification, not the lifecycle state of a canonical record. Valid proposal stages are `draft`, `proposed`, `archived`, and `rejected`. Approved ratification is recorded in a `RatificationRecord`, and durable `ratified` state belongs to the created or updated canonical record.
 
 In the executable baseline, `supersede` means retirement without replacement; `revise` is the operation that creates a successor record.
 

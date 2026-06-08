@@ -40,6 +40,7 @@ import {
   LAYERS,
   MEMORY_OBJECT_KINDS,
   PROPOSAL_OPERATIONS,
+  PROPOSAL_STAGE_STATES,
   PROJECTION_SNAPSHOT_STRATEGIES,
   RUNTIMES,
   RETRIEVAL_SUPPRESSION_REASONS,
@@ -679,8 +680,12 @@ function validateProposal(value: unknown): ValidationIssue[] {
       message: "expected one of: none, owner_ratification_required",
     });
   }
-  if (!isEnumValue(value.governance_state, ["draft", "proposed", "archived", "rejected"] as const)) {
-    issues.push({ path: "governance_state", message: "expected proposal-stage governance state" });
+  if (!isEnumValue(value.governance_state, PROPOSAL_STAGE_STATES)) {
+    const received = value.governance_state === undefined ? "missing" : String(value.governance_state);
+    issues.push({
+      path: "governance_state",
+      message: `expected proposal-stage governance state: ${PROPOSAL_STAGE_STATES.join(", ")}; received ${received}`,
+    });
   }
   return issues;
 }

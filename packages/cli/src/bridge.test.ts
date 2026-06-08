@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -105,6 +105,58 @@ test("runtime bridge status skips memory candidate review surface unless request
   assert.equal(status.review_surfaces.memory_candidates.owner_review_status, "unavailable");
   assert.equal(status.review_surfaces.memory_candidates.total_requires_owner_review_count, null);
   assert.equal(status.health.overall, "ok");
+});
+
+test("runtime bridge status reports invalid proposal governance state with file and field detail", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-bridge-health-invalid-proposal-"));
+  const storeRoot = join(root, "store");
+  await initializeCristalinaStore(storeRoot);
+  await writeFile(
+    join(storeRoot, "governance/proposals/prop_invalid_ratified_state.json"),
+    `${JSON.stringify({
+      id: "prop_invalid_ratified_state",
+      kind: "proposal",
+      layer: "governance",
+      authoritative_home: "governance",
+      created_at: "2026-06-08T00:00:00.000Z",
+      visibility_state: {
+        privacy_scope: "owner_private",
+      },
+      provenance: {
+        source_type: "test",
+        source_ref: "bridge-invalid-proposal-test",
+      },
+      operation: "create",
+      candidate_kind: "preference",
+      target_layer: "canon",
+      target_ref: null,
+      candidate_payload: {
+        kind: "preference",
+        statement: "Use dense answers.",
+        semantic_slot: "test.invalid_proposal_state",
+      },
+      reason: "Contract regression fixture.",
+      evidence_refs: ["obs_invalid_proposal_state"],
+      governance_state: "ratified",
+    })}\n`,
+  );
+
+  const status = await collectRuntimeBridgeStatus({
+    config: buildDefaultCristalinaConfig({ storeRoot }),
+    configDiagnostics: [],
+    storeRoot,
+    subcheckTimeoutMs: 1000,
+    collectors: {
+      openclawProjections: async () => [],
+      hermesProjections: async () => [],
+    },
+  });
+
+  const diagnostic = status.health.owner_reviews.diagnostics[0] ?? "";
+  assert.equal(status.health.owner_reviews.status, "attention");
+  assert.equal(status.review_surfaces.owner_review_queues.operational_queue_state, "unavailable");
+  assert.match(diagnostic, /owner_review_queues failed: Invalid core record at .*governance\/proposals\/prop_invalid_ratified_state\.json/);
+  assert.match(diagnostic, /governance_state: expected proposal-stage governance state: draft, proposed, archived, rejected; received ratified/);
 });
 
 test("runtime bridge status reports missing runtime bindings in config health", async () => {

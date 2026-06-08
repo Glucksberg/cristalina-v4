@@ -7,6 +7,7 @@ import {
   serializeStoreManifestYaml,
   STORAGE_LAYOUT,
   summarizeMemoryCanonCandidates,
+  ValidationError,
   type MemoryCanonCandidateReport,
   type ProjectionRuntimeSummary,
 } from "@cristalina-v4/core";
@@ -146,6 +147,19 @@ function overallHealth(checks: RuntimeBridgeHealthCheck[]): RuntimeBridgeHealthS
   return "ok";
 }
 
+function formatStatusError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  if (error instanceof ValidationError && error.issues.length > 0) {
+    const details = error.issues
+      .slice(0, 3)
+      .map((issue) => `${issue.path}: ${issue.message}`)
+      .join("; ");
+    const suffix = error.issues.length > 3 ? `; +${error.issues.length - 3} more issue(s)` : "";
+    return `${error.message}; ${details}${suffix}`;
+  }
+  return error.message;
+}
+
 function reviewSurfaces(input: {
   ownerReviews: {
     openclaw: Awaited<ReturnType<typeof listOpenClawConversationPreferenceOwnerRatificationQueue>>;
@@ -233,7 +247,7 @@ async function collectSubcheck<T>(input: {
       }),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatStatusError(error);
     return {
       value: input.fallback,
       health: healthCheck({

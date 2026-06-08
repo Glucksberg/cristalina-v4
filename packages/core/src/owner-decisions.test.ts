@@ -182,6 +182,9 @@ test("owner decision ratify dry-run previews canon writes without changing the q
 
   assert.equal(preview.status, "dry_run");
   assert.equal(preview.records.canonical_record?.semantic_slot, "agent_memory.security.memory_poisoning_and_agent_traps");
+  assert.equal(preview.records.disposition?.proposal_status_after, "proposed");
+  assert.equal(preview.records.ratification?.decision, "approved");
+  assert.equal(preview.records.canonical_record?.governance_state, "ratified");
   assert.ok(preview.created_refs.some((ref) => ref.startsWith("mem_")));
   assert.equal((await listOwnerDecisionRequests({ rootDir })).owner_decisions.length, 0);
 });

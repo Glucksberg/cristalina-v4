@@ -1,4 +1,4 @@
-import type { GovernanceState, Layer } from "./types.js";
+import type { GovernanceState, Layer, ProposalStageState } from "./types.js";
 
 export const LEGAL_LAYER_TRANSITIONS = [
   ["raw", "wiki"],
@@ -45,7 +45,6 @@ export function isConditionalLayerTransition(from: Layer, to: Layer): boolean {
 export const LEGAL_GOVERNANCE_TRANSITIONS = [
   ["draft", "proposed"],
   ["draft", "rejected"],
-  ["proposed", "ratified"],
   ["proposed", "rejected"],
   ["proposed", "archived"],
   ["ratified", "superseded"],
@@ -54,6 +53,17 @@ export const LEGAL_GOVERNANCE_TRANSITIONS = [
 
 export function isLegalGovernanceTransition(from: GovernanceState, to: GovernanceState): boolean {
   return LEGAL_GOVERNANCE_TRANSITIONS.some(([left, right]) => left === from && right === to);
+}
+
+export const LEGAL_PROPOSAL_STAGE_TRANSITIONS = [
+  ["draft", "proposed"],
+  ["draft", "rejected"],
+  ["proposed", "rejected"],
+  ["proposed", "archived"],
+] as const satisfies ReadonlyArray<readonly [ProposalStageState, ProposalStageState]>;
+
+export function isLegalProposalStageTransition(from: ProposalStageState, to: ProposalStageState): boolean {
+  return LEGAL_PROPOSAL_STAGE_TRANSITIONS.some(([left, right]) => left === from && right === to);
 }
 
 export const PROMOTION_GATES = [

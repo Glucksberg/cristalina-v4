@@ -29,6 +29,13 @@ export const GOVERNANCE_STATES = [
   "rejected",
 ] as const;
 
+export const PROPOSAL_STAGE_STATES = [
+  "draft",
+  "proposed",
+  "archived",
+  "rejected",
+] as const;
+
 export const TEMPORAL_STATUSES = [
   "active",
   "bounded",
@@ -288,7 +295,7 @@ export type ActorKind = typeof ACTOR_KINDS[number];
 export type RuntimeKind = typeof RUNTIMES[number];
 export type SourceIntakeKind = typeof SOURCE_INTAKE_KINDS[number];
 export type ProposalOperation = typeof PROPOSAL_OPERATIONS[number];
-export type ProposalStageState = Exclude<GovernanceState, "ratified" | "superseded">;
+export type ProposalStageState = typeof PROPOSAL_STAGE_STATES[number];
 export type DispositionOutcome = typeof DISPOSITION_OUTCOMES[number];
 export type NonCanonicalIntakeMode = typeof NON_CANONICAL_INTAKE_MODES[number];
 export type WikiMaintenanceEvent = typeof WIKI_MAINTENANCE_EVENTS[number];

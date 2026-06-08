@@ -285,6 +285,40 @@ test("reference validation requires full record identity for stored references",
   assert.ok(invalid.some((issue) => issue.path === "target_ref.layer"));
 });
 
+test("proposal validation rejects ratified as a proposal stage", () => {
+  const invalid = validateCoreRecord({
+    id: "prop_ratified_stage_contract_bad_001",
+    kind: "proposal",
+    layer: "governance",
+    authoritative_home: "governance",
+    created_at: "2026-06-08T00:00:00.000Z",
+    visibility_state: {
+      privacy_scope: "project_private",
+    },
+    provenance: {
+      source_type: "test",
+      source_ref: "proposal-stage-contract",
+    },
+    operation: "create",
+    candidate_kind: "preference",
+    target_layer: "canon",
+    target_ref: null,
+    candidate_payload: {
+      kind: "preference",
+      semantic_slot: "test.proposal_stage_contract",
+      statement: "Proposal stages remain pre-ratification.",
+    },
+    reason: "Proposal stage contract test.",
+    evidence_refs: ["src_proposal_stage_contract_001"],
+    governance_state: "ratified",
+  });
+
+  assert.ok(invalid.some((issue) =>
+    issue.path === "governance_state" &&
+    issue.message.includes("received ratified")
+  ));
+});
+
 test("source record validation keeps content refs inside raw evidence roots", () => {
   function sourceRecord(content_ref: string) {
     return {

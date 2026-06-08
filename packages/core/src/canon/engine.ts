@@ -1,5 +1,4 @@
 import type { CanonicalMemoryObject, Proposal, RatificationRecord, TemporalState } from "../types.js";
-import { isLegalGovernanceTransition } from "../transitions.js";
 
 function referenceMatchesCanonicalRecord(
   reference: Proposal["target_ref"],
@@ -33,9 +32,6 @@ function assertApprovedRatificationMatchesProposal(
     throw new Error(`Proposal ${proposal.id} must be in proposed state before canon application`);
   }
 
-  if (!isLegalGovernanceTransition(proposal.governance_state, "ratified")) {
-    throw new Error(`Proposal ${proposal.id} cannot transition from ${proposal.governance_state} to ratified`);
-  }
 }
 
 function assertCanonicalTargetCompatibility(input: {

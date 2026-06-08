@@ -767,7 +767,7 @@ async function applyOwnerDecisionUnlocked(input: ApplyOwnerDecisionInput): Promi
       now: input.now,
       reason: input.reason,
       ratification_ref: ratification.id,
-      proposal_status_after: "ratified",
+      proposal_status_after: proposal.governance_state,
       curation_status_after: packetUpdate?.status ?? null,
     });
     records.ratification = ratification;

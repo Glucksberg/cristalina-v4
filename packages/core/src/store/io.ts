@@ -36,7 +36,7 @@ import type {
   VectorChunk,
 } from "../types.js";
 import { STORAGE_LAYOUT } from "../storage.js";
-import { assertCoreRecord, assertStoreManifest, assertSymbolAnchor, assertVectorArtifact } from "../validation.js";
+import { assertCoreRecord, assertStoreManifest, assertSymbolAnchor, assertVectorArtifact, ValidationError } from "../validation.js";
 import { atomicWriteText, isMissingFileError } from "./atomic-write.js";
 import { createStoreManifest, parseStoreManifestYaml, serializeStoreManifestYaml, type StoreManifest } from "./manifest.js";
 
@@ -394,7 +394,14 @@ export async function writeEmbeddingVector(rootDir: string, embedding: Embedding
 
 export async function readCoreRecord<T extends CoreRecord = CoreRecord>(filePath: string): Promise<T> {
   const parsed = await readJsonFile(filePath);
-  assertCoreRecord(parsed);
+  try {
+    assertCoreRecord(parsed);
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      throw new ValidationError(`Invalid core record at ${filePath}`, error.issues);
+    }
+    throw error;
+  }
   return parsed as T;
 }
 

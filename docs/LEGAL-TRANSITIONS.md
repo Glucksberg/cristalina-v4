@@ -82,15 +82,21 @@ These should be illegal in the MVP:
 
 ### 4.1 Governance states
 
-The minimum legal state path should be:
+Canonical records use the durable lifecycle:
 
-`draft -> proposed -> ratified -> superseded -> archived`
+`ratified -> superseded -> archived`
+
+Governance proposals use a pre-ratification stage lifecycle:
+
+`draft -> proposed`
 
 Other legal side branches:
 
 - `draft -> rejected`
 - `proposed -> rejected`
 - `proposed -> archived`
+
+`ratified` is not a legal `Proposal.governance_state`; approval is represented by a ratification decision and, when promoted, by a canonical record with `governance_state: ratified`.
 
 ### 4.2 Epistemic states
 
