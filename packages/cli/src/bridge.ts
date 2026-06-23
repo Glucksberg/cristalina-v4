@@ -33,10 +33,28 @@ export interface RuntimeBridgeStatus {
     openclaw: ProjectionRuntimeSummary[];
     hermes: ProjectionRuntimeSummary[];
   };
+  owner_decisions: RuntimeBridgeOwnerDecisionSummary;
   pending_owner_reviews: {
     openclaw: number;
     hermes: number;
   };
+}
+
+export interface RuntimeBridgeOwnerDecisionSummary {
+  backlog: number | null;
+  in_review: number | null;
+  blocking: number | null;
+  by_stage: {
+    backlog: number | null;
+    in_review: number | null;
+    blocking: number | null;
+    unavailable: number;
+  };
+  by_kind: {
+    active_owner_review_queue: number | null;
+    memory_candidate_promotion: number | null;
+  };
+  note: string;
 }
 
 export type RuntimeBridgeHealthState = "ok" | "attention" | "fail";
@@ -61,8 +79,23 @@ export interface RuntimeBridgeHealth {
 }
 
 const DEFAULT_STATUS_SUBCHECK_TIMEOUT_MS = 1000;
+const OWNER_DECISION_SUMMARY_NOTE = "Unified owner decision surface: backlog includes batchable memory-candidate promotion decisions plus active review items; blocking counts only runtime-blocking owner reviews.";
 
 interface RuntimeBridgeReviewSurfaces {
+  owner_decision_items: {
+    record_kind: "owner_review_item_collection";
+    authority_layer: "runtime_status";
+    authority_scope: "owner_decision";
+    review_stage: "unified";
+    total_pending_count: number | null;
+    active_review_count: number | null;
+    backlog_count: number | null;
+    blocking_count: number | null;
+    unavailable_count: number;
+    counts_toward_pending_owner_reviews: true;
+    counts_toward_blocking_owner_reviews: false;
+    note: string;
+  };
   owner_review_queues: {
     record_kind: "owner_review_queue";
     authority_layer: "runtime_status";
@@ -180,7 +213,25 @@ function reviewSurfaces(input: {
   const totalCandidateCount = openclawCandidateCount === null || hermesCandidateCount === null
     ? null
     : openclawCandidateCount + hermesCandidateCount;
+  const ownerDecisions = ownerDecisionSummaryFromCounts({
+    activeReviewCount: totalQueueCount,
+    candidateBacklogCount: totalCandidateCount,
+  });
   return {
+    owner_decision_items: {
+      record_kind: "owner_review_item_collection",
+      authority_layer: "runtime_status",
+      authority_scope: "owner_decision",
+      review_stage: "unified",
+      total_pending_count: ownerDecisions.backlog,
+      active_review_count: ownerDecisions.in_review,
+      backlog_count: ownerDecisions.by_stage.backlog,
+      blocking_count: ownerDecisions.blocking,
+      unavailable_count: ownerDecisions.by_stage.unavailable,
+      counts_toward_pending_owner_reviews: true,
+      counts_toward_blocking_owner_reviews: false,
+      note: OWNER_DECISION_SUMMARY_NOTE,
+    },
     owner_review_queues: {
       record_kind: "owner_review_queue",
       authority_layer: "runtime_status",
@@ -213,6 +264,32 @@ function reviewSurfaces(input: {
       total_requires_owner_review_count: totalCandidateCount,
       note: "These candidates may require owner review before promotion, but they are not active queue entries and do not count toward pending_owner_reviews unless materialized with a queue_ref.",
     },
+  };
+}
+
+function ownerDecisionSummaryFromCounts(input: {
+  activeReviewCount: number | null;
+  candidateBacklogCount: number | null;
+}): RuntimeBridgeOwnerDecisionSummary {
+  const unavailable = (input.activeReviewCount === null ? 1 : 0) + (input.candidateBacklogCount === null ? 1 : 0);
+  const backlog = input.activeReviewCount === null || input.candidateBacklogCount === null
+    ? null
+    : input.activeReviewCount + input.candidateBacklogCount;
+  return {
+    backlog,
+    in_review: input.activeReviewCount,
+    blocking: input.activeReviewCount === null ? null : 0,
+    by_stage: {
+      backlog: input.candidateBacklogCount,
+      in_review: input.activeReviewCount,
+      blocking: input.activeReviewCount === null ? null : 0,
+      unavailable,
+    },
+    by_kind: {
+      active_owner_review_queue: input.activeReviewCount,
+      memory_candidate_promotion: input.candidateBacklogCount,
+    },
+    note: OWNER_DECISION_SUMMARY_NOTE,
   };
 }
 
@@ -322,7 +399,7 @@ export async function collectRuntimeBridgeStatus(input: {
       source: "owner_review_queues",
       diagnostics: ["Owner review queues were not checked because no store root is configured."],
       metrics: { openclaw: 0, hermes: 0 },
-      note: "Counts active queue entries only; memory candidates that require review are reported by memory candidates.",
+      note: "Counts active queue entries only for the active owner-review queue; memory candidates are summarized with it in owner_decisions for the unified backlog/in-review/blocking summary.",
     });
     const memoryCandidatesHealth = healthCheck({
       status: "attention",
@@ -330,7 +407,7 @@ export async function collectRuntimeBridgeStatus(input: {
       source: "memory_candidate_review_surface",
       diagnostics: ["Memory candidate review surfaces were not checked because no store root is configured."],
       metrics: { openclaw_requires_owner_review: null, hermes_requires_owner_review: null },
-      note: "Candidate review requirements are separate from active owner-review queues.",
+      note: "Candidate review requirements are included in the owner_decisions backlog, but are not active queue entries until materialized with a queue_ref.",
     });
     return {
       store_root: null,
@@ -348,6 +425,7 @@ export async function collectRuntimeBridgeStatus(input: {
       },
       review_surfaces: reviewSurfaces({ ownerReviews: null, memoryCandidates: null }),
       projections: { openclaw: [], hermes: [] },
+      owner_decisions: ownerDecisionSummaryFromCounts({ activeReviewCount: null, candidateBacklogCount: null }),
       pending_owner_reviews: { openclaw: 0, hermes: 0 },
     };
   }
@@ -414,7 +492,7 @@ export async function collectRuntimeBridgeStatus(input: {
           return { openclaw, hermes };
         },
         metrics: (value) => ({ openclaw: value.openclaw.length, hermes: value.hermes.length }),
-        note: "Counts active queue entries only; memory candidates that require review are reported by memory candidates.",
+        note: "Counts active queue entries only for the active owner-review queue; memory candidates are summarized with it in owner_decisions for the unified backlog/in-review/blocking summary.",
         timeoutMs: input.subcheckTimeoutMs,
       })
     : {
@@ -425,7 +503,7 @@ export async function collectRuntimeBridgeStatus(input: {
           source: "owner_review_queues",
           diagnostics: ["Owner review queues were not checked because the store manifest is missing."],
           metrics: { openclaw: 0, hermes: 0 },
-          note: "Counts active queue entries only; memory candidates that require review are reported by memory candidates.",
+          note: "Counts active queue entries only for the active owner-review queue; memory candidates are summarized with it in owner_decisions for the unified backlog/in-review/blocking summary.",
         }),
       };
   const candidateSubcheck = manifest && includeMemoryCandidateReviewSurface
@@ -448,7 +526,7 @@ export async function collectRuntimeBridgeStatus(input: {
           openclaw_requires_owner_review: value?.openclaw.review_surface.candidate_requires_owner_review_count ?? null,
           hermes_requires_owner_review: value?.hermes.review_surface.candidate_requires_owner_review_count ?? null,
         }),
-        note: "Reports memory candidates that would require owner review before promotion; these are not active queue entries.",
+        note: "Reports memory candidates that would require owner review before promotion; these contribute to the owner decision backlog but are not active queue entries.",
         timeoutMs: input.subcheckTimeoutMs,
       })
     : {
@@ -461,7 +539,7 @@ export async function collectRuntimeBridgeStatus(input: {
           metrics: { openclaw_requires_owner_review: null, hermes_requires_owner_review: null },
           note: manifest
             ? "Memory candidate review surface was not requested by this command."
-            : "Candidate review requirements are separate from active owner-review queues.",
+            : "Candidate review requirements are included in the owner_decisions backlog when available, but are not active queue entries until materialized with a queue_ref.",
         }),
       };
   diagnostics.push(
@@ -470,6 +548,10 @@ export async function collectRuntimeBridgeStatus(input: {
     ...candidateSubcheck.health.diagnostics,
   );
   const healthChecks = [configHealth, storeHealth, projectionSubcheck.health, reviewsSubcheck.health, candidateSubcheck.health];
+  const reviewSurfaceSummary = reviewSurfaces({
+    ownerReviews: reviewsSubcheck.health.status === "ok" ? reviewsSubcheck.value : null,
+    memoryCandidates: candidateSubcheck.health.status === "ok" ? candidateSubcheck.value : null,
+  });
 
   return {
     store_root: storeRoot,
@@ -485,14 +567,15 @@ export async function collectRuntimeBridgeStatus(input: {
       owner_reviews: reviewsSubcheck.health,
       memory_candidates: candidateSubcheck.health,
     },
-    review_surfaces: reviewSurfaces({
-      ownerReviews: reviewsSubcheck.health.status === "ok" ? reviewsSubcheck.value : null,
-      memoryCandidates: candidateSubcheck.health.status === "ok" ? candidateSubcheck.value : null,
-    }),
+    review_surfaces: reviewSurfaceSummary,
     projections: {
       openclaw: projectionSubcheck.value.openclaw,
       hermes: projectionSubcheck.value.hermes,
     },
+    owner_decisions: ownerDecisionSummaryFromCounts({
+      activeReviewCount: reviewSurfaceSummary.owner_decision_items.active_review_count,
+      candidateBacklogCount: reviewSurfaceSummary.owner_decision_items.backlog_count,
+    }),
     pending_owner_reviews: {
       openclaw: reviewsSubcheck.value.openclaw.length,
       hermes: reviewsSubcheck.value.hermes.length,
