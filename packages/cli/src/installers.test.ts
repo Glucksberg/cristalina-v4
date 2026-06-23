@@ -475,6 +475,7 @@ test("Hermes installer delivers nightly memory cycle reports to a unique channel
   const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
     memory_consolidation_cron_jobs_path: string;
     memory_cycle_cron_job_id: string;
+    memory_cycle_cron_script_path: string;
   };
   const cronJobs = JSON.parse(await readFile(metadata.memory_consolidation_cron_jobs_path, "utf8")) as {
     jobs: Array<{
@@ -495,6 +496,11 @@ test("Hermes installer delivers nightly memory cycle reports to a unique channel
     thread_id: null,
   });
   assert.deepEqual(job?.enabled_toolsets, ["terminal", "messaging"]);
+  const cycleScript = await readFile(metadata.memory_cycle_cron_script_path, "utf8");
+  assert.match(cycleScript, /owner decisions: backlog/);
+  assert.match(cycleScript, /owner_decisions_backlog/);
+  assert.match(cycleScript, /owner_decisions_in_review/);
+  assert.match(cycleScript, /owner_decisions_blocking/);
   assert.ok(result.diagnostics.some((entry) => entry.includes("will deliver nightly reports to telegram:942906261")));
 });
 

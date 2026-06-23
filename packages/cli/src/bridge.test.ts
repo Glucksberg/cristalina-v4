@@ -7,6 +7,51 @@ import test from "node:test";
 import { buildDefaultCristalinaConfig } from "./config.js";
 import { collectRuntimeBridgeStatus, initializeCristalinaStore } from "./bridge.js";
 
+test("runtime bridge status exposes one unambiguous owner decision summary", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cristalina-bridge-owner-decisions-summary-"));
+  const storeRoot = join(root, "store");
+  await initializeCristalinaStore(storeRoot);
+
+  const status = await collectRuntimeBridgeStatus({
+    config: buildDefaultCristalinaConfig({ storeRoot }),
+    configDiagnostics: [],
+    storeRoot,
+    includeMemoryCandidateReviewSurface: true,
+    collectors: {
+      openclawProjections: async () => [],
+      hermesProjections: async () => [],
+      openclawReviews: async () => [{ id: "openclaw_queue_1" }, { id: "openclaw_queue_2" }] as never,
+      hermesReviews: async () => [{ id: "hermes_queue_1" }] as never,
+      openclawMemoryCandidates: async () => candidateReportWithOwnerReviewCount("openclaw", 5),
+      hermesMemoryCandidates: async () => candidateReportWithOwnerReviewCount("hermes", 7),
+    },
+  });
+
+  assert.deepEqual(status.owner_decisions, {
+    backlog: 15,
+    in_review: 3,
+    blocking: 0,
+    by_stage: {
+      backlog: 12,
+      in_review: 3,
+      blocking: 0,
+      unavailable: 0,
+    },
+    by_kind: {
+      active_owner_review_queue: 3,
+      memory_candidate_promotion: 12,
+    },
+    note: "Unified owner decision surface: backlog includes batchable memory-candidate promotion decisions plus active review items; blocking counts only runtime-blocking owner reviews.",
+  });
+  assert.equal(status.review_surfaces.owner_decision_items.total_pending_count, 15);
+  assert.equal(status.review_surfaces.owner_decision_items.active_review_count, 3);
+  assert.equal(status.review_surfaces.owner_decision_items.backlog_count, 12);
+  assert.equal(status.review_surfaces.owner_decision_items.blocking_count, 0);
+  assert.equal(status.review_surfaces.owner_decision_items.counts_toward_pending_owner_reviews, true);
+  assert.match(status.health.owner_reviews.note ?? "", /active owner-review queue/);
+  assert.match(status.health.memory_candidates.note ?? "", /owner decision backlog/);
+});
+
 test("runtime bridge status degrades slow subchecks into health attention", async () => {
   const root = await mkdtemp(join(tmpdir(), "cristalina-bridge-health-timeout-"));
   const storeRoot = join(root, "store");
@@ -192,6 +237,10 @@ test("runtime bridge status reports missing runtime bindings in config health", 
 });
 
 function emptyCandidateReport(runtime: "openclaw" | "hermes") {
+  return candidateReportWithOwnerReviewCount(runtime, 0);
+}
+
+function candidateReportWithOwnerReviewCount(runtime: "openclaw" | "hermes", ownerReviewCount: number) {
   return {
     schema_version: 1 as const,
     runtime,
@@ -201,11 +250,11 @@ function emptyCandidateReport(runtime: "openclaw" | "hermes") {
       auto_canon_ready: 0,
       already_canon: 0,
       needs_more_support: 0,
-      owner_review: 0,
+      owner_review: ownerReviewCount,
     },
     review_surface: {
       active_owner_review_queue_count: null,
-      candidate_requires_owner_review_count: 0,
+      candidate_requires_owner_review_count: ownerReviewCount,
       counts_toward_pending_owner_reviews: false as const,
       note: "No candidate review requirements.",
     },

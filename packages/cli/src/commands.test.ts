@@ -86,6 +86,13 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
       memory_candidates: { status: string; metrics?: Record<string, number | null>; note?: string };
     };
     review_surfaces: {
+      owner_decision_items: {
+        record_kind: string;
+        total_pending_count: number;
+        active_review_count: number;
+        backlog_count: number;
+        blocking_count: number;
+      };
       owner_review_queues: {
         record_kind: string;
         operational_queue_state: string;
@@ -101,6 +108,12 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
       };
     };
     projections: { openclaw: unknown[]; hermes: unknown[] };
+    owner_decisions: {
+      backlog: number;
+      in_review: number;
+      blocking: number;
+      by_kind: { active_owner_review_queue: number; memory_candidate_promotion: number };
+    };
   };
   assert.equal(payload.store_root, storeRoot);
   assert.equal(payload.store_manifest_found, true);
@@ -123,6 +136,16 @@ test("init creates a manifest and doctor accepts explicit runtime bindings", asy
   assert.equal(payload.review_surfaces.memory_candidates.operational_queue_state, "not_queued");
   assert.equal(payload.review_surfaces.memory_candidates.counts_toward_pending_owner_reviews, false);
   assert.equal(payload.review_surfaces.memory_candidates.total_requires_owner_review_count, 0);
+  assert.equal(payload.review_surfaces.owner_decision_items.record_kind, "owner_review_item_collection");
+  assert.equal(payload.review_surfaces.owner_decision_items.total_pending_count, 0);
+  assert.equal(payload.review_surfaces.owner_decision_items.active_review_count, 0);
+  assert.equal(payload.review_surfaces.owner_decision_items.backlog_count, 0);
+  assert.equal(payload.review_surfaces.owner_decision_items.blocking_count, 0);
+  assert.equal(payload.owner_decisions.backlog, 0);
+  assert.equal(payload.owner_decisions.in_review, 0);
+  assert.equal(payload.owner_decisions.blocking, 0);
+  assert.equal(payload.owner_decisions.by_kind.active_owner_review_queue, 0);
+  assert.equal(payload.owner_decisions.by_kind.memory_candidate_promotion, 0);
   assert.deepEqual(payload.projections.openclaw, []);
   assert.deepEqual(payload.projections.hermes, []);
 });
